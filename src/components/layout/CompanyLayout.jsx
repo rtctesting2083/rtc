@@ -11,6 +11,7 @@ export function CompanyLayout() {
   const navigate = useNavigate();
 
   const [settingsOpen, setSettingsOpen] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   if (!company) {
     return <div className="p-4">Loading company...</div>;
@@ -32,6 +33,10 @@ export function CompanyLayout() {
       resetCompanyData();
       alert('Company data has been reset.');
     }
+  };
+
+  const closeMobileMenu = () => {
+    setMobileMenuOpen(false);
   };
 
   const subtitle = currentUser
@@ -66,7 +71,40 @@ export function CompanyLayout() {
 
   return (
     <div className="app-container">
-      <aside className="sidebar">
+      {/* Mobile Top Header */}
+      <header className="mobile-topbar">
+        <button
+          type="button"
+          className="mobile-menu-btn"
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          aria-label="Toggle navigation"
+        >
+          ☰
+        </button>
+        <div className="mobile-topbar-title">
+          <span className="mobile-topbar-badge">{initialsFor(company.name)}</span>
+          <span className="mobile-topbar-name">{company.name}</span>
+        </div>
+        <button type="button" className="mobile-logout-btn" onClick={handleLogout} title="Log out">
+          🚪
+        </button>
+      </header>
+
+      {/* Mobile Backdrop */}
+      {mobileMenuOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={closeMobileMenu}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
+        <div className="sidebar-mobile-close">
+          <span>Navigation Menu</span>
+          <button type="button" onClick={closeMobileMenu}>✕</button>
+        </div>
+
         <div className="brand">
           <div className="brand-badge">{initialsFor(company.name)}</div>
           <div className="brand-word">
@@ -82,6 +120,7 @@ export function CompanyLayout() {
                 <NavLink
                   key={item.key}
                   to={item.path}
+                  onClick={closeMobileMenu}
                   className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
                 >
                   <span className="nav-icon">{item.icon}</span>
@@ -129,6 +168,7 @@ export function CompanyLayout() {
                         <NavLink
                           key={sub.key}
                           to={sub.path}
+                          onClick={closeMobileMenu}
                           className={({ isActive }) => `sub-link ${isActive ? 'active' : ''}`}
                         >
                           {sub.label}

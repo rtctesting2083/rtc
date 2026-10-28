@@ -798,18 +798,223 @@
   white-space: nowrap;
 }
 
-@media (max-width: 1024px) {
-  .vendor-metrics-grid {
-    grid-template-columns: repeat(3, 1fr);
+/* ---------- Mobile Menu & Responsive Drawer ---------- */
+.vendor-mobile-menu-btn {
+  display: none;
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  font-size: 19px;
+  line-height: 1;
+  padding: 6px 10px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+}
+
+.vendor-mobile-menu-btn:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.vendor-sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.55);
+  backdrop-filter: blur(2px);
+  z-index: 45;
+  animation: vendorFadeIn 0.18s ease-out;
+}
+
+@keyframes vendorFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.vendor-sidebar-mobile-head {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--vendor-card-border);
+  background: #fff;
+}
+
+.vendor-sidebar-close-btn {
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.vendor-sidebar-close-btn:hover {
+  background: #fee2e2;
+  color: var(--vendor-red);
+}
+
+.vendor-topbar-support-info {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+/* ---------- Device Adaptive Breakpoints ---------- */
+@media (max-width: 992px) {
+  .vendor-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 270px;
+    max-width: 85vw;
+    height: 100vh;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+  }
+  .vendor-sidebar.mobile-open {
+    transform: translateX(0);
+  }
+  .vendor-sidebar-mobile-head {
+    display: flex;
+  }
+  .vendor-mobile-menu-btn {
+    display: inline-flex;
+  }
+  .vendor-topbar {
+    padding: 0 16px;
+  }
+  .vendor-content {
+    padding: 18px 16px 36px;
   }
   .vendor-banner-row {
     grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .vendor-metrics-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
   }
   .vendor-charts-grid {
     grid-template-columns: 1fr;
+    gap: 16px;
   }
   .vendor-quick-actions-row {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+}
+
+@media (max-width: 768px) {
+  .vendor-topbar-support-info .vendor-topbar-sales {
+    display: none;
+  }
+  .vendor-topbar-left {
+    gap: 10px;
+  }
+  .vendor-greeting-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 18px 20px;
+  }
+  .vendor-greeting-right {
+    text-align: left;
+  }
+  .vendor-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .vendor-metric-value {
+    font-size: 19px !important;
+  }
+  .vendor-metric-card {
+    padding: 12px 10px;
+    min-height: 110px;
+  }
+  .vendor-content {
+    padding: 14px 12px 32px;
+  }
+  .vendor-page-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .vendor-btn-create-order {
+    justify-content: center;
+    width: 100%;
+  }
+  .vendor-reports-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .vendor-reports-pills {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+  }
+  .vendor-stat-pair {
+    flex-direction: column;
+    gap: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .vendor-topbar-support-info .vendor-topbar-helpline {
+    display: none;
+  }
+  .vendor-topbar-name {
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .vendor-quick-actions-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .vendor-greeting-left h2 {
+    font-size: 18px;
+  }
+  .vendor-date-card {
+    padding: 14px 16px;
+  }
+  .vendor-day-bar-row {
+    font-size: 11.5px;
+  }
+  .vendor-day-bar-label {
+    width: 80px !important;
+    font-size: 11px;
+  }
+  .vendor-recent-order-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .vendor-order-time {
+    align-self: flex-end;
+  }
+  .vendor-donut-flex-container {
+    flex-direction: column !important;
+    gap: 16px !important;
+    align-items: center !important;
+  }
+}
+
+/* Ensure tables inside vendor portal scroll smoothly on tablets/phones */
+@media (max-width: 1024px) {
+  .vendor-content table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
   }
 }
 

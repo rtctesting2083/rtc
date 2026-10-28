@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useCompany } from '../../context/CompanyContext';
@@ -8,6 +8,8 @@ export function BranchLayout() {
   const { session, logout, exitBranchViewAsAdmin } = useAuth();
   const { company, branches } = useCompany();
   const navigate = useNavigate();
+
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const currentBranch = (branches || []).find((b) => b.id === Number(session?.branchId));
   const staffUser = currentBranch && session?.staffUserId
@@ -31,6 +33,10 @@ export function BranchLayout() {
     navigate('/company/branches');
   };
 
+  const closeMobileMenu = () => {
+    setMobileMenuOpen(false);
+  };
+
   if (!currentBranch) {
     return <div className="p-4">Branch not found. Please log in again.</div>;
   }
@@ -52,7 +58,40 @@ export function BranchLayout() {
 
   return (
     <div className="app-container">
-      <aside className="sidebar">
+      {/* Mobile Top Header */}
+      <header className="mobile-topbar">
+        <button
+          type="button"
+          className="mobile-menu-btn"
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          aria-label="Toggle navigation"
+        >
+          ☰
+        </button>
+        <div className="mobile-topbar-title">
+          <span className="mobile-topbar-badge">{initialsFor(currentBranch.name)}</span>
+          <span className="mobile-topbar-name">{currentBranch.name}</span>
+        </div>
+        <button type="button" className="mobile-logout-btn" onClick={handleLogout} title="Log out">
+          🚪
+        </button>
+      </header>
+
+      {/* Mobile Backdrop */}
+      {mobileMenuOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={closeMobileMenu}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
+        <div className="sidebar-mobile-close">
+          <span>Branch Menu</span>
+          <button type="button" onClick={closeMobileMenu}>✕</button>
+        </div>
+
         <div className="brand">
           <div className="brand-badge">{initialsFor(company?.name || 'BR')}</div>
           <div className="brand-word">
@@ -68,6 +107,7 @@ export function BranchLayout() {
                 <NavLink
                   key={item.key}
                   to={item.path}
+                  onClick={closeMobileMenu}
                   className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
                 >
                   <span className="nav-icon">{item.icon}</span>

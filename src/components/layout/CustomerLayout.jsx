@@ -18,6 +18,7 @@ export function CustomerLayout() {
   const [actionsOpen, setActionsOpen] = useState(false);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const currentCustomer = (customers || []).find((c) => c.id === Number(session?.customerId));
   const staffUser = currentCustomer && session?.staffUserId
@@ -37,20 +38,47 @@ export function CustomerLayout() {
   };
 
   const handleOpenCreateOrder = () => {
+    setMobileMenuOpen(false);
     openModal('Create New Order', <CreateOrderModal currentCustomer={currentCustomer} />, 'xwide');
+  };
+
+  const closeMobileMenu = () => {
+    setMobileMenuOpen(false);
   };
 
   if (!currentCustomer) {
     return <div className="p-4" style={{ padding: '24px' }}>Vendor not found. Please log in again.</div>;
   }
 
-  const vendorIdDisplay = currentCustomer.vendor_id || String(currentCustomer.id).padStart(2, '0');
+  const vendorIdDisplay = currentCustomer.vendor_code || currentCustomer.vendor_id || String(currentCustomer.id).padStart(2, '0');
 
   return (
     <div className="vendor-app-container">
+      {/* Mobile Drawer Backdrop */}
+      {mobileMenuOpen && (
+        <div
+          className="vendor-sidebar-backdrop"
+          onClick={closeMobileMenu}
+          aria-hidden="true"
+        />
+      )}
+
       {/* Left White Sidebar */}
-      <aside className="vendor-sidebar">
+      <aside className={`vendor-sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
         <div>
+          {/* Mobile Drawer Header with Close Button */}
+          <div className="vendor-sidebar-mobile-head">
+            <span style={{ fontWeight: 700, fontSize: '13px', color: '#111827' }}>Vendor Menu</span>
+            <button
+              type="button"
+              className="vendor-sidebar-close-btn"
+              onClick={closeMobileMenu}
+              aria-label="Close menu"
+            >
+              ✕
+            </button>
+          </div>
+
           {/* Top Vendor Profile Card */}
           <div className="vendor-profile-card">
             <h3>{currentCustomer.name}</h3>
@@ -64,6 +92,7 @@ export function CustomerLayout() {
             {isAllowed('dashboard') && (
               <NavLink
                 to="/customer/dashboard"
+                onClick={closeMobileMenu}
                 className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
               >
                 <span className="nav-icon">🏠</span>
@@ -73,6 +102,7 @@ export function CustomerLayout() {
 
             <NavLink
               to="/customer/profile"
+              onClick={closeMobileMenu}
               className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
             >
               <span className="nav-icon">🪪</span>
@@ -82,6 +112,7 @@ export function CustomerLayout() {
             {isAllowed('customers') && (
               <NavLink
                 to="/customer/customers"
+                onClick={closeMobileMenu}
                 className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
               >
                 <span className="nav-icon">👥</span>
@@ -92,6 +123,7 @@ export function CustomerLayout() {
             {isAllowed('manage-staff') && (
               <NavLink
                 to="/customer/staff"
+                onClick={closeMobileMenu}
                 className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
               >
                 <span className="nav-icon">🧑‍💼</span>
@@ -101,6 +133,7 @@ export function CustomerLayout() {
 
             <NavLink
               to="/customer/placeholder/Notice%20Board"
+              onClick={closeMobileMenu}
               className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
             >
               <span className="nav-icon">🔔</span>
@@ -123,6 +156,7 @@ export function CustomerLayout() {
                   <div className="vendor-submenu">
                     <NavLink
                       to="/customer/orders"
+                      onClick={closeMobileMenu}
                       className={({ isActive }) => `vendor-sublink ${isActive ? 'active' : ''}`}
                     >
                       My Order List
@@ -156,6 +190,7 @@ export function CustomerLayout() {
                   <div className="vendor-submenu">
                     <NavLink
                       to="/customer/invoices"
+                      onClick={closeMobileMenu}
                       className={({ isActive }) => `vendor-sublink ${isActive ? 'active' : ''}`}
                     >
                       Invoices
@@ -180,6 +215,7 @@ export function CustomerLayout() {
                 <div className="vendor-submenu">
                   <NavLink
                     to="/customer/orders"
+                    onClick={closeMobileMenu}
                     className={({ isActive }) => `vendor-sublink ${isActive ? 'active' : ''}`}
                   >
                     Track a Package
@@ -191,6 +227,7 @@ export function CustomerLayout() {
             {/* Report */}
             <NavLink
               to="/customer/placeholder/Report"
+              onClick={closeMobileMenu}
               className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
             >
               <span className="nav-icon">📊</span>
@@ -212,6 +249,7 @@ export function CustomerLayout() {
                 <div className="vendor-submenu">
                   <NavLink
                     to="/customer/placeholder/Resources"
+                    onClick={closeMobileMenu}
                     className={({ isActive }) => `vendor-sublink ${isActive ? 'active' : ''}`}
                   >
                     Guidelines & FAQ
@@ -223,6 +261,7 @@ export function CustomerLayout() {
             {/* Packaging */}
             <NavLink
               to="/customer/placeholder/Packaging"
+              onClick={closeMobileMenu}
               className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
             >
               <span className="nav-icon">📮</span>
@@ -247,8 +286,18 @@ export function CustomerLayout() {
         {/* Top Red Header Bar */}
         <header className="vendor-topbar">
           <div className="vendor-topbar-left">
-            <span>Help Line ☎ <b>071-532176</b></span>
-            <span>Sales Support: <b>RTC4567 - Jafar Ali</b> ☎ <b>9847060846</b></span>
+            <button
+              type="button"
+              className="vendor-mobile-menu-btn"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label="Toggle Navigation Menu"
+            >
+              ☰
+            </button>
+            <div className="vendor-topbar-support-info">
+              <span className="vendor-topbar-helpline">Help Line ☎ <b>071-532176</b></span>
+              <span className="vendor-topbar-sales">Sales: <b>RTC4567 - Jafar Ali</b> ☎ <b>9847060846</b></span>
+            </div>
           </div>
           <div className="vendor-topbar-right">
             <button
@@ -269,10 +318,10 @@ export function CustomerLayout() {
             </div>
             {userDropdownOpen && (
               <div className="vendor-topbar-dropdown">
-                <NavLink to="/customer/profile" onClick={() => setUserDropdownOpen(false)}>
+                <NavLink to="/customer/profile" onClick={() => { setUserDropdownOpen(false); closeMobileMenu(); }}>
                   👤 My Profile
                 </NavLink>
-                <NavLink to="/customer/orders" onClick={() => setUserDropdownOpen(false)}>
+                <NavLink to="/customer/orders" onClick={() => { setUserDropdownOpen(false); closeMobileMenu(); }}>
                   📦 Orders
                 </NavLink>
                 <hr style={{ margin: '4px 0', border: 'none', borderTop: '1px solid #f3f4f6' }} />

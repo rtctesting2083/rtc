@@ -507,7 +507,7 @@ export function CustomerDashboardPage() {
           <div className="vendor-panel-header">
             <h3 className="vendor-panel-title">My orders by status</h3>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', minHeight: 160 }}>
+          <div className="vendor-donut-flex-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', minHeight: 160 }}>
             {/* Donut */}
             <div style={{ position: 'relative', width: 140, height: 140, flexShrink: 0 }}>
               {totalOrders > 0 ? (
