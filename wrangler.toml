@@ -1,0 +1,12 @@
+name = "rtccourrier"
+compatibility_date = "2024-11-01"
+pages_build_output_dir = "dist"
+
+# Optional Cloudflare Pages config
+[vars]
+ENVIRONMENT = "production"
+
+[[d1_databases]]
+binding = "rtc"
+database_name = "my-db"
+database_id = "ef0a72f2-3749-47dd-9740-3c934785e2d4"
