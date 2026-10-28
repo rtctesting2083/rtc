@@ -1,6 +1,6 @@
 # System Logins Directory — Real Time Courier (RTC)
 
-Please refer to the full credentials and account guide in [CREDENTIALS.md](./CREDENTIALS.md).
+Please refer test to the full credentials and account guide in [CREDENTIALS.md](./CREDENTIALS.md).
 
 ### Quick Summary (Real Time Courier)
 - **Live Login URL**: [https://rtccourrier.pages.dev/login](https://rtccourrier.pages.dev/login)
