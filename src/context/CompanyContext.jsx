@@ -1345,21 +1345,37 @@ export function CompanyProvider({ children }) {
   const loadVendorOrders = async (vendorId) => {
     if (!companyId || !vendorId) return [];
     try {
-      const orders = await d1Api.getVendorOrders(vendorId, companyId);
-      if (Array.isArray(orders) && orders.length > 0) {
-        updateData((prev) => {
-          const existingNonVendor = (prev.shipments || []).filter((s) => Number(s.customer_id) !== Number(vendorId));
-          const formatted = orders.map((o) => ({
-            ...o,
-            customer_id: Number(o.vendor_id || o.customer_id),
-          }));
-          return {
-            ...prev,
-            shipments: [...formatted, ...existingNonVendor],
-          };
-        });
-        return orders;
-      }
+      const [vendorOrders, customerShipments] = await Promise.all([
+        d1Api.getVendorOrders(vendorId, companyId).catch(() => []),
+        d1Api.getShipments(companyId, { customer_id: vendorId }).catch(() => []),
+      ]);
+
+      const mergedMap = new Map();
+      (customerShipments || []).forEach((s) => {
+        if (s && s.tracking_number) mergedMap.set(s.tracking_number, { ...s, customer_id: Number(vendorId) });
+      });
+      (vendorOrders || []).forEach((o) => {
+        if (o && o.tracking_number) {
+          if (!mergedMap.has(o.tracking_number)) {
+            mergedMap.set(o.tracking_number, { ...o, customer_id: Number(vendorId) });
+          } else {
+            // Merge fields if customerShipments lacks any
+            const existing = mergedMap.get(o.tracking_number);
+            mergedMap.set(o.tracking_number, { ...o, ...existing, customer_id: Number(vendorId) });
+          }
+        }
+      });
+
+      const allVendorShipments = Array.from(mergedMap.values());
+
+      updateData((prev) => {
+        const existingOther = (prev.shipments || []).filter((s) => Number(s.customer_id) !== Number(vendorId));
+        return {
+          ...prev,
+          shipments: [...allVendorShipments, ...existingOther],
+        };
+      });
+      return allVendorShipments;
     } catch (e) {
       console.warn('Failed to load vendor orders from D1:', e);
     }

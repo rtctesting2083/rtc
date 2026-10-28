@@ -113,6 +113,19 @@ export function CustomerDashboardPage() {
   const todayOrders = myShipments.filter((s) => isToday(s.created_at)).length;
   const todayDelivered = myShipments.filter((s) => s.status === 'delivered' && isToday(s.delivered_at)).length;
 
+  // This month
+  const now = new Date();
+  const thisMonthDelivered = myShipments.filter((s) => {
+    if (s.status !== 'delivered') return false;
+    const d = new Date(s.delivered_at || s.created_at);
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  }).length;
+  const thisMonthOrders = myShipments.filter((s) => {
+    if (!s.created_at) return false;
+    const d = new Date(s.created_at);
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  }).length;
+
   // Delivery success rate (out of finalized = delivered + rto)
   const finalized = delivered + rtoCount;
   const successRate = finalized > 0 ? Math.round((delivered / finalized) * 100) : (totalOrders === 0 ? 0 : 100);
@@ -382,7 +395,7 @@ export function CustomerDashboardPage() {
           <div>
             <div className="vendor-metric-value">{delivered}</div>
             <div className="vendor-metric-title">Delivered</div>
-            <div className="vendor-metric-sub">{delivered} this month</div>
+            <div className="vendor-metric-sub">{thisMonthDelivered} this month</div>
           </div>
         </div>
 
@@ -423,7 +436,7 @@ export function CustomerDashboardPage() {
           <div>
             <div className="vendor-metric-value">{successRate}%</div>
             <div className="vendor-metric-title">Delivery success</div>
-            <div className="vendor-metric-sub">{totalOrders} orders this month</div>
+            <div className="vendor-metric-sub">{thisMonthOrders} order{thisMonthOrders !== 1 ? 's' : ''} this month</div>
           </div>
         </div>
       </div>
