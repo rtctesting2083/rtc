@@ -1,0 +1,5 @@
+node_modules/.cache/
+.wrangler/
+.vite/
+.DS_Store
+Thumbs.db
