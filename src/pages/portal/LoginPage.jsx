@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import rtcLogo from '../../assets/logo.png';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -32,18 +33,31 @@ export function LoginPage() {
   return (
     <div className="portal-screen">
       <div className="portal-card" style={{ maxWidth: 400, width: '100%', padding: '36px 32px' }}>
-        <h1
-          style={{
-            fontSize: '22px',
-            fontWeight: 700,
-            color: 'var(--text)',
-            textAlign: 'center',
-            marginBottom: '26px',
-            lineHeight: 1.35,
-          }}
-        >
-          Welcome to the Real time courrier
-        </h1>
+        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+          <img
+            src={rtcLogo}
+            alt="Real Time Courier"
+            style={{
+              height: '75px',
+              width: 'auto',
+              maxWidth: '100%',
+              objectFit: 'contain',
+              display: 'inline-block',
+              marginBottom: '12px',
+            }}
+          />
+          <h1
+            style={{
+              fontSize: '20px',
+              fontWeight: 700,
+              color: 'var(--text)',
+              margin: 0,
+              lineHeight: 1.35,
+            }}
+          >
+            Welcome to Real Time Courier
+          </h1>
+        </div>
 
         {error && (
           <div
