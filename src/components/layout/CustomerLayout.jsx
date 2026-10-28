@@ -5,6 +5,7 @@ import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
 import { initialsFor } from '../../utils/helpers';
 import { CreateOrderModal } from '../customer/CreateOrderModal';
+import '../../pages/customer/VendorDashboard.css';
 
 export function CustomerLayout() {
   const { session, logout } = useAuth();
@@ -12,7 +13,11 @@ export function CustomerLayout() {
   const { openModal } = useModal();
   const navigate = useNavigate();
 
+  const [orderOpen, setOrderOpen] = useState(false);
   const [accountsOpen, setAccountsOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [resourcesOpen, setResourcesOpen] = useState(false);
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
 
   const currentCustomer = (customers || []).find((c) => c.id === Number(session?.customerId));
   const staffUser = currentCustomer && session?.staffUserId
@@ -36,145 +41,254 @@ export function CustomerLayout() {
   };
 
   if (!currentCustomer) {
-    return <div className="p-4">Vendor not found. Please log in again.</div>;
+    return <div className="p-4" style={{ padding: '24px' }}>Vendor not found. Please log in again.</div>;
   }
 
-  const label = staffUser ? `${currentCustomer.name} — ${staffUser.name}` : currentCustomer.name;
+  const vendorIdDisplay = currentCustomer.vendor_id || String(currentCustomer.id).padStart(2, '0');
 
   return (
-    <div className="app-container">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-badge">{initialsFor(company?.name || 'VD')}</div>
-          <div className="brand-word">
-            {company?.name || 'Company'}
-            <small>{label}</small>
+    <div className="vendor-app-container">
+      {/* Left White Sidebar */}
+      <aside className="vendor-sidebar">
+        <div>
+          {/* Top Vendor Profile Card */}
+          <div className="vendor-profile-card">
+            <h3>{currentCustomer.name}</h3>
+            <p>Vendor ID: {vendorIdDisplay}</p>
+            <p>{currentCustomer.phone}</p>
+            {currentCustomer.email && <p>{currentCustomer.email}</p>}
           </div>
-        </div>
 
-        <nav style={{ flex: 1, overflowY: 'auto' }}>
-          {isAllowed('dashboard') && (
+          {/* Navigation Links */}
+          <nav className="vendor-nav">
+            {isAllowed('dashboard') && (
+              <NavLink
+                to="/customer/dashboard"
+                className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
+              >
+                <span className="nav-icon">🏠</span>
+                <span className="nav-label">Dashboard</span>
+              </NavLink>
+            )}
+
             <NavLink
-              to="/customer/dashboard"
-              className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+              to="/customer/profile"
+              className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
             >
-              <span className="nav-icon">🏠</span>
-              <span className="nav-label">Dashboard</span>
+              <span className="nav-icon">🪪</span>
+              <span className="nav-label">Profile</span>
             </NavLink>
-          )}
 
-          <NavLink
-            to="/customer/profile"
-            className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-          >
-            <span className="nav-icon">🪪</span>
-            <span className="nav-label">Profile</span>
-          </NavLink>
+            {isAllowed('customers') && (
+              <NavLink
+                to="/customer/customers"
+                className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
+              >
+                <span className="nav-icon">👥</span>
+                <span className="nav-label">Customers</span>
+              </NavLink>
+            )}
 
-          {isAllowed('customers') && (
+            {isAllowed('manage-staff') && (
+              <NavLink
+                to="/customer/staff"
+                className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
+              >
+                <span className="nav-icon">🧑‍💼</span>
+                <span className="nav-label">Manage Staffs</span>
+              </NavLink>
+            )}
+
             <NavLink
-              to="/customer/customers"
-              className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+              to="/customer/placeholder/Notice%20Board"
+              className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
             >
-              <span className="nav-icon">👥</span>
-              <span className="nav-label">Customers</span>
+              <span className="nav-icon">🔔</span>
+              <span className="nav-label">Notice Board</span>
             </NavLink>
-          )}
 
-          {isAllowed('manage-staff') && (
-            <NavLink
-              to="/customer/staff"
-              className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-            >
-              <span className="nav-icon">🧑‍💼</span>
-              <span className="nav-label">Manage Staffs</span>
-            </NavLink>
-          )}
+            {/* Order page dropdown */}
+            {isAllowed('orders') && (
+              <div>
+                <button
+                  type="button"
+                  className={`vendor-nav-link ${orderOpen ? 'active' : ''}`}
+                  onClick={() => setOrderOpen(!orderOpen)}
+                >
+                  <span className="nav-icon">📦</span>
+                  <span className="nav-label">Order page</span>
+                  <span className="nav-chevron">{orderOpen ? '▴' : '▾'}</span>
+                </button>
+                {orderOpen && (
+                  <div className="vendor-submenu">
+                    <NavLink
+                      to="/customer/orders"
+                      className={({ isActive }) => `vendor-sublink ${isActive ? 'active' : ''}`}
+                    >
+                      My Order List
+                    </NavLink>
+                    <button
+                      type="button"
+                      className="vendor-sublink cursor-pointer"
+                      onClick={handleOpenCreateOrder}
+                      style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left' }}
+                    >
+                      + Create Order
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
-          {/* Order Nav Item */}
-          {isAllowed('orders') && (
-            <NavLink
-              to="/customer/orders"
-              className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-            >
-              <span className="nav-icon">📦</span>
-              <span className="nav-label">Order</span>
-            </NavLink>
-          )}
+            {/* Accounts dropdown */}
+            {isAllowed('invoices') && (
+              <div>
+                <button
+                  type="button"
+                  className={`vendor-nav-link ${accountsOpen ? 'active' : ''}`}
+                  onClick={() => setAccountsOpen(!accountsOpen)}
+                >
+                  <span className="nav-icon">💳</span>
+                  <span className="nav-label">Accounts</span>
+                  <span className="nav-chevron">{accountsOpen ? '▴' : '▾'}</span>
+                </button>
+                {accountsOpen && (
+                  <div className="vendor-submenu">
+                    <NavLink
+                      to="/customer/invoices"
+                      className={({ isActive }) => `vendor-sublink ${isActive ? 'active' : ''}`}
+                    >
+                      Invoices
+                    </NavLink>
+                  </div>
+                )}
+              </div>
+            )}
 
-          {/* Accounts Submenu */}
-          {isAllowed('invoices') && (
+            {/* Actions dropdown */}
             <div>
               <button
                 type="button"
-                className="sidebar-link"
-                onClick={() => setAccountsOpen(!accountsOpen)}
-                style={{ justifyContent: 'space-between' }}
+                className={`vendor-nav-link ${actionsOpen ? 'active' : ''}`}
+                onClick={() => setActionsOpen(!actionsOpen)}
               >
-                <span style={{ display: 'flex', alignItems: 'center' }}>
-                  <span className="nav-icon">💰</span>
-                  <span className="nav-label">Accounts</span>
-                </span>
-                <span style={{ fontSize: '10px', opacity: 0.8 }}>{accountsOpen ? '▲' : '▼'}</span>
+                <span className="nav-icon">🚩</span>
+                <span className="nav-label">Actions</span>
+                <span className="nav-chevron">{actionsOpen ? '▴' : '▾'}</span>
               </button>
-              {accountsOpen && (
-                <div style={{ background: 'rgba(0, 0, 0, 0.08)', padding: '2px 0' }}>
+              {actionsOpen && (
+                <div className="vendor-submenu">
                   <NavLink
-                    to="/customer/invoices"
-                    className={({ isActive }) => `sub-link ${isActive ? 'active' : ''}`}
+                    to="/customer/orders"
+                    className={({ isActive }) => `vendor-sublink ${isActive ? 'active' : ''}`}
                   >
-                    Invoices
+                    Track a Package
                   </NavLink>
                 </div>
               )}
             </div>
-          )}
 
-          {/* Additional layout sections */}
-          <NavLink
-            to="/customer/placeholder/Actions"
-            className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-          >
-            <span className="nav-icon">🚩</span>
-            <span className="nav-label">Actions</span>
-          </NavLink>
+            {/* Report */}
+            <NavLink
+              to="/customer/placeholder/Report"
+              className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
+            >
+              <span className="nav-icon">📊</span>
+              <span className="nav-label">Report</span>
+            </NavLink>
 
-          <NavLink
-            to="/customer/placeholder/Report"
-            className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-          >
-            <span className="nav-icon">📊</span>
-            <span className="nav-label">Report</span>
-          </NavLink>
+            {/* Resources dropdown */}
+            <div>
+              <button
+                type="button"
+                className={`vendor-nav-link ${resourcesOpen ? 'active' : ''}`}
+                onClick={() => setResourcesOpen(!resourcesOpen)}
+              >
+                <span className="nav-icon">📚</span>
+                <span className="nav-label">Resources</span>
+                <span className="nav-chevron">{resourcesOpen ? '▴' : '▾'}</span>
+              </button>
+              {resourcesOpen && (
+                <div className="vendor-submenu">
+                  <NavLink
+                    to="/customer/placeholder/Resources"
+                    className={({ isActive }) => `vendor-sublink ${isActive ? 'active' : ''}`}
+                  >
+                    Guidelines & FAQ
+                  </NavLink>
+                </div>
+              )}
+            </div>
 
-          <NavLink
-            to="/customer/placeholder/Resources"
-            className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-          >
-            <span className="nav-icon">📚</span>
-            <span className="nav-label">Resources</span>
-          </NavLink>
+            {/* Packaging */}
+            <NavLink
+              to="/customer/placeholder/Packaging"
+              className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
+            >
+              <span className="nav-icon">📮</span>
+              <span className="nav-label">Packaging</span>
+            </NavLink>
+          </nav>
+        </div>
 
-          <NavLink
-            to="/customer/placeholder/Packaging"
-            className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-          >
-            <span className="nav-icon">📮</span>
-            <span className="nav-label">Packaging</span>
-          </NavLink>
-        </nav>
-
-        <div className="sidebar-footer">
-          <div>Vendor dashboard — {company?.name}</div>
-          <div style={{ marginTop: '8px' }}>
-            <button type="button" onClick={handleLogout}>Log out</button>
+        {/* Sidebar Footer */}
+        <div className="vendor-sidebar-footer">
+          <div>Vendor dashboard — part of the company's shared data.</div>
+          <div>
+            <button type="button" className="vendor-logout-btn" onClick={handleLogout}>
+              Log out
+            </button>
           </div>
         </div>
       </aside>
 
-      <main className="main">
-        <Outlet context={{ currentCustomer, staffUser, handleOpenCreateOrder }} />
-      </main>
+      {/* Main Right Side Area */}
+      <div className="vendor-main-wrapper">
+        {/* Top Red Header Bar */}
+        <header className="vendor-topbar">
+          <div className="vendor-topbar-left">
+            <span>Help Line ☎ <b>071-532176</b></span>
+            <span>Sales Support: <b>RTC4567 - Jafar Ali</b> ☎ <b>9847060846</b></span>
+          </div>
+          <div className="vendor-topbar-right">
+            <button
+              type="button"
+              className="vendor-topbar-circle-btn"
+              onClick={handleOpenCreateOrder}
+              title="Create New Order"
+            >
+              +
+            </button>
+            <div
+              className="vendor-topbar-profile-pill"
+              onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+            >
+              <span className="vendor-topbar-avatar">{initialsFor(currentCustomer.name)}</span>
+              <span className="vendor-topbar-name">{currentCustomer.name}</span>
+              <span style={{ fontSize: '10px' }}>{userDropdownOpen ? '▴' : '▾'}</span>
+            </div>
+            {userDropdownOpen && (
+              <div className="vendor-topbar-dropdown">
+                <NavLink to="/customer/profile" onClick={() => setUserDropdownOpen(false)}>
+                  👤 My Profile
+                </NavLink>
+                <NavLink to="/customer/orders" onClick={() => setUserDropdownOpen(false)}>
+                  📦 Orders
+                </NavLink>
+                <hr style={{ margin: '4px 0', border: 'none', borderTop: '1px solid #f3f4f6' }} />
+                <button type="button" onClick={handleLogout}>
+                  🚪 Log out
+                </button>
+              </div>
+            )}
+          </div>
+        </header>
+
+        {/* Content Body */}
+        <main className="vendor-content">
+          <Outlet context={{ currentCustomer, staffUser, handleOpenCreateOrder }} />
+        </main>
+      </div>
     </div>
   );
 }
