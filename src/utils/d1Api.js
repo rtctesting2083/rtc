@@ -60,6 +60,62 @@ export const d1Api = {
     }
   },
 
+  // Read order types from dedicated D1 table 'order_types'
+  getOrderTypes: async (companyId = 1) => {
+    try {
+      const res = await fetch(`/api/order-types?company_id=${companyId}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Insert order type into D1 table 'order_types'
+  addOrderType: async (payload) => {
+    try {
+      const res = await fetch('/api/order-types', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(typeof payload === 'string' ? { name: payload, company_id: 1 } : payload),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Update order type in D1 table 'order_types'
+  updateOrderType: async (id, payload, companyId = 1) => {
+    try {
+      const res = await fetch(`/api/order-types/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: Number(id), company_id: Number(companyId), ...payload }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Delete order type from D1 table 'order_types'
+  deleteOrderType: async (id, companyId = 1) => {
+    try {
+      const res = await fetch(`/api/order-types/${id}?company_id=${companyId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: Number(id), company_id: Number(companyId) }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
   // Read branches from D1 table 'branches'
   getBranches: async (companyId = 1) => {
     try {

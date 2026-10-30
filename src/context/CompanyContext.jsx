@@ -65,6 +65,28 @@ export function CompanyProvider({ children }) {
         console.warn('Could not fetch D1 settings:', err);
       });
 
+      // 2b. Hydrate dedicated order types from Cloudflare remote D1 table 'order_types'
+      d1Api.getOrderTypes(companyId).then((remoteOrderTypes) => {
+        if (Array.isArray(remoteOrderTypes) && remoteOrderTypes.length > 0) {
+          setData((prev) => {
+            if (!prev) return prev;
+            const maxOrderTypeId = Math.max(...remoteOrderTypes.map((ot) => Number(ot.id) || 1), prev.nextId?.orderType || 1);
+            const updated = {
+              ...prev,
+              orderTypes: remoteOrderTypes,
+              nextId: {
+                ...prev.nextId,
+                orderType: maxOrderTypeId + 1,
+              },
+            };
+            saveCompanyState(companyId, updated);
+            return updated;
+          });
+        }
+      }).catch((err) => {
+        console.warn('Could not fetch D1 order_types:', err);
+      });
+
       // 3. Hydrate live branches from Cloudflare remote D1 table 'branches'
       d1Api.getBranches(companyId).then((remoteBranches) => {
         if (Array.isArray(remoteBranches) && remoteBranches.length > 0) {
@@ -1118,21 +1140,79 @@ export function CompanyProvider({ children }) {
   };
 
   // Simple lists: orderTypes, deliveryServiceTypes, productCategories, landmarks
-  const addOrderType = (name) => {
+  const addOrderType = (payload) => {
+    const itemData = typeof payload === 'string'
+      ? { name: payload, code: payload.substring(0, 10).toUpperCase(), description: '', status: 'active' }
+      : {
+          name: payload.name || '',
+          code: payload.code || (payload.name ? payload.name.substring(0, 10).toUpperCase() : ''),
+          description: payload.description || '',
+          status: payload.status || 'active',
+        };
+
+    let tempId;
     updateData((prev) => {
-      const id = prev.nextId.orderType;
-      const nextOrderTypes = [...(prev.orderTypes || []), { id, name }];
+      tempId = prev.nextId?.orderType || Date.now();
+      const newItem = { id: tempId, company_id: companyId, ...itemData };
+      const nextOrderTypes = [...(prev.orderTypes || []), newItem];
       syncSettingToD1({ order_types: nextOrderTypes });
       return {
         ...prev,
-        nextId: { ...prev.nextId, orderType: id + 1 },
+        nextId: { ...prev.nextId, orderType: tempId + 1 },
+        orderTypes: nextOrderTypes,
+      };
+    });
+
+    // Write to dedicated D1 table order_types
+    d1Api.addOrderType({ company_id: companyId, ...itemData }).then((res) => {
+      if (res?.item?.id) {
+        updateData((prev) => ({
+          ...prev,
+          orderTypes: (prev.orderTypes || []).map((t) => (t.id === tempId ? res.item : t)),
+        }));
+      }
+    }).catch((err) => {
+      console.warn('Failed to insert order type into D1:', err);
+    });
+  };
+
+  const updateOrderType = (id, updates) => {
+    const numId = Number(id);
+
+    // Write to dedicated D1 table order_types
+    d1Api.updateOrderType(numId, updates, companyId).then((res) => {
+      if (res?.item) {
+        updateData((prev) => ({
+          ...prev,
+          orderTypes: (prev.orderTypes || []).map((t) => (t.id === numId ? res.item : t)),
+        }));
+      }
+    }).catch((err) => {
+      console.warn('Failed to update order type in D1:', err);
+    });
+
+    updateData((prev) => {
+      const nextOrderTypes = (prev.orderTypes || []).map((t) =>
+        t.id === numId ? { ...t, ...updates, updated_at: new Date().toISOString() } : t
+      );
+      syncSettingToD1({ order_types: nextOrderTypes });
+      return {
+        ...prev,
         orderTypes: nextOrderTypes,
       };
     });
   };
+
   const deleteOrderType = (id) => {
+    const numId = Number(id);
+
+    // Delete from dedicated D1 table order_types
+    d1Api.deleteOrderType(numId, companyId).catch((err) => {
+      console.warn('Failed to delete order type from D1:', err);
+    });
+
     updateData((prev) => {
-      const nextOrderTypes = (prev.orderTypes || []).filter((t) => t.id !== Number(id));
+      const nextOrderTypes = (prev.orderTypes || []).filter((t) => t.id !== numId);
       syncSettingToD1({ order_types: nextOrderTypes });
       return {
         ...prev,
@@ -1511,6 +1591,7 @@ export function CompanyProvider({ children }) {
         addUser,
         updateUser,
         addOrderType,
+        updateOrderType,
         deleteOrderType,
         addDeliveryServiceType,
         deleteDeliveryServiceType,

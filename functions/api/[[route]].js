@@ -323,6 +323,98 @@ export async function onRequest(context) {
       }
     }
 
+    // 5b. Order Types endpoint: CRUD on D1 table 'order_types'
+    if (path === 'order-types' || path.startsWith('order-types/')) {
+      const companyId = url.searchParams.get('company_id') || 1;
+      const idMatch = path.match(/^order-types\/(\d+)$/);
+      const paramId = idMatch ? Number(idMatch[1]) : (url.searchParams.get('id') ? Number(url.searchParams.get('id')) : null);
+
+      // GET: list order types for company
+      if (method === 'GET') {
+        const { results } = await db
+          .prepare('SELECT * FROM order_types WHERE company_id = ? ORDER BY id ASC')
+          .bind(Number(companyId))
+          .all();
+        return jsonResponse(results || []);
+      }
+
+      // POST: insert new order type
+      if (method === 'POST') {
+        const body = await request.json();
+        const cid = Number(body.company_id || companyId);
+        const name = (body.name || '').trim();
+        const code = (body.code || '').trim() || name.substring(0, 10).toUpperCase();
+        const description = (body.description || '').trim();
+        const status = body.status || 'active';
+
+        if (!name) {
+          return jsonResponse({ error: 'Order type name is required' }, 400);
+        }
+
+        const res = await db.prepare(`
+          INSERT INTO order_types (company_id, name, code, description, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        `).bind(cid, name, code, description, status).run();
+
+        const createdId = res.meta?.last_row_id;
+        const newRow = await db.prepare('SELECT * FROM order_types WHERE id = ?').bind(createdId).first();
+
+        return jsonResponse({ success: true, item: newRow || { id: createdId, company_id: cid, name, code, description, status } });
+      }
+
+      // PUT: update existing order type
+      if (method === 'PUT') {
+        const body = await request.json();
+        const targetId = paramId || Number(body.id);
+        const cid = Number(body.company_id || companyId);
+
+        if (!targetId) {
+          return jsonResponse({ error: 'Order type id is required' }, 400);
+        }
+
+        const name = (body.name || '').trim();
+        const code = (body.code || '').trim();
+        const description = (body.description !== undefined ? body.description : '').trim();
+        const status = body.status || 'active';
+
+        if (!name) {
+          return jsonResponse({ error: 'Order type name is required' }, 400);
+        }
+
+        await db.prepare(`
+          UPDATE order_types
+          SET name = ?, code = ?, description = ?, status = ?, updated_at = datetime('now')
+          WHERE id = ? AND company_id = ?
+        `).bind(name, code, description, status, targetId, cid).run();
+
+        const updatedRow = await db.prepare('SELECT * FROM order_types WHERE id = ?').bind(targetId).first();
+
+        return jsonResponse({ success: true, item: updatedRow });
+      }
+
+      // DELETE: delete order type
+      if (method === 'DELETE') {
+        let targetId = paramId;
+        if (!targetId) {
+          try {
+            const body = await request.json();
+            targetId = Number(body.id);
+          } catch (e) {
+            targetId = null;
+          }
+        }
+
+        if (!targetId) {
+          return jsonResponse({ error: 'Order type id is required' }, 400);
+        }
+
+        const cid = Number(companyId);
+        await db.prepare('DELETE FROM order_types WHERE id = ? AND company_id = ?').bind(targetId, cid).run();
+
+        return jsonResponse({ success: true, message: `Order type ${targetId} deleted successfully` });
+      }
+    }
+
     // 6. Branches endpoint: read and write on D1 table 'branches'
     if (path === 'branches' || path.startsWith('branches/')) {
       const companyId = url.searchParams.get('company_id') || 1;
