@@ -285,12 +285,23 @@ export function CustomerDashboardPage() {
 
   const maxServiceCount = Math.max(...serviceTypeCounts.map((e) => e[1]), 1);
 
-  /* ── Top destination branches ─────────────────────────── */
+  /* ── Top destination branches (Local Delivery Branches only) ── */
   const branchCounts = useMemo(() => {
     const map = {};
     myShipments.forEach((s) => {
       if (!s.destination_branch_id) return;
       const branch = (branches || []).find((b) => Number(b.id) === Number(s.destination_branch_id));
+      // Hide Province Hub and District Hub on Vendor Portal
+      if (branch) {
+        const bType = (branch.branch_type || '').toLowerCase();
+        const tier = Number(branch.tier);
+        if (tier === 1 || tier === 2 || bType === 'province_hub' || bType === 'district_hub') {
+          return;
+        }
+        if (branch.name && (branch.name.includes('Province Hub') || branch.name.includes('District Sub-Hub') || branch.name.includes('District Hub'))) {
+          return;
+        }
+      }
       const name = branch ? branch.name : `Branch #${s.destination_branch_id}`;
       map[name] = (map[name] || 0) + 1;
     });

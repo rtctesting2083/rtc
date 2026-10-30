@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
 import {
@@ -24,9 +24,40 @@ export function CreateOrderModal({ currentCustomer }) {
 
   const { closeModal } = useModal();
 
-  const [senderBranchId, setSenderBranchId] = useState(
-    currentCustomer.branch_id || (branches[0]?.id || '')
-  );
+  // 1. Hide Province Hubs (Tier 1) and District Hubs (Tier 2) on vendor portal
+  const vendorBranches = useMemo(() => {
+    return (branches || []).filter((b) => {
+      if (b.tier === 1 || b.tier === 2) return false;
+      const bType = (b.branch_type || '').toLowerCase();
+      if (bType === 'province_hub' || bType === 'district_hub' || bType === 'province' || bType === 'district') {
+        return false;
+      }
+      const name = (b.name || '').toLowerCase();
+      if (name.includes('province hub') || name.includes('district hub') || name.includes('district sub-hub')) {
+        return false;
+      }
+      return true;
+    });
+  }, [branches]);
+
+  const [senderBranchId, setSenderBranchId] = useState(() => {
+    if (currentCustomer?.branch_id && (branches || []).some((b) => String(b.id) === String(currentCustomer.branch_id))) {
+      return String(currentCustomer.branch_id);
+    }
+    return '';
+  });
+
+  // Ensure default sender branch is populated once vendorBranches are ready if empty
+  useEffect(() => {
+    if (!senderBranchId && vendorBranches.length > 0) {
+      if (currentCustomer?.branch_id && vendorBranches.some((b) => String(b.id) === String(currentCustomer.branch_id))) {
+        setSenderBranchId(String(currentCustomer.branch_id));
+      } else {
+        setSenderBranchId(String(vendorBranches[0].id));
+      }
+    }
+  }, [vendorBranches, currentCustomer?.branch_id, senderBranchId]);
+
   const [destinationBranchId, setDestinationBranchId] = useState('');
   const [savedCustomerId, setSavedCustomerId] = useState('');
 
@@ -199,42 +230,28 @@ export function CreateOrderModal({ currentCustomer }) {
     <form onSubmit={handleSubmit}>
       <div className="order-form-grid">
         <div className="order-form-left">
-          {branches.length > 0 && (
+          {vendorBranches.length > 0 && (
             <>
-              <label>
-                Sender Branch *
-                <select
-                  value={senderBranchId}
-                  onChange={(e) => setSenderBranchId(e.target.value)}
-                  required
-                >
-                  <option value="">Select sender branch...</option>
-                  {branches.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <SearchableBranchSelect
+                label="Sender Branch"
+                required
+                value={senderBranchId}
+                onChange={setSenderBranchId}
+                branches={vendorBranches}
+                placeholder="Search sender branch or district..."
+              />
 
-              <label>
-                Destination Branch *
-                <select
-                  value={destinationBranchId}
-                  onChange={(e) => setDestinationBranchId(e.target.value)}
-                  required
-                >
-                  <option value="">Select destination branch...</option>
-                  {branches.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <SearchableBranchSelect
+                label="Destination Branch"
+                required
+                value={destinationBranchId}
+                onChange={setDestinationBranchId}
+                branches={vendorBranches}
+                placeholder="Search destination branch or district (e.g. Panini, Pokhara)..."
+              />
 
               {destBranch && (
-                <div className="coverage-areas-box">
+                <div className="coverage-areas-box" style={{ marginTop: '-4px', marginBottom: '14px' }}>
                   <strong>{destBranch.name} coverage:</strong>{' '}
                   {destBranch.address ? addressSummary(destBranch.address) : 'Local branch service area.'}
                 </div>
@@ -545,5 +562,247 @@ export function CreateOrderModal({ currentCustomer }) {
         </div>
       </div>
     </form>
+  );
+}
+
+// Searchable Branch Combobox with Instant Filtering & Clean Keyboard/Mouse Interaction
+function SearchableBranchSelect({
+  label,
+  value,
+  onChange,
+  branches = [],
+  placeholder = 'Search & select branch...',
+  required = false,
+  error = '',
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const wrapperRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const selectedBranch = useMemo(
+    () => branches.find((b) => String(b.id) === String(value)),
+    [branches, value]
+  );
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (isOpen && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isOpen]);
+
+  const filteredBranches = useMemo(() => {
+    if (!searchTerm.trim()) return branches;
+    const q = searchTerm.toLowerCase().trim();
+    return branches.filter((b) => {
+      const name = (b.name || '').toLowerCase();
+      const district = (b.district || '').toLowerCase();
+      const municipality = (b.municipality || '').toLowerCase();
+      const province = (b.province || '').toLowerCase();
+      return (
+        name.includes(q) ||
+        district.includes(q) ||
+        municipality.includes(q) ||
+        province.includes(q) ||
+        String(b.id) === q
+      );
+    });
+  }, [branches, searchTerm]);
+
+  return (
+    <div ref={wrapperRef} style={{ position: 'relative', marginBottom: '14px' }}>
+      <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text-main, #374151)', marginBottom: '6px' }}>
+        {label} {required && <span style={{ color: '#dc2626' }}>*</span>}
+      </label>
+
+      {/* Trigger Box */}
+      <div
+        onClick={() => {
+          setIsOpen(!isOpen);
+          setSearchTerm('');
+        }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '9px 12px',
+          borderRadius: '8px',
+          border: error ? '1.5px solid #dc2626' : isOpen ? '1.5px solid #dc2626' : '1px solid #d1d5db',
+          backgroundColor: '#ffffff',
+          cursor: 'pointer',
+          boxShadow: isOpen ? '0 0 0 3px rgba(220, 38, 38, 0.12)' : 'none',
+          transition: 'all 0.15s ease',
+          userSelect: 'none',
+          minHeight: '40px',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: '15px' }}>📍</span>
+          {selectedBranch ? (
+            <span style={{ fontSize: '13.5px', fontWeight: 600, color: '#111827' }}>
+              {selectedBranch.name}
+            </span>
+          ) : (
+            <span style={{ fontSize: '13.5px', color: '#9ca3af' }}>
+              {placeholder}
+            </span>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {selectedBranch && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange('');
+              }}
+              style={{
+                border: 'none',
+                background: '#f3f4f6',
+                color: '#6b7280',
+                borderRadius: '50%',
+                width: '18px',
+                height: '18px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                fontSize: '11px',
+                padding: 0,
+              }}
+              title="Clear selection"
+            >
+              ✕
+            </button>
+          )}
+          <span style={{ color: '#9ca3af', fontSize: '11px' }}>▼</span>
+        </div>
+      </div>
+
+      {/* Floating Dropdown */}
+      {isOpen && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            left: 0,
+            right: 0,
+            zIndex: 9999,
+            backgroundColor: '#ffffff',
+            borderRadius: '10px',
+            border: '1px solid #e5e7eb',
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+            overflow: 'hidden',
+            maxHeight: '320px',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          {/* Search Box Header */}
+          <div style={{ padding: '8px 10px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+            <div style={{ position: 'relative' }}>
+              <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', fontSize: '12px' }}>
+                🔍
+              </span>
+              <input
+                ref={inputRef}
+                type="text"
+                placeholder="Search branch name or district (e.g. Panini, Rupandehi)..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  width: '100%',
+                  padding: '7px 10px 7px 28px',
+                  borderRadius: '6px',
+                  border: '1px solid #d1d5db',
+                  fontSize: '13px',
+                  boxSizing: 'border-box',
+                  outline: 'none',
+                }}
+              />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', fontSize: '11px', color: '#6b7280' }}>
+              <span>{filteredBranches.length} delivery branches</span>
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', padding: 0, fontSize: '11px', fontWeight: 600 }}
+                >
+                  Clear search
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* List Options */}
+          <div style={{ overflowY: 'auto', flex: 1, padding: '4px 0' }}>
+            {filteredBranches.length === 0 ? (
+              <div style={{ padding: '20px 14px', textAlign: 'center', color: '#6b7280', fontSize: '13px' }}>
+                No branches found matching "<strong>{searchTerm}</strong>"
+              </div>
+            ) : (
+              filteredBranches.map((b) => {
+                const isSelected = String(b.id) === String(value);
+                return (
+                  <div
+                    key={b.id}
+                    onClick={() => {
+                      onChange(String(b.id));
+                      setIsOpen(false);
+                      setSearchTerm('');
+                    }}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      backgroundColor: isSelected ? '#fef2f2' : 'transparent',
+                      borderBottom: '1px solid #f9fafb',
+                      transition: 'background-color 0.1s ease',
+                    }}
+                    onMouseOver={(e) => {
+                      if (!isSelected) e.currentTarget.style.backgroundColor = '#f9fafb';
+                    }}
+                    onMouseOut={(e) => {
+                      if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: isSelected ? 700 : 500, color: isSelected ? '#dc2626' : '#111827' }}>
+                        {b.name}
+                      </div>
+                      {(b.district || b.province || b.municipality) && (
+                        <div style={{ fontSize: '11.5px', color: '#6b7280', marginTop: '2px' }}>
+                          {b.province ? `${b.province} Province` : ''}
+                          {b.district ? ` • ${b.district}` : ''}
+                          {b.municipality && !b.name.includes(b.municipality) ? ` • ${b.municipality}` : ''}
+                        </div>
+                      )}
+                    </div>
+                    {isSelected && (
+                      <span style={{ color: '#dc2626', fontWeight: 700, fontSize: '13px' }}>✓</span>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

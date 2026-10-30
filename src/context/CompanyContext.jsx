@@ -92,10 +92,18 @@ export function CompanyProvider({ children }) {
         if (Array.isArray(remoteBranches) && remoteBranches.length > 0) {
           setData((prev) => {
             if (!prev) return prev;
-            const maxBranchId = Math.max(...remoteBranches.map((b) => Number(b.id) || 1), prev.nextId?.branch || 1);
+            const formattedRemote = remoteBranches.map((b) => {
+              const district = b.district || b.address?.district;
+              const isLocal = b.branch_type === 'local_branch' || b.tier === 3 || (!b.branch_type && !b.tier);
+              if (isLocal && district && b.name && !b.name.includes('(')) {
+                return { ...b, name: `${b.name} ( ${district} )` };
+              }
+              return b;
+            });
+            const maxBranchId = Math.max(...formattedRemote.map((b) => Number(b.id) || 1), prev.nextId?.branch || 1);
             const updated = {
               ...prev,
-              branches: remoteBranches,
+              branches: formattedRemote,
               nextId: {
                 ...prev.nextId,
                 branch: maxBranchId + 1,
