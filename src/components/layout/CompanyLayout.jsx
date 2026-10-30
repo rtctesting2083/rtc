@@ -3,7 +3,8 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useCompany } from '../../context/CompanyContext';
 import { initialsFor } from '../../utils/helpers';
-import { PERMISSION_VIEWS } from '../../utils/constants';
+import logoImg from '../../assets/logo-transparent.png';
+import '../../pages/company/AdminDashboard.css';
 
 export function CompanyLayout() {
   const { session, logout } = useAuth();
@@ -14,12 +15,12 @@ export function CompanyLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   if (!company) {
-    return <div className="p-4">Loading company...</div>;
+    return <div className="p-4" style={{ color: '#dc2626', fontWeight: 600 }}>Loading company...</div>;
   }
 
   const currentUser = session?.userId ? findCompanyUser(session.userId) : null;
   const currentRole = currentUser ? findRole(currentUser.role_id) : null;
-  const allowedPermissions = currentRole ? currentRole.permissions : null; // null means owner has full access
+  const allowedPermissions = currentRole ? currentRole.permissions : null;
 
   const isAllowed = (key) => !allowedPermissions || allowedPermissions.includes(key);
 
@@ -41,165 +42,180 @@ export function CompanyLayout() {
 
   const subtitle = currentUser
     ? `${currentUser.name} · ${currentRole?.name || 'Staff'}`
-    : company.slug;
+    : 'RTC';
 
-  const mainNavItems = [
-    { key: 'overview', label: 'Overview', icon: '📊', path: '/company/overview' },
-    { key: 'verification', label: 'Verification', icon: '🛡️', path: '/company/verification', badge: pendingVerificationsCount },
+  // Navigation matching the screenshot
+  const navItems = [
+    { key: 'overview', label: 'Overview', icon: '🏠', path: '/company/overview' },
     { key: 'shipments', label: 'Shipments', icon: '📦', path: '/company/shipments' },
-    { key: 'shipment-report', label: 'Shipment Reports', icon: '📈', path: '/company/shipment-reports' },
-    { key: 'cod-settlement', label: 'COD Settlement', icon: '💰', path: '/company/cod-settlement' },
-    { key: 'couriers', label: 'Couriers / Riders', icon: '🛵', path: '/company/couriers' },
+    { key: 'shipment-report', label: 'Shipment Report', icon: '📄', path: '/company/shipment-reports' },
+    { key: 'status-comments', label: 'Status Comments', icon: '✉️', path: '/company/shipments', badge: 1 },
+    { key: 'pickup-requests', label: 'Pickup Requests', icon: '📍', path: '/company/shipments' },
+    { key: 'exchange-orders', label: 'Exchange Orders', icon: '🔄', path: '/company/shipments' },
+    { key: 'returns', label: 'Returns (RTV)', icon: '📦', path: '/company/shipments' },
+    { key: 'couriers', label: 'Riders', icon: '🛵', path: '/company/couriers' },
     { key: 'customers', label: 'Vendors', icon: '👥', path: '/company/customers' },
-    { key: 'invoices', label: 'Billing / Invoices', icon: '🧾', path: '/company/invoices' },
-    { key: 'track', label: 'Track a package', icon: '🔍', path: '/company/track' },
-    { key: 'branches', label: 'Branches', icon: '🏢', path: '/company/branches' },
-    { key: 'branch-reports', label: 'Branch Reports', icon: '📑', path: '/company/branch-reports' },
+    { key: 'verification', label: 'Vendor Verification', icon: '🛡️', path: '/company/verification', badge: pendingVerificationsCount },
+    { key: 'invoices', label: 'Billing', icon: '🧾', path: '/company/invoices' },
+    { key: 'cod-settlement', label: 'COD Settlement', icon: '💰', path: '/company/cod-settlement' },
+    { key: 'track', label: 'Track a package', icon: '🎯', path: '/company/track' },
+    { key: 'branches', label: 'Branch Settings', icon: '🏢', path: '/company/branches' },
+    { key: 'branch-reports', label: 'Branch Reports', icon: '📊', path: '/company/branch-reports' },
   ];
 
   const settingsNavItems = [
-    { key: 'order-types', label: 'Order Types', path: '/company/settings/order-types' },
-    { key: 'delivery-service-types', label: 'Delivery Service Types', path: '/company/settings/delivery-service-types' },
-    { key: 'product-categories', label: 'Product Categories', path: '/company/settings/product-categories' },
-    { key: 'landmarks', label: 'Address Landmarks', path: '/company/settings/landmarks' },
-    { key: 'delivery-charge-settings', label: 'Delivery Charges', path: '/company/settings/delivery-charges' },
-    { key: 'shipment-status-settings', label: 'Shipment Statuses', path: '/company/settings/shipment-statuses' },
-    { key: 'user-management', label: 'User & Role Management', path: '/company/settings/users' },
+    { key: 'order-types', label: 'Order Type', path: '/company/settings/order-types' },
+    { key: 'delivery-service-types', label: 'Delivery Service Type', path: '/company/settings/delivery-service-types' },
+    { key: 'product-categories', label: 'Product/Package Category', path: '/company/settings/product-categories' },
+    { key: 'landmarks', label: 'Address/Landmark Names', path: '/company/settings/landmarks' },
+    { key: 'delivery-charge-settings', label: 'Delivery Charge Setting', path: '/company/settings/delivery-charges' },
+    { key: 'shipment-status-settings', label: 'Shipment Status Setting', path: '/company/settings/shipment-statuses' },
+    { key: 'user-management', label: 'User Management', path: '/company/settings/users' },
   ];
 
-  const hasAnySettingsAllowed = settingsNavItems.some((item) => isAllowed(item.key));
-
   return (
-    <div className="app-container">
-      {/* Mobile Top Header */}
-      <header className="mobile-topbar">
-        <button
-          type="button"
-          className="mobile-menu-btn"
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          aria-label="Toggle navigation"
-        >
-          ☰
-        </button>
-        <div className="mobile-topbar-title">
-          <span className="mobile-topbar-badge">{initialsFor(company.name)}</span>
-          <span className="mobile-topbar-name">{company.name}</span>
-        </div>
-        <button type="button" className="mobile-logout-btn" onClick={handleLogout} title="Log out">
-          🚪
-        </button>
-      </header>
-
+    <div className="admin-app-container">
       {/* Mobile Backdrop */}
       {mobileMenuOpen && (
         <div
-          className="sidebar-backdrop"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.4)',
+            zIndex: 22,
+          }}
           onClick={closeMobileMenu}
           aria-hidden="true"
         />
       )}
 
-      <aside className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
-        <div className="sidebar-mobile-close">
-          <span>Navigation Menu</span>
-          <button type="button" onClick={closeMobileMenu}>✕</button>
-        </div>
-
-        <div className="brand">
-          <div className="brand-badge">{initialsFor(company.name)}</div>
-          <div className="brand-word">
-            {company.name}
-            <small>{subtitle}</small>
+      {/* Left White Sidebar */}
+      <aside className={`admin-sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
+        <div>
+          <div className="admin-brand-card">
+            <img src={logoImg} alt="RTC Logo" className="admin-brand-logo" />
+            <h3>{company.name}</h3>
+            <p>{subtitle}</p>
           </div>
-        </div>
 
-        <nav style={{ flex: 1, overflowY: 'auto' }}>
-          {mainNavItems.map(
-            (item) =>
-              isAllowed(item.key) && (
-                <NavLink
-                  key={item.key}
-                  to={item.path}
-                  onClick={closeMobileMenu}
-                  className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-                >
-                  <span className="nav-icon">{item.icon}</span>
-                  <span className="nav-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                    <span>{item.label}</span>
-                    {item.badge > 0 && (
-                      <span
-                        style={{
-                          background: '#f59e0b',
-                          color: '#fff',
-                          fontSize: '11px',
-                          fontWeight: 800,
-                          padding: '1px 7px',
-                          borderRadius: '10px',
-                          marginLeft: 'auto',
-                        }}
-                      >
-                        {item.badge}
-                      </span>
-                    )}
-                  </span>
-                </NavLink>
-              )
-          )}
-
-          {hasAnySettingsAllowed && (
-            <div>
-              <button
-                type="button"
-                className="sidebar-link"
-                onClick={() => setSettingsOpen(!settingsOpen)}
-                style={{ justifyContent: 'space-between' }}
+          <nav className="admin-nav">
+            {navItems.map((item) => (
+              <NavLink
+                key={item.key}
+                to={item.path}
+                onClick={closeMobileMenu}
+                className={({ isActive }) => `admin-nav-link ${isActive ? 'active' : ''}`}
               >
-                <span style={{ display: 'flex', alignItems: 'center' }}>
-                  <span className="nav-icon">⚙️</span>
-                  <span className="nav-label">Settings</span>
-                </span>
-                <span style={{ fontSize: '10px', opacity: 0.8 }}>{settingsOpen ? '▲' : '▼'}</span>
-              </button>
-              {settingsOpen && (
-                <div style={{ background: 'rgba(0, 0, 0, 0.08)', padding: '2px 0' }}>
-                  {settingsNavItems.map(
-                    (sub) =>
-                      isAllowed(sub.key) && (
-                        <NavLink
-                          key={sub.key}
-                          to={sub.path}
-                          onClick={closeMobileMenu}
-                          className={({ isActive }) => `sub-link ${isActive ? 'active' : ''}`}
-                        >
-                          {sub.label}
-                        </NavLink>
-                      )
+                <span className="admin-nav-icon">{item.icon}</span>
+                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                  <span>{item.label}</span>
+                  {item.badge > 0 && (
+                    <span className="admin-nav-badge">{item.badge}</span>
                   )}
+                </span>
+              </NavLink>
+            ))}
+
+            <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #f3f4f6' }}>
+              <div
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  color: '#9ca3af',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                }}
+                onClick={() => setSettingsOpen(!settingsOpen)}
+              >
+                <span>⚙️ System Settings</span>
+                <span style={{ fontSize: '9px' }}>{settingsOpen ? '▲' : '▼'}</span>
+              </div>
+
+              {settingsOpen && (
+                <div style={{ paddingLeft: '4px' }}>
+                  {settingsNavItems.map((sub) => (
+                    <NavLink
+                      key={sub.key}
+                      to={sub.path}
+                      onClick={closeMobileMenu}
+                      className={({ isActive }) => `admin-nav-link ${isActive ? 'active' : ''}`}
+                      style={{ fontSize: '12px', padding: '7px 12px' }}
+                    >
+                      <span className="admin-nav-icon" style={{ fontSize: '11px', color: '#9ca3af' }}>•</span>
+                      <span>{sub.label}</span>
+                    </NavLink>
+                  ))}
                 </div>
               )}
             </div>
-          )}
-        </nav>
+          </nav>
+        </div>
 
-        <div className="sidebar-footer">
-          <div>Logged in as: <b>{currentUser ? currentUser.name : 'Company Owner'}</b></div>
-          <div style={{ marginTop: '8px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            <button type="button" onClick={handleLogout}>Log out</button>
+        <div className="admin-sidebar-footer">
+          <div className="admin-sidebar-footer-user">
+            Logged in: <b>{currentUser ? currentUser.name : 'Company Owner'}</b>
+          </div>
+          <div className="admin-sidebar-footer-actions">
+            <button type="button" className="admin-sidebar-btn" onClick={handleLogout}>
+              Log out
+            </button>
             {!currentUser && (
-              <button type="button" onClick={handleResetData} style={{ color: '#ffb3b3' }}>
-                Reset data
+              <button
+                type="button"
+                className="admin-sidebar-btn"
+                onClick={handleResetData}
+                style={{ color: '#dc2626' }}
+              >
+                Reset Demo
               </button>
             )}
-          </div>
-          <div className="copyright">
-            © {new Date().getFullYear()} {company.name}
           </div>
         </div>
       </aside>
 
-      <main className="main">
-        <Outlet />
-      </main>
+      {/* Main Content Area */}
+      <div className="admin-main-wrap">
+        {/* Top Red Bar matching screenshot */}
+        <header className="admin-topbar">
+          <div className="admin-topbar-left">
+            <button
+              type="button"
+              className="admin-mobile-menu-btn"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label="Toggle Navigation"
+            >
+              ☰
+            </button>
+            <span className="admin-topbar-title">
+              {company.name} · Company Portal
+            </span>
+          </div>
+
+          <div className="admin-topbar-right">
+            <button type="button" className="admin-topbar-bell" title="Notifications">
+              🔔
+              <span className="admin-topbar-badge">1</span>
+            </button>
+            <div className="admin-topbar-user" onClick={handleLogout} title="Click to log out">
+              <span className="admin-topbar-avatar">
+                {currentUser ? initialsFor(currentUser.name) : 'AD'}
+              </span>
+              <span className="admin-topbar-username">
+                {currentUser ? currentUser.name : 'ADMIN'}
+              </span>
+            </div>
+          </div>
+        </header>
+
+        {/* Viewport content */}
+        <main className="admin-content">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

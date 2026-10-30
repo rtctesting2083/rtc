@@ -3,6 +3,8 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useCompany } from '../../context/CompanyContext';
 import { initialsFor } from '../../utils/helpers';
+import logoImg from '../../assets/logo-transparent.png';
+import '../../pages/company/AdminDashboard.css';
 
 export function BranchLayout() {
   const { session, logout, exitBranchViewAsAdmin } = useAuth();
@@ -38,105 +40,128 @@ export function BranchLayout() {
   };
 
   if (!currentBranch) {
-    return <div className="p-4">Branch not found. Please log in again.</div>;
+    return <div className="p-4" style={{ color: '#dc2626', fontWeight: 600 }}>Branch not found. Please log in again.</div>;
   }
 
-  const label = staffUser ? `${currentBranch.name} — ${staffUser.name}` : currentBranch.name;
+  const label = staffUser ? `${staffUser.name} (${staffRole?.name || 'Staff'})` : currentBranch.name;
 
   const navItems = [
-    { key: 'overview', label: 'Overview', icon: '📊', path: '/branch/overview' },
+    { key: 'overview', label: 'Overview', icon: '🏠', path: '/branch/overview' },
     { key: 'shipments', label: 'Shipments', icon: '📦', path: '/branch/shipments' },
     { key: 'received-shipments', label: 'Received Shipment', icon: '📥', path: '/branch/received-shipments' },
-    { key: 'track', label: 'Track', icon: '🔍', path: '/branch/track' },
-    { key: 'shipment-report', label: 'Shipment Report', icon: '📑', path: '/branch/reports' },
+    { key: 'track', label: 'Track Package', icon: '🎯', path: '/branch/track' },
+    { key: 'shipment-report', label: 'Shipment Report', icon: '📄', path: '/branch/reports' },
     { key: 'cod-settlement', label: 'COD Settlement', icon: '💰', path: '/branch/cod-settlement' },
-    { key: 'riders', label: 'Riders', icon: '🛵', path: '/branch/riders' },
+    { key: 'riders', label: 'Branch Riders', icon: '🛵', path: '/branch/riders' },
     { key: 'customers', label: 'Vendors', icon: '👥', path: '/branch/vendors' },
     { key: 'profile', label: 'Branch Profile', icon: '🏢', path: '/branch/profile' },
     { key: 'user-management', label: 'User Management', icon: '🧑‍💼', path: '/branch/users' },
   ];
 
   return (
-    <div className="app-container">
-      {/* Mobile Top Header */}
-      <header className="mobile-topbar">
-        <button
-          type="button"
-          className="mobile-menu-btn"
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          aria-label="Toggle navigation"
-        >
-          ☰
-        </button>
-        <div className="mobile-topbar-title">
-          <span className="mobile-topbar-badge">{initialsFor(currentBranch.name)}</span>
-          <span className="mobile-topbar-name">{currentBranch.name}</span>
-        </div>
-        <button type="button" className="mobile-logout-btn" onClick={handleLogout} title="Log out">
-          🚪
-        </button>
-      </header>
-
+    <div className="admin-app-container">
       {/* Mobile Backdrop */}
       {mobileMenuOpen && (
         <div
-          className="sidebar-backdrop"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.4)',
+            zIndex: 22,
+          }}
           onClick={closeMobileMenu}
           aria-hidden="true"
         />
       )}
 
-      <aside className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
-        <div className="sidebar-mobile-close">
-          <span>Branch Menu</span>
-          <button type="button" onClick={closeMobileMenu}>✕</button>
-        </div>
-
-        <div className="brand">
-          <div className="brand-badge">{initialsFor(company?.name || 'BR')}</div>
-          <div className="brand-word">
-            {company?.name || 'Company'}
-            <small>{label}</small>
+      {/* Left White Sidebar */}
+      <aside className={`admin-sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
+        <div>
+          <div className="admin-brand-card">
+            <img src={logoImg} alt="RTC Logo" className="admin-brand-logo" />
+            <h3>{company?.name || 'R.T.C Courier'}</h3>
+            <p>{currentBranch.name}</p>
           </div>
+
+          <nav className="admin-nav">
+            {navItems.map(
+              (item) =>
+                isAllowed(item.key) && (
+                  <NavLink
+                    key={item.key}
+                    to={item.path}
+                    onClick={closeMobileMenu}
+                    className={({ isActive }) => `admin-nav-link ${isActive ? 'active' : ''}`}
+                  >
+                    <span className="admin-nav-icon">{item.icon}</span>
+                    <span>{item.label}</span>
+                  </NavLink>
+                )
+            )}
+          </nav>
         </div>
 
-        <nav style={{ flex: 1, overflowY: 'auto' }}>
-          {navItems.map(
-            (item) =>
-              isAllowed(item.key) && (
-                <NavLink
-                  key={item.key}
-                  to={item.path}
-                  onClick={closeMobileMenu}
-                  className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-                >
-                  <span className="nav-icon">{item.icon}</span>
-                  <span className="nav-label">{item.label}</span>
-                </NavLink>
-              )
-          )}
-        </nav>
-
-        <div className="sidebar-footer">
-          <div>Branch dashboard — part of company data.</div>
-          <div style={{ marginTop: '8px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            <button type="button" onClick={handleLogout}>Log out</button>
+        <div className="admin-sidebar-footer">
+          <div className="admin-sidebar-footer-user">
+            Branch: <b>{label}</b>
+          </div>
+          <div className="admin-sidebar-footer-actions">
+            <button type="button" className="admin-sidebar-btn" onClick={handleLogout}>
+              Log out
+            </button>
             {session?.viewingBranchAsAdmin && (
               <button
                 type="button"
+                className="admin-sidebar-btn"
                 onClick={handleBackToAdmin}
-                style={{ background: '#fff', color: 'var(--accent)' }}
+                style={{ color: '#dc2626' }}
               >
-                Back to Company Admin
+                Back to Admin
               </button>
             )}
           </div>
         </div>
       </aside>
 
-      <main className="main">
-        <Outlet context={{ currentBranch, staffUser }} />
-      </main>
+      {/* Main Content Area */}
+      <div className="admin-main-wrap">
+        {/* Top Red Bar matching screenshot */}
+        <header className="admin-topbar">
+          <div className="admin-topbar-left">
+            <button
+              type="button"
+              className="admin-mobile-menu-btn"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label="Toggle Navigation"
+            >
+              ☰
+            </button>
+            <span className="admin-topbar-title">
+              {company?.name || 'RTC'} · {currentBranch.name} Hub
+            </span>
+          </div>
+
+          <div className="admin-topbar-right">
+            <button type="button" className="admin-topbar-bell" title="Notifications">
+              🔔
+              <span className="admin-topbar-badge">1</span>
+            </button>
+            <div className="admin-topbar-user" onClick={handleLogout} title="Click to log out">
+              <span className="admin-topbar-avatar">
+                {initialsFor(currentBranch.name)}
+              </span>
+              <span className="admin-topbar-username">
+                {staffUser ? staffUser.name : 'Branch'}
+              </span>
+            </div>
+          </div>
+        </header>
+
+        {/* Viewport content */}
+        <main className="admin-content">
+          <Outlet context={{ currentBranch, staffUser }} />
+        </main>
+      </div>
     </div>
   );
 }
