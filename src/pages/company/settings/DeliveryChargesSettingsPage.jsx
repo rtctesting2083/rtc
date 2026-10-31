@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useCompany } from '../../../context/CompanyContext';
 import { fmtMoney } from '../../../utils/helpers';
 import './DeliveryChargesSettings.css';
@@ -111,23 +112,61 @@ export function defaultSuggestedPricing() {
   };
 }
 
-export function DeliveryChargesSettingsPage() {
-  const { deliveryChargeSettings, saveDeliveryCharges } = useCompany();
+export function mergeServiceTypesWithPricing(dbTypes = [], savedServices = []) {
+  if (!dbTypes || !dbTypes.length) {
+    if (savedServices && savedServices.length) return savedServices;
+    return [
+      { id: 1, name: 'Standard', code: 'STD', delivery_time: '2 – 3 Days', surcharge_percent: 0 },
+      { id: 2, name: 'Express', code: 'EXP', delivery_time: '24 Hours', surcharge_percent: 30 },
+    ];
+  }
 
-  // Load existing saved settings or default suggested ones
+  return dbTypes
+    .filter((st) => (st.status || 'active') === 'active')
+    .map((st) => {
+      const match = (savedServices || []).find(
+        (s) => s.id === st.id || s.name?.trim().toLowerCase() === st.name?.trim().toLowerCase()
+      );
+      let defSurcharge = 0;
+      if (/express/i.test(st.name || '')) defSurcharge = 30;
+      else if (/same\s*day/i.test(st.name || '')) defSurcharge = 50;
+
+      return {
+        id: st.id,
+        name: st.name,
+        code: st.code || '',
+        delivery_time: st.delivery_time || '',
+        description: st.description || '',
+        surcharge_percent: match !== undefined && match.surcharge_percent !== undefined
+          ? (match.surcharge_percent === '' ? '' : Number(match.surcharge_percent))
+          : defSurcharge,
+      };
+    });
+}
+
+export function DeliveryChargesSettingsPage() {
+  const { deliveryChargeSettings, deliveryServiceTypes = [], saveDeliveryCharges } = useCompany();
+
+  // Load existing saved settings or default suggested ones merged with database deliveryServiceTypes
   const initialData = useMemo(() => {
     const s = deliveryChargeSettings;
     const def = defaultSuggestedPricing();
+    const sourceServices = s?.pricing?.services || s?.services || def.services;
+    const mergedServices = mergeServiceTypesWithPricing(deliveryServiceTypes, sourceServices);
+
     if (!s || !s.pricing) {
-      return def;
+      return {
+        ...def,
+        services: mergedServices,
+      };
     }
     return {
       ...def,
       ...s.pricing,
       tax_percent: s.tax_percent !== undefined ? s.tax_percent : def.tax_percent,
-      services: s.services && s.services.length ? s.services : def.services,
+      services: mergedServices,
     };
-  }, [deliveryChargeSettings]);
+  }, [deliveryChargeSettings, deliveryServiceTypes]);
 
   // Main state copy for editing
   const [pricing, setPricing] = useState(initialData);
@@ -135,18 +174,20 @@ export function DeliveryChargesSettingsPage() {
   const [saveNote, setSaveNote] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Keep pricing synchronized when remote D1 tables load
+  // Keep pricing synchronized when remote D1 tables or deliveryServiceTypes load
   useEffect(() => {
-    if (deliveryChargeSettings?.pricing) {
-      const def = defaultSuggestedPricing();
-      setPricing({
-        ...def,
-        ...deliveryChargeSettings.pricing,
-        tax_percent: deliveryChargeSettings.tax_percent !== undefined ? deliveryChargeSettings.tax_percent : def.tax_percent,
-        services: deliveryChargeSettings.services && deliveryChargeSettings.services.length ? deliveryChargeSettings.services : def.services,
-      });
-    }
-  }, [deliveryChargeSettings]);
+    const def = defaultSuggestedPricing();
+    const s = deliveryChargeSettings;
+    const sourceServices = s?.pricing?.services || s?.services || def.services;
+    const mergedServices = mergeServiceTypesWithPricing(deliveryServiceTypes, sourceServices);
+
+    setPricing((prev) => ({
+      ...def,
+      ...(s?.pricing || {}),
+      tax_percent: s?.tax_percent !== undefined ? s.tax_percent : (prev.tax_percent || def.tax_percent),
+      services: mergedServices,
+    }));
+  }, [deliveryChargeSettings, deliveryServiceTypes]);
 
   // District picker modal state
   const [activeModalZoneIdx, setActiveModalZoneIdx] = useState(null);
@@ -621,24 +662,72 @@ export function DeliveryChargesSettingsPage() {
       {/* SECTION 3: DELIVERY SPEED                                          */}
       {/* ------------------------------------------------------------------ */}
       <section className="cs-section">
-        <h2>
-          <span className="cs-step">3</span> Delivery speed
-        </h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '6px' }}>
+          <h2 style={{ margin: 0 }}>
+            <span className="cs-step">3</span> Delivery speed
+          </h2>
+          <Link
+            to="/company/delivery-service-types"
+            style={{
+              fontSize: '12.5px',
+              color: '#dc2626',
+              fontWeight: 600,
+              textDecoration: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            Manage Delivery Service Types ➔
+          </Link>
+        </div>
         <p className="cs-help">
-          Faster service types cost more. Enter the extra percentage added on top of the standard delivery charge (suggested <strong>30 – 50%</strong> for Express or Same Day). Leave 0 for standard delivery.
+          Delivery Service Types are loaded from your database. Enter the extra percentage added on top of the standard delivery charge (suggested <strong>30 – 50%</strong> for Express or Same Day). Leave 0 for standard delivery.
         </p>
 
         <table className="cs-table">
           <thead>
             <tr>
               <th>SERVICE TYPE</th>
+              <th>ESTIMATED TIME</th>
               <th>EXTRA CHARGE</th>
             </tr>
           </thead>
           <tbody>
             {(pricing.services || []).map((srv, idx) => (
-              <tr key={srv.name || idx}>
-                <td style={{ fontWeight: 600 }}>{srv.name}</td>
+              <tr key={srv.id || srv.name || idx}>
+                <td>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontWeight: 700, color: '#111827' }}>{srv.name}</span>
+                    {srv.code && (
+                      <span
+                        style={{
+                          fontSize: '10.5px',
+                          fontWeight: 700,
+                          color: '#4b5563',
+                          background: '#f3f4f6',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          letterSpacing: '0.5px',
+                        }}
+                      >
+                        {srv.code}
+                      </span>
+                    )}
+                  </div>
+                  {srv.description && (
+                    <div style={{ fontSize: '11.5px', color: '#6b7280', marginTop: '2px' }}>
+                      {srv.description}
+                    </div>
+                  )}
+                </td>
+                <td style={{ color: '#4b5563', fontSize: '12.5px' }}>
+                  {srv.delivery_time ? (
+                    <span>⏱ {srv.delivery_time}</span>
+                  ) : (
+                    <span style={{ color: '#9ca3af' }}>—</span>
+                  )}
+                </td>
                 <td>
                   <label className="cs-field">
                     <span className="cs-input-wrap" style={{ maxWidth: '140px' }}>
@@ -649,7 +738,10 @@ export function DeliveryChargesSettingsPage() {
                         value={srv.surcharge_percent === '' ? '' : srv.surcharge_percent}
                         onChange={(e) => {
                           const services = [...pricing.services];
-                          services[idx] = { ...services[idx], surcharge_percent: e.target.value === '' ? '' : Number(e.target.value) };
+                          services[idx] = {
+                            ...services[idx],
+                            surcharge_percent: e.target.value === '' ? '' : Number(e.target.value),
+                          };
                           updatePricing({ services });
                         }}
                       />
@@ -947,8 +1039,8 @@ export function DeliveryChargesSettingsPage() {
               onChange={(e) => setCalcService(e.target.value)}
             >
               {(pricing.services || []).map((s) => (
-                <option key={s.name} value={s.name}>
-                  {s.name}
+                <option key={s.id || s.name} value={s.name}>
+                  {s.name} {Number(s.surcharge_percent) > 0 ? `(+${s.surcharge_percent}%)` : '(0%)'}
                 </option>
               ))}
             </select>

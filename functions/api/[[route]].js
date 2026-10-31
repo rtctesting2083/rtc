@@ -765,6 +765,33 @@ export async function onRequest(context) {
         ];
         try { services = JSON.parse(settingsRow.services); } catch (e) {}
 
+        // Merge with live delivery_service_types database table
+        try {
+          const { results: dbTypes } = await db
+            .prepare("SELECT * FROM delivery_service_types WHERE company_id = ? AND (status IS NULL OR status = 'active') ORDER BY id ASC")
+            .bind(companyId)
+            .all();
+
+          if (dbTypes && dbTypes.length > 0) {
+            services = dbTypes.map((st) => {
+              const match = (services || []).find((s) => s.id === st.id || s.name?.toLowerCase() === st.name?.toLowerCase());
+              let defSurcharge = 0;
+              if (/express/i.test(st.name || '')) defSurcharge = 30;
+              else if (/same\s*day/i.test(st.name || '')) defSurcharge = 50;
+
+              return {
+                id: st.id,
+                name: st.name,
+                code: st.code || '',
+                delivery_time: st.delivery_time || '',
+                surcharge_percent: match !== undefined && match.surcharge_percent !== undefined
+                  ? Number(match.surcharge_percent)
+                  : defSurcharge,
+              };
+            });
+          }
+        } catch (e) {}
+
         const pricing = {
           first_weight_kg: Number(settingsRow.first_weight_kg) || 2,
           default_zone: settingsRow.default_zone || 'C',
