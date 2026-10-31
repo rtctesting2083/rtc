@@ -6,7 +6,7 @@ import { StatusPill } from './StatusPill';
 import { printShipmentLabel } from '../../utils/print';
 
 export function ShipmentDetailModal({ shipment }) {
-  const { company, findCustomer, findCourier, findBranch, findCustomStatus } = useCompany();
+  const { company, findCustomer, findCourier, findBranch, findCustomStatus, chargeSettings } = useCompany();
 
   if (!shipment) return null;
 
@@ -18,7 +18,9 @@ export function ShipmentDetailModal({ shipment }) {
   const transitBranch = shipment.transit_branch_id ? findBranch(shipment.transit_branch_id) : null;
 
   const handlePrint = () => {
-    printShipmentLabel(shipment, company, customer, originBranch, destBranch);
+    printShipmentLabel(shipment, company, customer, originBranch, destBranch, {
+      chargeSettings: chargeSettings ? chargeSettings() : null,
+    });
   };
 
   return (

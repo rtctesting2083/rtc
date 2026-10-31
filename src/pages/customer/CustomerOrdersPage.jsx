@@ -10,7 +10,7 @@ import { fmtMoney, fmtDate } from '../../utils/helpers';
 
 export function CustomerOrdersPage() {
   const { currentCustomer, handleOpenCreateOrder } = useOutletContext();
-  const { company, shipments, findBranch, loadVendorOrders, deleteVendorOrder } = useCompany();
+  const { company, shipments, findBranch, loadVendorOrders, deleteVendorOrder, chargeSettings } = useCompany();
   const { openModal } = useModal();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -87,7 +87,9 @@ export function CustomerOrdersPage() {
   const handlePrint = (order) => {
     const origB = order.branch_id ? findBranch(order.branch_id) : null;
     const destB = order.destination_branch_id ? findBranch(order.destination_branch_id) : null;
-    printShipmentLabel(order, company, currentCustomer, origB, destB);
+    printShipmentLabel(order, company, currentCustomer, origB, destB, {
+      chargeSettings: chargeSettings ? chargeSettings() : null,
+    });
   };
 
   const handleDelete = async (order) => {

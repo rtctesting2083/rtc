@@ -25,6 +25,7 @@ export function BranchShipmentsPage() {
     findCourier,
     findBranch,
     updateShipmentStatus,
+    chargeSettings,
   } = useCompany();
 
   const { openModal } = useModal();
@@ -91,7 +92,9 @@ export function BranchShipmentsPage() {
     const cust = findCustomer(shipment.customer_id);
     const origB = shipment.branch_id ? findBranch(shipment.branch_id) : null;
     const destB = shipment.destination_branch_id ? findBranch(shipment.destination_branch_id) : null;
-    printShipmentLabel(shipment, company, cust, origB, destB);
+    printShipmentLabel(shipment, company, cust, origB, destB, {
+      chargeSettings: chargeSettings ? chargeSettings() : null,
+    });
   };
 
   return (
