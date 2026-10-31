@@ -164,6 +164,8 @@
   }
   .modal.modal-wide { width: 580px; max-width: 94vw; }
   .modal.modal-xwide { width: 840px; max-width: 96vw; }
+  .modal.modal-xxwide { width: 1260px; max-width: 96vw; }
+  .modal-body.no-head { padding-top: 14px; }
 
   @media (max-width: 640px) {
     .modal-backdrop {

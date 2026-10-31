@@ -7,8 +7,9 @@ export function ModalProvider({ children }) {
     isOpen: false,
     title: '',
     content: null,
-    size: 'normal', // 'normal' | 'wide' | 'xwide'
+    size: 'normal', // 'normal' | 'wide' | 'xwide' | 'xxwide'
     closeOnBackdrop: false,
+    hideHeader: false,
   });
 
   const openModal = useCallback((title, content, size = 'normal', options = {}) => {
@@ -18,6 +19,7 @@ export function ModalProvider({ children }) {
       content,
       size,
       closeOnBackdrop: options?.closeOnBackdrop ?? false,
+      hideHeader: options?.hideHeader ?? false,
     });
   }, []);
 
@@ -43,22 +45,26 @@ export function ModalProvider({ children }) {
                 ? 'modal-wide'
                 : modalState.size === 'xwide'
                 ? 'modal-xwide'
+                : modalState.size === 'xxwide'
+                ? 'modal-xxwide'
                 : ''
             }`}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="modal-head">
-              <h2>{modalState.title}</h2>
-              <button
-                type="button"
-                className="modal-close"
-                onClick={closeModal}
-                aria-label="Close modal"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="modal-body">{modalState.content}</div>
+            {!modalState.hideHeader && (
+              <div className="modal-head">
+                <h2>{modalState.title}</h2>
+                <button
+                  type="button"
+                  className="modal-close"
+                  onClick={closeModal}
+                  aria-label="Close modal"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+            <div className={`modal-body ${modalState.hideHeader ? 'no-head' : ''}`}>{modalState.content}</div>
           </div>
         </div>
       )}

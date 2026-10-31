@@ -440,10 +440,15 @@ export function CustomerOrdersPage() {
     const raw =
       order.rawShipment || {
         ...order,
-        sender_name: currentCustomer?.name || 'Vendor',
+        sender_name: currentCustomer?.name || 'Prativa Collection Tamnagar',
         sender_phone: currentCustomer?.phone || '9847060846',
       };
-    openModal(`Order ${order.tracking_number}`, <ShipmentDetailModal shipment={raw} />, 'wide');
+    openModal(
+      `Order ${order.tracking_number}`,
+      <ShipmentDetailModal shipment={raw} onClose={closeModal} />,
+      'xxwide',
+      { hideHeader: true }
+    );
   };
 
   // Print Label with Barcode and QR
