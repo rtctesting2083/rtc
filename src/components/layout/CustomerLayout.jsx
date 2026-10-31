@@ -125,13 +125,8 @@ export function CustomerLayout() {
           >
             <Menu size={20} />
           </button>
-          <div className="vendor-brand-badge" onClick={() => navigate('/customer/dashboard')}>
-            <img src={logoImg} alt="RTC Logo" className="vendor-brand-logo-img" />
-            <div className="vendor-brand-text">
-              <span className="vendor-brand-rtc">RTC</span>
-              <span className="vendor-brand-dot">·</span>
-              <span className="vendor-brand-sub">Courier</span>
-            </div>
+          <div className="vendor-brand-badge" onClick={() => navigate('/customer/dashboard')} title="RTC Courier Dashboard">
+            <img src={logoImg} alt="RTC Real Time Courier" className="vendor-brand-logo-img" />
           </div>
         </div>
 
@@ -505,7 +500,7 @@ export function CustomerLayout() {
 
           {/* ── Footer Bar (Matches Screenshot) ── */}
           <footer className="vendor-footer-banner">
-            All Copyright reserved by RTC Courier Pvt. Ltd.
+            All Copyright reserved by R.T.C. COURIER PVT. LTD.
           </footer>
         </div>
       </div>
