@@ -60,17 +60,83 @@ export function fmtDate(d) {
   }
 }
 
+export function detectShippingZone(branchNameOrAddress, settings) {
+  const str = (branchNameOrAddress || '').toLowerCase();
+  const s = settings || {};
+  const zones = s.zones || [];
+  if (!zones.length) return null;
+
+  if (/butwal|tilottama|bhairahawa|siddharthanagar|yogikuti|manigram|devdaha/i.test(str)) {
+    return zones.find((z) => z.id === 'zone_a') || zones[0];
+  }
+  if (/kathmandu|lalitpur|bhaktapur|pokhara|kaski|chitwan|narayangarh|bharatpur|nepalgunj|banke/i.test(str)) {
+    return zones.find((z) => z.id === 'zone_b') || zones[1] || zones[0];
+  }
+  if (/dang|kapilvastu|nawalparasi|biratnagar|morang|itahari|sunsari|birtamod|jhapa|janakpur|birgunj/i.test(str)) {
+    return zones.find((z) => z.id === 'zone_c') || zones[2] || zones[0];
+  }
+  if (/gulmi|arghakhanchi|palpa|tansen|syangja|baglung|pyuthan|rolpa|gorkha|parbat/i.test(str)) {
+    return zones.find((z) => z.id === 'zone_d') || zones[3] || zones[0];
+  }
+  if (/humla|jumla|mugu|dolpa|bajura|kalikot|darchula|karnali|mustang|manang/i.test(str)) {
+    return zones.find((z) => z.id === 'zone_e') || zones[4] || zones[0];
+  }
+  return zones[1] || zones[0];
+}
+
+export function calcVolumetricWeight(lengthCm, widthCm, heightCm, divisor = 5000) {
+  const l = parseFloat(lengthCm) || 0;
+  const w = parseFloat(widthCm) || 0;
+  const h = parseFloat(heightCm) || 0;
+  if (!l || !w || !h) return 0;
+  const div = parseFloat(divisor) || 5000;
+  return Math.round(((l * w * h) / div) * 100) / 100;
+}
+
 export function calcFee(distanceKm, priority, settings) {
-  const s = settings || { base_fee: 100, per_km_fee: 15, express_multiplier: 1.5 };
+  const s = settings || { base_fee: 100, per_km_fee: 15, express_multiplier: 1.4 };
   let fee = (s.base_fee || 0) + (s.per_km_fee || 0) * (Number(distanceKm) || 0);
-  if (priority === 'express') fee *= (s.express_multiplier || 1.5);
+  if (priority === 'express') fee *= (s.express_multiplier || 1.4);
   return Math.round(fee * 100) / 100;
 }
 
-export function calcFeeByWeight(weightKg, serviceTypeName, settings) {
-  const s = settings || { base_fee: 100, per_kg_fee: 20, express_multiplier: 1.5 };
-  let fee = (s.base_fee || 0) + (s.per_kg_fee || 0) * (Number(weightKg) || 0);
-  if (/express|same/i.test(serviceTypeName || '')) fee *= (s.express_multiplier || 1.5);
+export function calcFeeByWeight(weightKg, serviceTypeName, settings, options = {}) {
+  const s = settings || { base_fee: 100, per_kg_fee: 20, express_multiplier: 1.4 };
+  const w = Math.max(0.1, Number(weightKg) || 1);
+
+  // If a zone is specified or found in settings
+  const zoneId = options?.zoneId;
+  const zone = s.zones?.find((z) => z.id === zoneId) || (options?.useFirstZone ? s.zones?.[0] : null);
+
+  let fee = 0;
+  if (zone) {
+    const base = Number(zone.base_rate) || 80;
+    const extraPerKg = Number(zone.extra_kg_rate) || 40;
+    const extraWeight = Math.max(0, w - 1);
+    fee = base + Math.ceil(extraWeight) * extraPerKg;
+  } else {
+    fee = (s.base_fee || 100) + (s.per_kg_fee || 20) * w;
+  }
+
+  // Multipliers for service types
+  if (/same\s*day/i.test(serviceTypeName || '')) {
+    fee *= (s.same_day_multiplier || 1.6);
+  } else if (/express/i.test(serviceTypeName || '')) {
+    fee *= (s.express_multiplier || 1.4);
+  }
+
+  // COD fee
+  if (options?.codAmount && Number(options.codAmount) > 0) {
+    const codPct = ((s.cod_fee_percent || 1.5) / 100) * Number(options.codAmount);
+    const codFee = Math.max(s.cod_fee_min || 30, codPct);
+    fee += codFee;
+  }
+
+  // Fragile handling
+  if (options?.isFragile) {
+    fee += (s.fragile_fee || 50);
+  }
+
   return Math.round(fee * 100) / 100;
 }
 

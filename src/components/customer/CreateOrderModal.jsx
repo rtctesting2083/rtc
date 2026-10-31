@@ -3,6 +3,7 @@ import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
 import {
   calcFeeByWeight,
+  detectShippingZone,
   fmtMoney,
   isValidMobile,
   addressSummary,
@@ -164,7 +165,13 @@ export function CreateOrderModal({ currentCustomer }) {
 
   // Pricing calculations
   const weight = parseFloat(weightKg) || 0;
-  const rawFee = calcFeeByWeight(weight, serviceType, chargeSettings());
+  const matchedZone = destBranch
+    ? detectShippingZone(`${destBranch.name} ${destBranch.address?.district || ''}`, chargeSettings())
+    : null;
+  const rawFee = calcFeeByWeight(weight, serviceType, chargeSettings(), {
+    zoneId: matchedZone?.id,
+    codAmount: parseFloat(codAmount) || 0,
+  });
   const discountAmount = appliedDiscount ? Math.round(rawFee * appliedDiscount * 100) / 100 : 0;
   const finalFee = Math.max(0, Math.round((rawFee - discountAmount) * 100) / 100);
   const codVal = parseFloat(codAmount) || 0;
@@ -534,6 +541,12 @@ export function CreateOrderModal({ currentCustomer }) {
               <span>Service Type</span>
               <span>{serviceType || '—'}</span>
             </div>
+            {matchedZone && (
+              <div className="order-summary-row" style={{ fontSize: '11.5px', color: '#6b7280' }}>
+                <span>Route Zone</span>
+                <span style={{ fontWeight: 600, color: '#dc2626' }}>{matchedZone.code || matchedZone.name.split(':')[0]} · ETA {matchedZone.eta || '1-2 Days'}</span>
+              </div>
+            )}
             <div className="order-summary-row">
               <span>Service Charge</span>
               <span>{fmtMoney(rawFee)}</span>
