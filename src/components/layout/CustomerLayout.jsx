@@ -2,29 +2,36 @@ import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   Home,
-  User,
-  Users,
-  UserCog,
-  Bell,
   Package,
   ClipboardList,
   PlusCircle,
+  Ticket,
+  MessageSquare,
   Receipt,
   FileText,
-  Search,
-  BarChart3,
+  Users,
   BookOpen,
-  HelpCircle,
-  Boxes,
+  UserCheck,
+  BarChart3,
+  TrendingUp,
+  Code,
   ChevronDown,
-  ChevronUp,
+  ChevronRight,
+  Search,
+  Calendar,
+  Bell,
+  ShoppingBag,
   LogOut,
+  User,
+  Menu,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
 import { initialsFor } from '../../utils/helpers';
 import { CreateOrderModal } from '../customer/CreateOrderModal';
+import logoImg from '../../assets/logo-transparent.png';
 import '../../pages/customer/VendorDashboard.css';
 
 export function CustomerLayout() {
@@ -35,12 +42,24 @@ export function CustomerLayout() {
 
   const [orderOpen, setOrderOpen] = useState(false);
   const [accountsOpen, setAccountsOpen] = useState(false);
-  const [actionsOpen, setActionsOpen] = useState(false);
-  const [resourcesOpen, setResourcesOpen] = useState(false);
+  const [usersOpen, setUsersOpen] = useState(false);
+  const [reportsOpen, setReportsOpen] = useState(false);
+
+  const [dateFilterOpen, setDateFilterOpen] = useState(false);
+  const [dateFilter, setDateFilter] = useState('Overall');
+  const [searchQuery, setSearchQuery] = useState('');
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const currentCustomer = (customers || []).find((c) => c.id === Number(session?.customerId));
+  const currentCustomer = (customers || []).find((c) => c.id === Number(session?.customerId)) || {
+    id: 1,
+    name: 'Jafar Ali',
+    email: 'jafar@rtc.com.np',
+    phone: '9847060846',
+    address: 'Butwal',
+    city: 'Butwal',
+  };
+
   const staffUser = currentCustomer && session?.staffUserId
     ? (currentCustomer.staffUsers || []).find((u) => u.id === Number(session.staffUserId))
     : null;
@@ -66,308 +85,414 @@ export function CustomerLayout() {
     setMobileMenuOpen(false);
   };
 
-  if (!currentCustomer) {
-    return <div className="p-4" style={{ padding: '24px' }}>Vendor not found. Please log in again.</div>;
-  }
+  const handleSearchSubmit = (e) => {
+    if (e) e.preventDefault();
+    if (searchQuery.trim()) {
+      navigate(`/customer/orders?search=${encodeURIComponent(searchQuery.trim())}`);
+    }
+  };
 
-  const vendorIdDisplay = currentCustomer.vendor_code || currentCustomer.vendor_id || String(currentCustomer.id).padStart(2, '0');
+  const customerName = staffUser?.name || currentCustomer.name || 'Jafar Ali';
+  const customerInitials = initialsFor(customerName);
+  const locationCity = currentCustomer.city || currentCustomer.address || 'Butwal';
 
   return (
-    <div className="vendor-app-container">
-      {/* Mobile Drawer Backdrop */}
-      {mobileMenuOpen && (
-        <div
-          className="vendor-sidebar-backdrop"
-          onClick={closeMobileMenu}
-          aria-hidden="true"
-        />
-      )}
+    <div className="vendor-shell">
+      {/* ── Top Navbar (Matches Screenshot) ── */}
+      <header className="vendor-global-topbar">
+        {/* Left: Mobile Toggle & Brand Logo */}
+        <div className="vendor-topbar-left">
+          <button
+            type="button"
+            className="vendor-hamburger-btn"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label="Toggle Navigation"
+          >
+            <Menu size={20} />
+          </button>
+          <div className="vendor-brand-badge" onClick={() => navigate('/customer/dashboard')}>
+            <img src={logoImg} alt="RTC Logo" className="vendor-brand-logo-img" />
+            <div className="vendor-brand-text">
+              <span className="vendor-brand-rtc">RTC</span>
+              <span className="vendor-brand-dot">·</span>
+              <span className="vendor-brand-sub">Courier</span>
+            </div>
+          </div>
+        </div>
 
-      {/* Left White Sidebar */}
-      <aside className={`vendor-sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
-        <div>
-          {/* Mobile Drawer Header with Close Button */}
-          <div className="vendor-sidebar-mobile-head">
-            <span style={{ fontWeight: 700, fontSize: '13px', color: '#111827' }}>Vendor Menu</span>
+        {/* Center: Search Bar */}
+        <form className="vendor-topbar-search" onSubmit={handleSearchSubmit}>
+          <input
+            type="text"
+            className="vendor-search-input"
+            placeholder="Search by Name, Phone Number, Tracking Code, Reference ID etc."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <button type="submit" className="vendor-search-btn">
+            Search ➔
+          </button>
+        </form>
+
+        {/* Right: Date Filter, + Create Order, Notifications & Profile */}
+        <div className="vendor-topbar-right">
+          {/* Date Filter Dropdown */}
+          <div className="vendor-filter-dropdown-wrapper">
             <button
               type="button"
-              className="vendor-sidebar-close-btn"
-              onClick={closeMobileMenu}
-              aria-label="Close menu"
+              className="vendor-date-filter-btn"
+              onClick={() => setDateFilterOpen(!dateFilterOpen)}
             >
-              ✕
+              <Calendar size={14} className="vendor-filter-icon" />
+              <span>{dateFilter}</span>
+              <ChevronDown size={12} />
             </button>
+            {dateFilterOpen && (
+              <div className="vendor-date-dropdown-menu">
+                {['Overall', 'Today', 'This Week', 'This Month', 'This Year'].map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    className={`vendor-date-dropdown-item ${dateFilter === opt ? 'active' : ''}`}
+                    onClick={() => {
+                      setDateFilter(opt);
+                      setDateFilterOpen(false);
+                    }}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Top Vendor Profile Card */}
-          <div className="vendor-profile-card">
-            <h3>{currentCustomer.name}</h3>
-            <p>Vendor ID: {vendorIdDisplay}</p>
-            <p>{currentCustomer.phone}</p>
-            {currentCustomer.email && <p>{currentCustomer.email}</p>}
+          {/* + Create Order Button */}
+          <button
+            type="button"
+            className="vendor-btn-create-order"
+            onClick={handleOpenCreateOrder}
+          >
+            + Create Order
+          </button>
+
+          {/* Parcel Bag Notification Badge */}
+          <div
+            className="vendor-icon-badge-btn"
+            title="Active / Pending Shipments"
+            onClick={() => navigate('/customer/orders')}
+          >
+            <ShoppingBag size={18} />
+            <span className="vendor-badge-pill green">5</span>
           </div>
 
-          {/* Navigation Links */}
-          <nav className="vendor-nav">
-            {isAllowed('dashboard') && (
+          {/* Bell Notification Badge */}
+          <div
+            className="vendor-icon-badge-btn"
+            title="Notifications"
+            onClick={() => navigate('/customer/placeholder/Notice Board')}
+          >
+            <Bell size={18} />
+            <span className="vendor-badge-pill green">0</span>
+          </div>
+
+          {/* Profile Circle Avatar */}
+          <div className="vendor-profile-wrapper">
+            <button
+              type="button"
+              className="vendor-topbar-avatar-btn"
+              onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+              title={customerName}
+            >
+              <User size={16} />
+            </button>
+            {userDropdownOpen && (
+              <div className="vendor-topbar-dropdown">
+                <div className="vendor-dropdown-header">
+                  <div className="vendor-dropdown-user">{customerName}</div>
+                  <div className="vendor-dropdown-company">RTC Courier Pvt. Ltd.</div>
+                </div>
+                <hr className="vendor-dropdown-hr" />
+                <NavLink
+                  to="/customer/profile"
+                  onClick={() => setUserDropdownOpen(false)}
+                  className="vendor-dropdown-item"
+                >
+                  <User size={14} className="dropdown-icon" /> My Profile
+                </NavLink>
+                <NavLink
+                  to="/customer/orders"
+                  onClick={() => setUserDropdownOpen(false)}
+                  className="vendor-dropdown-item"
+                >
+                  <Package size={14} className="dropdown-icon" /> Orders
+                </NavLink>
+                <hr className="vendor-dropdown-hr" />
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="vendor-dropdown-item logout"
+                >
+                  <LogOut size={14} className="dropdown-icon" /> Log out
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* ── Main Layout Body ── */}
+      <div className="vendor-body-wrapper">
+        {/* Mobile Backdrop */}
+        {mobileMenuOpen && (
+          <div
+            className="vendor-sidebar-backdrop"
+            onClick={closeMobileMenu}
+            aria-hidden="true"
+          />
+        )}
+
+        {/* ── Left Sidebar (Matches Screenshot) ── */}
+        <aside className={`vendor-sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
+          <div className="vendor-sidebar-scroll">
+            {/* Mobile Close Header */}
+            <div className="vendor-sidebar-mobile-head">
+              <span className="mobile-head-title">Vendor Menu</span>
+              <button
+                type="button"
+                className="vendor-sidebar-close-btn"
+                onClick={closeMobileMenu}
+                aria-label="Close menu"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Sidebar Navigation Items */}
+            <nav className="vendor-nav-list">
+              {/* 1. Dashboard */}
               <NavLink
                 to="/customer/dashboard"
                 onClick={closeMobileMenu}
-                className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
+                className={({ isActive }) => `vendor-nav-item ${isActive ? 'active' : ''}`}
               >
-                <span className="nav-icon"><Home size={16} strokeWidth={2} /></span>
-                <span className="nav-label">Dashboard</span>
+                <span className="vendor-nav-icon"><Home size={16} strokeWidth={2} /></span>
+                <span className="vendor-nav-label">Dashboard</span>
               </NavLink>
-            )}
 
-            <NavLink
-              to="/customer/profile"
-              onClick={closeMobileMenu}
-              className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
-            >
-              <span className="nav-icon"><User size={16} strokeWidth={2} /></span>
-              <span className="nav-label">Profile</span>
-            </NavLink>
-
-            {isAllowed('customers') && (
-              <NavLink
-                to="/customer/customers"
-                onClick={closeMobileMenu}
-                className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
-              >
-                <span className="nav-icon"><Users size={16} strokeWidth={2} /></span>
-                <span className="nav-label">Customers</span>
-              </NavLink>
-            )}
-
-            {isAllowed('manage-staff') && (
-              <NavLink
-                to="/customer/staff"
-                onClick={closeMobileMenu}
-                className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
-              >
-                <span className="nav-icon"><UserCog size={16} strokeWidth={2} /></span>
-                <span className="nav-label">Manage Staffs</span>
-              </NavLink>
-            )}
-
-            <NavLink
-              to="/customer/placeholder/Notice%20Board"
-              onClick={closeMobileMenu}
-              className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
-            >
-              <span className="nav-icon"><Bell size={16} strokeWidth={2} /></span>
-              <span className="nav-label">Notice Board</span>
-            </NavLink>
-
-            {/* Order page dropdown */}
-            {isAllowed('orders') && (
+              {/* 2. Order page (collapsible) */}
               <div>
                 <button
                   type="button"
-                  className={`vendor-nav-link ${orderOpen ? 'active' : ''}`}
+                  className={`vendor-nav-item with-chevron ${orderOpen ? 'open' : ''}`}
                   onClick={() => setOrderOpen(!orderOpen)}
                 >
-                  <span className="nav-icon"><Package size={16} strokeWidth={2} /></span>
-                  <span className="nav-label">Order page</span>
-                  <span className="nav-chevron">{orderOpen ? <ChevronUp size={13} strokeWidth={2} /> : <ChevronDown size={13} strokeWidth={2} />}</span>
+                  <span className="vendor-nav-icon"><ClipboardList size={16} strokeWidth={2} /></span>
+                  <span className="vendor-nav-label">Order page</span>
+                  <span className="vendor-chevron">
+                    {orderOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  </span>
                 </button>
                 {orderOpen && (
-                  <div className="vendor-submenu">
+                  <div className="vendor-sub-list">
                     <NavLink
                       to="/customer/orders"
                       onClick={closeMobileMenu}
-                      className={({ isActive }) => `vendor-sublink ${isActive ? 'active' : ''}`}
+                      className={({ isActive }) => `vendor-sub-item ${isActive ? 'active' : ''}`}
                     >
-                      <span className="sub-nav-icon"><ClipboardList size={13} strokeWidth={2} /></span>
-                      <span>My Order List</span>
+                      My Order List
                     </NavLink>
                     <button
                       type="button"
-                      className="vendor-sublink cursor-pointer"
+                      className="vendor-sub-item"
                       onClick={handleOpenCreateOrder}
-                      style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left', cursor: 'pointer' }}
                     >
-                      <span className="sub-nav-icon"><PlusCircle size={13} strokeWidth={2} /></span>
-                      <span>+ Create Order</span>
+                      + Create Order
                     </button>
                   </div>
                 )}
               </div>
-            )}
 
-            {/* Accounts dropdown */}
-            {isAllowed('invoices') && (
+              {/* 3. Tickets */}
+              <NavLink
+                to="/customer/placeholder/Tickets"
+                onClick={closeMobileMenu}
+                className={({ isActive }) => `vendor-nav-item ${isActive ? 'active' : ''}`}
+              >
+                <span className="vendor-nav-icon"><Ticket size={16} strokeWidth={2} /></span>
+                <span className="vendor-nav-label">Tickets</span>
+              </NavLink>
+
+              {/* 4. Order Comment */}
+              <NavLink
+                to="/customer/placeholder/Order Comment"
+                onClick={closeMobileMenu}
+                className={({ isActive }) => `vendor-nav-item ${isActive ? 'active' : ''}`}
+              >
+                <span className="vendor-nav-icon"><MessageSquare size={16} strokeWidth={2} /></span>
+                <span className="vendor-nav-label">Order Comment</span>
+              </NavLink>
+
+              {/* 5. Accounts (collapsible) */}
               <div>
                 <button
                   type="button"
-                  className={`vendor-nav-link ${accountsOpen ? 'active' : ''}`}
+                  className={`vendor-nav-item with-chevron ${accountsOpen ? 'open' : ''}`}
                   onClick={() => setAccountsOpen(!accountsOpen)}
                 >
-                  <span className="nav-icon"><Receipt size={16} strokeWidth={2} /></span>
-                  <span className="nav-label">Accounts</span>
-                  <span className="nav-chevron">{accountsOpen ? <ChevronUp size={13} strokeWidth={2} /> : <ChevronDown size={13} strokeWidth={2} />}</span>
+                  <span className="vendor-nav-icon"><Receipt size={16} strokeWidth={2} /></span>
+                  <span className="vendor-nav-label">Accounts</span>
+                  <span className="vendor-chevron">
+                    {accountsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  </span>
                 </button>
                 {accountsOpen && (
-                  <div className="vendor-submenu">
+                  <div className="vendor-sub-list">
                     <NavLink
                       to="/customer/invoices"
                       onClick={closeMobileMenu}
-                      className={({ isActive }) => `vendor-sublink ${isActive ? 'active' : ''}`}
+                      className={({ isActive }) => `vendor-sub-item ${isActive ? 'active' : ''}`}
                     >
-                      <span className="sub-nav-icon"><FileText size={13} strokeWidth={2} /></span>
-                      <span>Invoices</span>
+                      Invoices
+                    </NavLink>
+                    <NavLink
+                      to="/customer/placeholder/COD Settlement"
+                      onClick={closeMobileMenu}
+                      className={({ isActive }) => `vendor-sub-item ${isActive ? 'active' : ''}`}
+                    >
+                      COD Settlement
                     </NavLink>
                   </div>
                 )}
               </div>
-            )}
 
-            {/* Actions dropdown */}
-            <div>
-              <button
-                type="button"
-                className={`vendor-nav-link ${actionsOpen ? 'active' : ''}`}
-                onClick={() => setActionsOpen(!actionsOpen)}
-              >
-                <span className="nav-icon"><Search size={16} strokeWidth={2} /></span>
-                <span className="nav-label">Actions</span>
-                <span className="nav-chevron">{actionsOpen ? <ChevronUp size={13} strokeWidth={2} /> : <ChevronDown size={13} strokeWidth={2} />}</span>
-              </button>
-              {actionsOpen && (
-                <div className="vendor-submenu">
-                  <NavLink
-                    to="/customer/orders"
-                    onClick={closeMobileMenu}
-                    className={({ isActive }) => `vendor-sublink ${isActive ? 'active' : ''}`}
-                  >
-                    <span className="sub-nav-icon"><Search size={13} strokeWidth={2} /></span>
-                    <span>Track a Package</span>
-                  </NavLink>
-                </div>
-              )}
-            </div>
-
-            {/* Report */}
-            <NavLink
-              to="/customer/placeholder/Report"
-              onClick={closeMobileMenu}
-              className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
-            >
-              <span className="nav-icon"><BarChart3 size={16} strokeWidth={2} /></span>
-              <span className="nav-label">Report</span>
-            </NavLink>
-
-            {/* Resources dropdown */}
-            <div>
-              <button
-                type="button"
-                className={`vendor-nav-link ${resourcesOpen ? 'active' : ''}`}
-                onClick={() => setResourcesOpen(!resourcesOpen)}
-              >
-                <span className="nav-icon"><BookOpen size={16} strokeWidth={2} /></span>
-                <span className="nav-label">Resources</span>
-                <span className="nav-chevron">{resourcesOpen ? <ChevronUp size={13} strokeWidth={2} /> : <ChevronDown size={13} strokeWidth={2} />}</span>
-              </button>
-              {resourcesOpen && (
-                <div className="vendor-submenu">
-                  <NavLink
-                    to="/customer/placeholder/Resources"
-                    onClick={closeMobileMenu}
-                    className={({ isActive }) => `vendor-sublink ${isActive ? 'active' : ''}`}
-                  >
-                    <span className="sub-nav-icon"><HelpCircle size={13} strokeWidth={2} /></span>
-                    <span>Guidelines & FAQ</span>
-                  </NavLink>
-                </div>
-              )}
-            </div>
-
-            {/* Packaging */}
-            <NavLink
-              to="/customer/placeholder/Packaging"
-              onClick={closeMobileMenu}
-              className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
-            >
-              <span className="nav-icon"><Boxes size={16} strokeWidth={2} /></span>
-              <span className="nav-label">Packaging</span>
-            </NavLink>
-          </nav>
-        </div>
-
-        {/* Sidebar Footer */}
-        <div className="vendor-sidebar-footer">
-          <div>Vendor dashboard — part of the company's shared data.</div>
-          <div>
-            <button
-              type="button"
-              className="vendor-logout-btn"
-              onClick={handleLogout}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-            >
-              <LogOut size={13} strokeWidth={2} style={{ color: '#dc2626' }} />
-              Log out
-            </button>
-          </div>
-        </div>
-      </aside>
-
-      {/* Main Right Side Area */}
-      <div className="vendor-main-wrapper">
-        {/* Top Red Header Bar */}
-        <header className="vendor-topbar">
-          <div className="vendor-topbar-left">
-            <button
-              type="button"
-              className="vendor-mobile-menu-btn"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              aria-label="Toggle Navigation Menu"
-            >
-              ☰
-            </button>
-            <div className="vendor-topbar-support-info">
-              <span className="vendor-topbar-helpline">Help Line ☎ <b>071-532176</b></span>
-              <span className="vendor-topbar-sales">Sales: <b>RTC4567 - Jafar Ali</b> ☎ <b>9847060846</b></span>
-            </div>
-          </div>
-          <div className="vendor-topbar-right">
-            <button
-              type="button"
-              className="vendor-topbar-circle-btn"
-              onClick={handleOpenCreateOrder}
-              title="Create New Order"
-            >
-              +
-            </button>
-            <div
-              className="vendor-topbar-profile-pill"
-              onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-            >
-              <span className="vendor-topbar-avatar">{initialsFor(currentCustomer.name)}</span>
-              <span className="vendor-topbar-name">{currentCustomer.name}</span>
-              <span style={{ fontSize: '10px' }}>{userDropdownOpen ? '▴' : '▾'}</span>
-            </div>
-            {userDropdownOpen && (
-              <div className="vendor-topbar-dropdown">
-                <NavLink to="/customer/profile" onClick={() => { setUserDropdownOpen(false); closeMobileMenu(); }} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <User size={14} style={{ color: '#dc2626' }} /> My Profile
-                </NavLink>
-                <NavLink to="/customer/orders" onClick={() => { setUserDropdownOpen(false); closeMobileMenu(); }} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Package size={14} style={{ color: '#dc2626' }} /> Orders
-                </NavLink>
-                <hr style={{ margin: '4px 0', border: 'none', borderTop: '1px solid #f3f4f6' }} />
-                <button type="button" onClick={handleLogout} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
-                  <LogOut size={14} style={{ color: '#dc2626' }} /> Log out
+              {/* 6. User Management (collapsible) */}
+              <div>
+                <button
+                  type="button"
+                  className={`vendor-nav-item with-chevron ${usersOpen ? 'open' : ''}`}
+                  onClick={() => setUsersOpen(!usersOpen)}
+                >
+                  <span className="vendor-nav-icon"><Users size={16} strokeWidth={2} /></span>
+                  <span className="vendor-nav-label">User Management</span>
+                  <span className="vendor-chevron">
+                    {usersOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  </span>
                 </button>
+                {usersOpen && (
+                  <div className="vendor-sub-list">
+                    <NavLink
+                      to="/customer/staff"
+                      onClick={closeMobileMenu}
+                      className={({ isActive }) => `vendor-sub-item ${isActive ? 'active' : ''}`}
+                    >
+                      Manage Staffs
+                    </NavLink>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </header>
 
-        {/* Content Body */}
-        <main className="vendor-content">
-          <Outlet context={{ currentCustomer, staffUser, handleOpenCreateOrder }} />
-        </main>
+              {/* 7. Address Book */}
+              <NavLink
+                to="/customer/customers"
+                onClick={closeMobileMenu}
+                className={({ isActive }) => `vendor-nav-item ${isActive ? 'active' : ''}`}
+              >
+                <span className="vendor-nav-icon"><BookOpen size={16} strokeWidth={2} /></span>
+                <span className="vendor-nav-label">Address Book</span>
+              </NavLink>
+
+              {/* 8. Customer Details */}
+              <NavLink
+                to="/customer/placeholder/Customer Details"
+                onClick={closeMobileMenu}
+                className={({ isActive }) => `vendor-nav-item ${isActive ? 'active' : ''}`}
+              >
+                <span className="vendor-nav-icon"><UserCheck size={16} strokeWidth={2} /></span>
+                <span className="vendor-nav-label">Customer Details</span>
+              </NavLink>
+
+              {/* 9. Reports (collapsible) */}
+              <div>
+                <button
+                  type="button"
+                  className={`vendor-nav-item with-chevron ${reportsOpen ? 'open' : ''}`}
+                  onClick={() => setReportsOpen(!reportsOpen)}
+                >
+                  <span className="vendor-nav-icon"><BarChart3 size={16} strokeWidth={2} /></span>
+                  <span className="vendor-nav-label">Reports</span>
+                  <span className="vendor-chevron">
+                    {reportsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  </span>
+                </button>
+                {reportsOpen && (
+                  <div className="vendor-sub-list">
+                    <NavLink
+                      to="/customer/placeholder/Shipment Report"
+                      onClick={closeMobileMenu}
+                      className={({ isActive }) => `vendor-sub-item ${isActive ? 'active' : ''}`}
+                    >
+                      Shipment Report
+                    </NavLink>
+                  </div>
+                )}
+              </div>
+
+              {/* 10. Check Rate */}
+              <NavLink
+                to="/customer/placeholder/Check Rate"
+                onClick={closeMobileMenu}
+                className={({ isActive }) => `vendor-nav-item ${isActive ? 'active' : ''}`}
+              >
+                <span className="vendor-nav-icon"><TrendingUp size={16} strokeWidth={2} /></span>
+                <span className="vendor-nav-label">Check Rate</span>
+              </NavLink>
+
+              {/* 11. API & Webhooks */}
+              <NavLink
+                to="/customer/placeholder/API & Webhooks"
+                onClick={closeMobileMenu}
+                className={({ isActive }) => `vendor-nav-item ${isActive ? 'active' : ''}`}
+              >
+                <span className="vendor-nav-icon"><Code size={16} strokeWidth={2} /></span>
+                <span className="vendor-nav-label">API & Webhooks</span>
+              </NavLink>
+            </nav>
+          </div>
+
+          {/* ── Bottom Sidebar User Profile Card (Matches Screenshot) ── */}
+          <div className="vendor-sidebar-bottom">
+            <div className="vendor-sidebar-user-pill">
+              <div className="vendor-user-avatar">
+                {customerInitials}
+              </div>
+              <div className="vendor-user-info">
+                <div className="vendor-user-name">{customerName}</div>
+                <div className="vendor-user-company">R.T.C. COURIER PVT. LTD.</div>
+                <div className="vendor-user-city">{locationCity}</div>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        {/* ── Content Viewport ── */}
+        <div className="vendor-content-pane">
+          <main className="vendor-page-main">
+            <Outlet
+              context={{
+                currentCustomer,
+                staffUser,
+                handleOpenCreateOrder,
+                dateFilter,
+                searchQuery,
+              }}
+            />
+          </main>
+
+          {/* ── Footer Bar (Matches Screenshot) ── */}
+          <footer className="vendor-footer-banner">
+            All Copyright reserved by RTC Courier Pvt. Ltd.
+          </footer>
+        </div>
       </div>
     </div>
   );

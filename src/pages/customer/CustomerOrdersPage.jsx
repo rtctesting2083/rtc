@@ -18,11 +18,15 @@ export function CustomerOrdersPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [loading, setLoading] = useState(false);
 
-  // Auto-open modal if ?create=1 in query params
+  // Auto-open modal if ?create=1 in query params, or sync search query
   useEffect(() => {
     if (searchParams.get('create') === '1' || searchParams.get('create') === 'true' || searchParams.get('new') === '1') {
       handleOpenCreateOrder();
       setSearchParams({}, { replace: true });
+    }
+    const q = searchParams.get('search');
+    if (q) {
+      setSearch(q);
     }
   }, [searchParams, handleOpenCreateOrder, setSearchParams]);
 
