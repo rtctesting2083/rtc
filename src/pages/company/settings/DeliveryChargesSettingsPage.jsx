@@ -1,925 +1,1227 @@
-import React, { useState } from 'react';
-import {
-  Globe,
-  Scale,
-  Zap,
-  Gift,
-  Calculator,
-  Save,
-  RotateCcw,
-  CheckCircle2,
-  AlertCircle,
-  HelpCircle,
-  Plus,
-  Trash2,
-  Info,
-  MapPin,
-  Truck,
-  Box,
-} from 'lucide-react';
+import React, { useState, useMemo } from 'react';
 import { useCompany } from '../../../context/CompanyContext';
-import { defaultDeliveryChargeSettings } from '../../../utils/constants';
-import { calcVolumetricWeight } from '../../../utils/helpers';
+import { fmtMoney } from '../../../utils/helpers';
 import './DeliveryChargesSettings.css';
+
+// 77 Districts of Nepal grouped by 7 Provinces
+export const NEPAL_PROVINCES = {
+  'Koshi': ['Bhojpur', 'Dhankuta', 'Ilam', 'Jhapa', 'Khotang', 'Morang', 'Okhaldhunga', 'Panchthar', 'Sankhuwasabha', 'Solukhumbu', 'Sunsari', 'Taplejung', 'Terhathum', 'Udayapur'],
+  'Madhesh': ['Bara', 'Dhanusha', 'Mahottari', 'Parsa', 'Rautahat', 'Saptari', 'Sarlahi', 'Siraha'],
+  'Bagmati': ['Bhaktapur', 'Chitwan', 'Dhading', 'Dolakha', 'Kathmandu', 'Kavrepalanchok', 'Lalitpur', 'Makwanpur', 'Nuwakot', 'Ramechhap', 'Rasuwa', 'Sindhuli', 'Sindhupalchok'],
+  'Gandaki': ['Baglung', 'Gorkha', 'Kaski', 'Lamjung', 'Manang', 'Mustang', 'Myagdi', 'Nawalpur', 'Parbat', 'Syangja', 'Tanahun'],
+  'Lumbini': ['Arghakhanchi', 'Banke', 'Bardiya', 'Dang', 'Eastern Rukum', 'Gulmi', 'Kapilvastu', 'Parasi', 'Palpa', 'Pyuthan', 'Rolpa', 'Rupandehi'],
+  'Karnali': ['Dailekh', 'Dolpa', 'Humla', 'Jajarkot', 'Jumla', 'Kalikot', 'Mugu', 'Salyan', 'Surkhet', 'Western Rukum'],
+  'Sudurpashchim': ['Achham', 'Baitadi', 'Bajhang', 'Bajura', 'Dadeldhura', 'Darchula', 'Doti', 'Kailali', 'Kanchanpur'],
+};
+
+// Preset colors for zones
+const ZONE_COLOR_PRESETS = {
+  green: { bg: '#eefaf0', fg: '#1e8049' },
+  blue: { bg: '#eef4fd', fg: '#2f6fe4' },
+  amber: { bg: '#fef7ea', fg: '#d9962b' },
+  tan: { bg: '#fbf4ea', fg: '#8a5a22' },
+  red: { bg: '#fef1f2', fg: '#b91c1c' },
+  purple: { bg: '#f5f3ff', fg: '#7c3aed' },
+  gray: { bg: '#f3f4f6', fg: '#4b5563' },
+};
+
+export function defaultSuggestedPricing() {
+  return {
+    first_weight_kg: 2,
+    default_zone: 'C',
+    zones: [
+      {
+        id: 'A',
+        name: 'Local & Nearby Terai',
+        color: 'green',
+        base: 120,
+        extra_per_kg: 60,
+        suggested: '60 – 100',
+        places: 'Butwal, Tilottama, Bhairahawa (Siddharthanagar), Yogikuti',
+        districts: ['Rupandehi'],
+      },
+      {
+        id: 'B',
+        name: 'Major Inter-City Hubs',
+        color: 'blue',
+        base: 180,
+        extra_per_kg: 90,
+        suggested: '150 – 200',
+        places: 'Kathmandu Valley, Pokhara, Narayangarh (Chitwan), Nepalgunj',
+        districts: ['Kathmandu', 'Lalitpur', 'Bhaktapur', 'Kaski', 'Chitwan', 'Banke'],
+      },
+      {
+        id: 'C',
+        name: 'Other Terai & Inner Terai',
+        color: 'amber',
+        base: 215,
+        extra_per_kg: 70,
+        suggested: '180 – 250',
+        places: 'Dang, Kapilvastu, Nawalparasi, Biratnagar, Itahari, Birtamod and more',
+        districts: [
+          'Dang', 'Kapilvastu', 'Nawalpur', 'Parasi', 'Morang', 'Sunsari', 'Jhapa',
+          'Bardiya', 'Kailali', 'Kanchanpur', 'Parsa', 'Bara', 'Rautahat', 'Sarlahi',
+          'Mahottari', 'Dhanusha', 'Siraha', 'Saptari', 'Makwanpur', 'Udayapur',
+        ],
+      },
+      {
+        id: 'D',
+        name: 'Hill Districts',
+        color: 'tan',
+        base: 300,
+        extra_per_kg: 80,
+        suggested: '250 – 350',
+        places: 'Gulmi, Arghakhanchi, Syangja, Baglung, Pyuthan, Rolpa, Gorkha and more',
+        districts: [
+          'Gulmi', 'Arghakhanchi', 'Syangja', 'Baglung', 'Pyuthan', 'Rolpa', 'Gorkha',
+          'Palpa', 'Tanahun', 'Lamjung', 'Parbat', 'Myagdi', 'Eastern Rukum', 'Western Rukum',
+          'Salyan', 'Surkhet', 'Dailekh', 'Kavrepalanchok', 'Nuwakot', 'Dhading',
+          'Sindhupalchok', 'Dolakha', 'Ramechhap', 'Sindhuli', 'Rasuwa', 'Okhaldhunga',
+          'Khotang', 'Bhojpur', 'Dhankuta', 'Terhathum', 'Sankhuwasabha', 'Ilam',
+          'Panchthar', 'Taplejung', 'Solukhumbu', 'Doti', 'Dadeldhura', 'Baitadi',
+        ],
+      },
+      {
+        id: 'E',
+        name: 'Remote Mountain & High-Hill',
+        color: 'red',
+        base: 500,
+        extra_per_kg: 100,
+        suggested: '400 – 600+',
+        places: 'Humla, Jumla, Mugu, Dolpa, Bajura and other remote districts',
+        districts: [
+          'Humla', 'Jumla', 'Mugu', 'Dolpa', 'Bajura', 'Kalikot',
+          'Jajarkot', 'Bajhang', 'Darchula', 'Achham', 'Mustang', 'Manang',
+        ],
+      },
+    ],
+    volumetric: { enabled: true, divisor: 5000 },
+    services: [
+      { id: 1, name: 'Standard', surcharge_percent: 0 },
+      { id: 2, name: 'Express', surcharge_percent: 30 },
+    ],
+    cod: { enabled: false, percent: 1.5, minimum: 30 },
+    fragile: { enabled: false, fee: 50 },
+    insurance: { enabled: false, threshold: 20000, percent: 0.5 },
+    volume_discounts: {
+      enabled: true,
+      tiers: [{ min_shipments: 200, percent: 10 }],
+    },
+    tax_percent: 13,
+  };
+}
 
 export function DeliveryChargesSettingsPage() {
   const { deliveryChargeSettings, saveDeliveryCharges } = useCompany();
 
-  // Merge default settings if some fields are missing
-  const initial = {
-    ...defaultDeliveryChargeSettings(),
-    ...(deliveryChargeSettings || {}),
-  };
+  // Load existing saved settings or default suggested ones
+  const initialData = useMemo(() => {
+    const s = deliveryChargeSettings;
+    const def = defaultSuggestedPricing();
+    if (!s || !s.pricing) {
+      return def;
+    }
+    return {
+      ...def,
+      ...s.pricing,
+      tax_percent: s.tax_percent !== undefined ? s.tax_percent : def.tax_percent,
+      services: s.services && s.services.length ? s.services : def.services,
+    };
+  }, [deliveryChargeSettings]);
 
-  const [activeTab, setActiveTab] = useState('zones');
-  const [hubCity, setHubCity] = useState(initial.hub_city || 'Butwal');
-  const [zones, setZones] = useState(initial.zones || defaultDeliveryChargeSettings().zones);
-  
-  // Weight & Volumetric rules
-  const [volumetricDivisor, setVolumetricDivisor] = useState(initial.volumetric_divisor || 5000);
-  const [baseWeightKg, setBaseWeightKg] = useState(1);
-  const [fallbackPerKg, setFallbackPerKg] = useState(initial.per_kg_fee || 20);
-  const [fallbackBaseFee, setFallbackBaseFee] = useState(initial.base_fee || 100);
+  // Main state copy for editing
+  const [pricing, setPricing] = useState(initialData);
+  const [saveNote, setSaveNote] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
-  // Surcharges & Extra Fees
-  const [codFeePercent, setCodFeePercent] = useState(initial.cod_fee_percent !== undefined ? initial.cod_fee_percent : 1.5);
-  const [codFeeMin, setCodFeeMin] = useState(initial.cod_fee_min !== undefined ? initial.cod_fee_min : 30);
-  const [expressMultiplier, setExpressMultiplier] = useState(initial.express_multiplier || 1.4);
-  const [sameDayMultiplier, setSameDayMultiplier] = useState(initial.same_day_multiplier || 1.6);
-  const [fragileFee, setFragileFee] = useState(initial.fragile_fee !== undefined ? initial.fragile_fee : 50);
-  const [taxPercent, setTaxPercent] = useState(initial.tax_percent !== undefined ? initial.tax_percent : 13);
-
-  // Volume Discounts
-  const [volumeDiscounts, setVolumeDiscounts] = useState(
-    initial.volume_discounts || defaultDeliveryChargeSettings().volume_discounts
-  );
-
-  // Notification status
-  const [savedNote, setSavedNote] = useState(false);
+  // District picker modal state
+  const [activeModalZoneIdx, setActiveModalZoneIdx] = useState(null);
+  const [districtSearch, setDistrictSearch] = useState('');
 
   // --------------------------------------------------------------------------
-  // Simulator State
+  // Calculator / "Try a price" state
   // --------------------------------------------------------------------------
-  const [simZoneId, setSimZoneId] = useState('zone_b');
-  const [simActualWeight, setSimActualWeight] = useState(1.5);
-  const [simLength, setSimLength] = useState(30);
-  const [simWidth, setSimWidth] = useState(20);
-  const [simHeight, setSimHeight] = useState(15);
-  const [simService, setSimService] = useState('standard');
-  const [simCodAmount, setSimCodAmount] = useState(2500);
-  const [simIsFragile, setSimIsFragile] = useState(false);
-  const [simDiscountPct, setSimDiscountPct] = useState(0);
+  const [calcDistrict, setCalcDistrict] = useState('Kathmandu');
+  const [calcWeight, setCalcWeight] = useState(2);
+  const [calcService, setCalcService] = useState('Standard');
+  const [calcL, setCalcL] = useState('');
+  const [calcW, setCalcW] = useState('');
+  const [calcH, setCalcH] = useState('');
+  const [calcCod, setCalcCod] = useState(0);
+  const [calcItemValue, setCalcItemValue] = useState(0);
+  const [calcMonthly, setCalcMonthly] = useState(0);
+  const [calcFragile, setCalcFragile] = useState(false);
 
-  // Handle Zone Edits
-  const handleZoneChange = (index, field, value) => {
-    const updated = [...zones];
-    updated[index] = {
-      ...updated[index],
-      [field]: field === 'base_rate' || field === 'extra_kg_rate' ? (parseFloat(value) || 0) : value,
-    };
-    setZones(updated);
+  // Helper setters
+  const updatePricing = (patch) => {
+    setPricing((prev) => ({ ...prev, ...patch }));
   };
 
-  // Add Volume Discount Tier
-  const handleAddDiscountTier = () => {
-    setVolumeDiscounts([
-      ...volumeDiscounts,
-      { min_orders: 300, discount_percent: 20, label: 'Platinum Partner (300+ orders/mo)' },
-    ]);
+  const updateZone = (index, field, value) => {
+    setPricing((prev) => {
+      const zones = [...prev.zones];
+      zones[index] = {
+        ...zones[index],
+        [field]: field === 'base' || field === 'extra_per_kg' ? (value === '' ? '' : Number(value)) : value,
+      };
+      return { ...prev, zones };
+    });
   };
 
-  // Remove Volume Discount Tier
-  const handleRemoveDiscountTier = (index) => {
-    setVolumeDiscounts(volumeDiscounts.filter((_, i) => i !== index));
+  const removeZone = (index) => {
+    setPricing((prev) => {
+      const zones = prev.zones.filter((_, i) => i !== index);
+      let default_zone = prev.default_zone;
+      if (!zones.some((z) => z.id === default_zone)) {
+        default_zone = zones[0]?.id || 'A';
+      }
+      return { ...prev, zones, default_zone };
+    });
   };
 
-  // Update Volume Discount Tier
-  const handleDiscountTierChange = (index, field, value) => {
-    const updated = [...volumeDiscounts];
-    updated[index] = {
-      ...updated[index],
-      [field]: field === 'min_orders' || field === 'discount_percent' ? (parseFloat(value) || 0) : value,
-    };
-    setVolumeDiscounts(updated);
+  const addZone = () => {
+    setPricing((prev) => {
+      const usedIds = new Set(prev.zones.map((z) => z.id));
+      let nextId = '';
+      for (let i = 0; i < 26; i++) {
+        const char = String.fromCharCode(65 + i);
+        if (!usedIds.has(char)) {
+          nextId = char;
+          break;
+        }
+      }
+      if (!nextId) return prev;
+      const newZone = {
+        id: nextId,
+        name: `Zone ${nextId}`,
+        color: 'gray',
+        base: 200,
+        extra_per_kg: 60,
+        suggested: '',
+        places: '',
+        districts: [],
+      };
+      return { ...prev, zones: [...prev.zones, newZone] };
+    });
   };
 
-  // Reset to Recommended Butwal Defaults
-  const handleResetToDefaults = () => {
-    if (window.confirm('Reset all delivery charge settings back to recommended Butwal Hub nationwide standards?')) {
-      const def = defaultDeliveryChargeSettings();
-      setHubCity(def.hub_city);
-      setZones(def.zones);
-      setVolumetricDivisor(def.volumetric_divisor);
-      setCodFeePercent(def.cod_fee_percent);
-      setCodFeeMin(def.cod_fee_min);
-      setExpressMultiplier(def.express_multiplier);
-      setSameDayMultiplier(def.same_day_multiplier);
-      setFragileFee(def.fragile_fee);
-      setTaxPercent(def.tax_percent);
-      setVolumeDiscounts(def.volume_discounts);
-      setFallbackBaseFee(def.base_fee);
-      setFallbackPerKg(def.per_kg_fee);
+  const addDiscountStep = () => {
+    setPricing((prev) => ({
+      ...prev,
+      volume_discounts: {
+        ...prev.volume_discounts,
+        tiers: [...prev.volume_discounts.tiers, { min_shipments: '', percent: '' }],
+      },
+    }));
+  };
+
+  const removeDiscountStep = (idx) => {
+    setPricing((prev) => ({
+      ...prev,
+      volume_discounts: {
+        ...prev.volume_discounts,
+        tiers: prev.volume_discounts.tiers.filter((_, i) => i !== idx),
+      },
+    }));
+  };
+
+  const updateDiscountTier = (idx, field, value) => {
+    setPricing((prev) => {
+      const tiers = [...prev.volume_discounts.tiers];
+      tiers[idx] = {
+        ...tiers[idx],
+        [field]: value === '' ? '' : Number(value),
+      };
+      return {
+        ...prev,
+        volume_discounts: { ...prev.volume_discounts, tiers },
+      };
+    });
+  };
+
+  // Reset to default suggested rates
+  const handleReset = () => {
+    if (window.confirm('Replace everything on this screen with the suggested rates? Nothing changes for your orders until you click Save.')) {
+      setPricing(defaultSuggestedPricing());
+      setSaveNote('Suggested rates loaded — click Save changes to use them.');
+      setTimeout(() => setSaveNote(''), 4000);
     }
   };
 
-  // Save Settings
-  const handleSaveAll = (e) => {
-    if (e) e.preventDefault();
+  // Save changes
+  const handleSave = () => {
+    setErrorMessage('');
+    // Validation
+    if (!pricing.zones.length) {
+      setErrorMessage('Add at least one zone.');
+      return;
+    }
+    for (const z of pricing.zones) {
+      if (!String(z.name).trim()) {
+        setErrorMessage(`Give Zone ${z.id} a name.`);
+        return;
+      }
+      if (z.base === '' || isNaN(Number(z.base)) || Number(z.base) < 0) {
+        setErrorMessage(`Enter a valid base price for Zone ${z.id}.`);
+        return;
+      }
+    }
 
+    // Save in format compatible with both D1 backend and frontend
     const payload = {
-      hub_city: hubCity,
-      base_fee: parseFloat(fallbackBaseFee) || 100,
+      base_fee: pricing.zones[0]?.base || 120,
       per_km_fee: 15,
-      per_kg_fee: parseFloat(fallbackPerKg) || 20,
-      express_multiplier: parseFloat(expressMultiplier) || 1.4,
-      same_day_multiplier: parseFloat(sameDayMultiplier) || 1.6,
-      tax_percent: parseFloat(taxPercent) || 0,
-      volumetric_divisor: parseFloat(volumetricDivisor) || 5000,
-      cod_fee_percent: parseFloat(codFeePercent) || 0,
-      cod_fee_min: parseFloat(codFeeMin) || 0,
-      fragile_fee: parseFloat(fragileFee) || 0,
-      zones: zones.map((z) => ({
-        ...z,
-        base_rate: parseFloat(z.base_rate) || 0,
-        extra_kg_rate: parseFloat(z.extra_kg_rate) || 0,
-      })),
-      volume_discounts: volumeDiscounts.map((d) => ({
-        ...d,
-        min_orders: parseInt(d.min_orders, 10) || 0,
-        discount_percent: parseFloat(d.discount_percent) || 0,
-      })),
+      per_kg_fee: pricing.zones[0]?.extra_per_kg || 60,
+      express_multiplier: 1 + (Number(pricing.services?.find((s) => s.name === 'Express')?.surcharge_percent) || 30) / 100,
+      tax_percent: Number(pricing.tax_percent) || 13,
+      pricing: { ...pricing },
+      services: pricing.services,
     };
 
     saveDeliveryCharges(payload);
-    setSavedNote(true);
-    setTimeout(() => setSavedNote(false), 4000);
+    setSaveNote('Saved successfully to system and database.');
+    setTimeout(() => setSaveNote(''), 4000);
   };
 
   // --------------------------------------------------------------------------
-  // Simulator Calculations
+  // Calculator Live Evaluation
   // --------------------------------------------------------------------------
-  const selectedZone = zones.find((z) => z.id === simZoneId) || zones[0];
-  const simVolumetric = calcVolumetricWeight(simLength, simWidth, simHeight, volumetricDivisor);
-  const simBillableWeight = Math.max(parseFloat(simActualWeight) || 0, simVolumetric);
-  
-  // Base Zone Freight
-  const zoneBase = parseFloat(selectedZone?.base_rate) || 80;
-  const zoneExtraRate = parseFloat(selectedZone?.extra_kg_rate) || 40;
-  const extraWeight = Math.max(0, simBillableWeight - 1);
-  const extraWeightCharge = Math.ceil(extraWeight) * zoneExtraRate;
-  const standardFreight = zoneBase + extraWeightCharge;
+  const calcResult = useMemo(() => {
+    const p = pricing;
+    // Find zone for district
+    let matchedZone = p.zones.find((z) => (z.districts || []).includes(calcDistrict));
+    if (!matchedZone) {
+      matchedZone = p.zones.find((z) => z.id === p.default_zone) || p.zones[0];
+    }
+    if (!matchedZone) return null;
 
-  // Multiplier for speed
-  let serviceMultiplier = 1;
-  if (simService === 'express') serviceMultiplier = parseFloat(expressMultiplier) || 1.4;
-  if (simService === 'sameday') serviceMultiplier = parseFloat(sameDayMultiplier) || 1.6;
-  const speedAdjustedFreight = Math.round(standardFreight * serviceMultiplier);
+    const actualKg = Math.max(0, Number(calcWeight) || 0);
+    const volDiv = p.volumetric?.enabled && Number(p.volumetric?.divisor) > 0 ? Number(p.volumetric.divisor) : 5000;
+    const l = Number(calcL) || 0, w = Number(calcW) || 0, h = Number(calcH) || 0;
+    const volumetricKg = p.volumetric?.enabled && l > 0 && w > 0 && h > 0
+      ? Math.round(((l * w * h) / volDiv) * 100) / 100
+      : 0;
 
-  // COD Handling Fee
-  const simCodVal = parseFloat(simCodAmount) || 0;
-  const codPctFee = (simCodVal * (parseFloat(codFeePercent) || 1.5)) / 100;
-  const codFinalFee = simCodVal > 0 ? Math.max(parseFloat(codFeeMin) || 30, Math.round(codPctFee)) : 0;
+    const billableKg = Math.max(actualKg, volumetricKg);
+    const firstKg = Number(p.first_weight_kg) || 2;
+    const extraKg = billableKg > firstKg ? Math.ceil(billableKg - firstKg) : 0;
 
-  // Fragile fee
-  const fragileFinalFee = simIsFragile ? (parseFloat(fragileFee) || 50) : 0;
+    const base = Number(matchedZone.base) || 0;
+    const extra = extraKg * (Number(matchedZone.extra_per_kg) || 0);
 
-  // Subtotal before discount
-  const preDiscountSubtotal = speedAdjustedFreight + codFinalFee + fragileFinalFee;
-  const discountAmount = Math.round((preDiscountSubtotal * (parseFloat(simDiscountPct) || 0)) / 100);
-  const discountedSubtotal = Math.max(0, preDiscountSubtotal - discountAmount);
+    // Speed surcharge
+    const srv = p.services?.find((s) => s.name === calcService);
+    const expressPct = srv ? Number(srv.surcharge_percent) || 0 : 0;
+    const express = Math.round((base + extra) * expressPct / 100);
 
-  // Tax
-  const taxAmount = Math.round((discountedSubtotal * (parseFloat(taxPercent) || 0)) / 100);
-  const finalTotal = discountedSubtotal + taxAmount;
+    // Volume discount
+    let volumeDiscount = 0;
+    if (p.volume_discounts?.enabled && p.volume_discounts?.tiers?.length) {
+      const sortedTiers = [...p.volume_discounts.tiers].sort((a, b) => Number(b.min_shipments) - Number(a.min_shipments));
+      const matchedTier = sortedTiers.find((t) => Number(calcMonthly) >= Number(t.min_shipments));
+      if (matchedTier) {
+        volumeDiscount = Math.round((base + extra + express) * (Number(matchedTier.percent) || 0) / 100);
+      }
+    }
+
+    const shipping = Math.max(0, base + extra + express - volumeDiscount);
+
+    // COD Fee
+    let codFee = 0;
+    if (p.cod?.enabled && Number(calcCod) > 0) {
+      const pct = (Number(calcCod) * (Number(p.cod.percent) || 1.5)) / 100;
+      codFee = Math.max(Number(p.cod.minimum) || 30, Math.round(pct));
+    }
+
+    // Fragile fee
+    const fragileFee = p.fragile?.enabled && calcFragile ? (Number(p.fragile.fee) || 50) : 0;
+
+    // Insurance
+    let insuranceFee = 0;
+    if (p.insurance?.enabled && Number(calcItemValue) >= (Number(p.insurance.threshold) || 20000)) {
+      insuranceFee = Math.round((Number(calcItemValue) * (Number(p.insurance.percent) || 0.5)) / 100);
+    }
+
+    const total = shipping + codFee + fragileFee + insuranceFee;
+
+    return {
+      zone: matchedZone,
+      billableKg,
+      actualKg,
+      volumetricKg,
+      base,
+      firstKg,
+      extra,
+      extraKg,
+      express,
+      volumeDiscount,
+      codFee,
+      fragileFee,
+      insuranceFee,
+      total,
+    };
+  }, [pricing, calcDistrict, calcWeight, calcService, calcL, calcW, calcH, calcCod, calcItemValue, calcMonthly, calcFragile]);
+
+  // Active zone for modal
+  const activeModalZone = activeModalZoneIdx !== null ? pricing.zones[activeModalZoneIdx] : null;
 
   return (
-    <div className="delivery-settings-container">
-      {/* View Header */}
-      <div className="delivery-settings-head">
-        <div className="delivery-settings-title-group">
-          <h1>Delivery Charge Settings</h1>
-          <p>
-            Zone-based, weight-tiered, and volumetric pricing model for nationwide courier dispatch.
-          </p>
-          <div className="delivery-hub-badges">
-            <span className="delivery-hub-badge">
-              <MapPin size={13} />
-              Central Hub: <b>{hubCity}</b>
-            </span>
-            <span className="delivery-hub-badge" style={{ background: '#eff6ff', color: '#1d4ed8', borderColor: '#dbeafe' }}>
-              <Truck size={13} />
-              Corridor: Siddhartha & East-West Highway
-            </span>
-            <span className="delivery-hub-badge" style={{ background: '#f0fdf4', color: '#15803d', borderColor: '#dcfce7' }}>
-              <Box size={13} />
-              5 Nationwide Zones (A – E)
-            </span>
-          </div>
-        </div>
-
-        <div className="delivery-settings-actions">
-          <button
-            type="button"
-            className="btn-reset-defaults"
-            onClick={handleResetToDefaults}
-            title="Restore Butwal Hub recommended rates"
-          >
-            <RotateCcw size={14} style={{ marginRight: '6px', verticalAlign: 'text-bottom' }} />
-            Reset Defaults
-          </button>
-          <button
-            type="button"
-            className="btn-save-charges"
-            onClick={handleSaveAll}
-          >
-            <Save size={15} />
-            Save Changes
-          </button>
-        </div>
+    <div className="cs-container">
+      {/* Title with red bar */}
+      <div className="cs-header">
+        <h1 className="cs-title">Delivery Charge Setting</h1>
+        <div className="cs-title-bar" />
       </div>
 
-      {/* Save Success Alert */}
-      {savedNote && (
-        <div className="success-save-alert">
-          <CheckCircle2 size={18} />
-          <span>✓ Delivery charge settings successfully updated and saved to Cloudflare D1 database!</span>
-        </div>
-      )}
-
-      {/* Overview Stat Cards */}
-      <div className="delivery-overview-grid">
-        <div className="delivery-summary-card accent-red">
-          <div className="delivery-summary-card-label">Base Weight Included</div>
-          <div className="delivery-summary-card-value">First 1.0 KG</div>
-          <div className="delivery-summary-card-sub">Fixed base starting price per zone</div>
-        </div>
-
-        <div className="delivery-summary-card accent-blue">
-          <div className="delivery-summary-card-label">Volumetric Formula</div>
-          <div className="delivery-summary-card-value">Divisor: {volumetricDivisor}</div>
-          <div className="delivery-summary-card-sub">(L × W × H) / {volumetricDivisor} cm³</div>
-        </div>
-
-        <div className="delivery-summary-card accent-green">
-          <div className="delivery-summary-card-label">COD Collection Fee</div>
-          <div className="delivery-summary-card-value">{codFeePercent}% <span style={{ fontSize: '13px', fontWeight: 500 }}>Min NPR {codFeeMin}</span></div>
-          <div className="delivery-summary-card-sub">Cash handling & cycle protection</div>
-        </div>
-
-        <div className="delivery-summary-card accent-purple">
-          <div className="delivery-summary-card-label">Merchant Volume Tier</div>
-          <div className="delivery-summary-card-value">Up to 15% Off</div>
-          <div className="delivery-summary-card-sub">Tiered for monthly regular sellers</div>
-        </div>
+      {/* Info Callout */}
+      <div className="cs-banner-box">
+        Set how much you charge to deliver anywhere in Nepal. Prices depend on the <strong>zone</strong> a parcel is going to and its <strong>weight</strong>, with extras for faster service, cash on delivery, fragile or valuable items — and discounts for busy vendors. These rates apply to every order booked from the Vendor portal, the Branch portal, the dispatcher's New shipment form and bulk imports.
       </div>
 
-      {/* Tab Navigation */}
-      <div className="delivery-tabs-bar">
-        <button
-          type="button"
-          className={`delivery-tab-btn ${activeTab === 'zones' ? 'active' : ''}`}
-          onClick={() => setActiveTab('zones')}
-        >
-          <Globe size={16} />
-          1. Shipping Zones (A – E)
-        </button>
-        <button
-          type="button"
-          className={`delivery-tab-btn ${activeTab === 'volumetric' ? 'active' : ''}`}
-          onClick={() => setActiveTab('volumetric')}
-        >
-          <Scale size={16} />
-          2. Weight & Volumetric Rules
-        </button>
-        <button
-          type="button"
-          className={`delivery-tab-btn ${activeTab === 'surcharges' ? 'active' : ''}`}
-          onClick={() => setActiveTab('surcharges')}
-        >
-          <Zap size={16} />
-          3. Surcharges & COD Handling
-        </button>
-        <button
-          type="button"
-          className={`delivery-tab-btn ${activeTab === 'discounts' ? 'active' : ''}`}
-          onClick={() => setActiveTab('discounts')}
-        >
-          <Gift size={16} />
-          4. Merchant Volume Discounts
-        </button>
-        <button
-          type="button"
-          className={`delivery-tab-btn ${activeTab === 'simulator' ? 'active' : ''}`}
-          onClick={() => setActiveTab('simulator')}
-        >
-          <Calculator size={16} />
-          5. Live Pricing Simulator
-        </button>
+      {/* Flow Formula Pills */}
+      <div className="cs-flow" aria-label="Delivery charge calculation flow">
+        <span>Zone rate</span>
+        <b>+</b>
+        <span>Extra weight</span>
+        <b>+</b>
+        <span>Delivery speed</span>
+        <b>+</b>
+        <span>Extra services</span>
+        <b>-</b>
+        <span>Discounts</span>
+        <b>=</b>
+        <span className="cs-flow-total">Delivery charge</span>
       </div>
 
-      {/* -------------------------------------------------------------------- */}
-      {/* TAB 1: SHIPPING ZONES                                                 */}
-      {/* -------------------------------------------------------------------- */}
-      {activeTab === 'zones' && (
-        <div>
-          <div className="settings-section-card" style={{ marginBottom: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h3>Butwal Central Hub Geographic Shipping Zones</h3>
-                <p style={{ margin: 0 }}>
-                  Shipments originated from Butwal dispatch center are classified into 5 regional delivery tiers.
-                  Rates cover first 1 KG plus a scalable increment for each additional kilogram.
-                </p>
-              </div>
-              <div className="setting-input-group" style={{ width: '180px' }}>
-                <label>Dispatch Hub City</label>
-                <input
-                  type="text"
-                  value={hubCity}
-                  onChange={(e) => setHubCity(e.target.value)}
-                  placeholder="e.g. Butwal"
-                />
-              </div>
-            </div>
-          </div>
+      {/* ------------------------------------------------------------------ */}
+      {/* SECTION 1: SHIPPING ZONES                                          */}
+      {/* ------------------------------------------------------------------ */}
+      <section className="cs-section">
+        <h2>
+          <span className="cs-step">1</span> Shipping zones
+        </h2>
+        <p className="cs-help">
+          Nepal is split into zones by distance and road conditions from your base. Each zone has its own price for the first kilogram and for every extra kilogram. A parcel is charged by the zone of the <strong>district it is delivered to</strong>.
+        </p>
 
-          <div className="zones-grid">
-            {zones.map((zone, idx) => (
-              <div key={zone.id} className="zone-card">
-                <div className="zone-card-head">
-                  <div className="zone-badge-title">
-                    <span className="zone-code-pill">{zone.code || `ZONE-${idx + 1}`}</span>
-                    <h4 className="zone-title">{zone.name}</h4>
-                  </div>
-                  <div className="zone-price-summary-tag">
-                    Base (1 kg): NPR {zone.base_rate} · Extra kg: NPR {zone.extra_kg_rate}
-                  </div>
-                </div>
+        <div className="cs-zones">
+          {pricing.zones.map((zone, idx) => {
+            const preset = ZONE_COLOR_PRESETS[zone.color] || ZONE_COLOR_PRESETS.gray;
+            const shownDistricts = (zone.districts || []).slice(0, 5);
+            const remainingCount = (zone.districts || []).length - shownDistricts.length;
+            const isDefault = pricing.default_zone === zone.id;
 
-                <div className="zone-fields-row">
-                  <div className="setting-input-group">
-                    <label>Base Rate (1st KG)</label>
-                    <div style={{ position: 'relative' }}>
-                      <input
-                        type="number"
-                        min="0"
-                        step="5"
-                        value={zone.base_rate}
-                        onChange={(e) => handleZoneChange(idx, 'base_rate', e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="setting-input-group">
-                    <label>Extra Per KG Rate</label>
-                    <div style={{ position: 'relative' }}>
-                      <input
-                        type="number"
-                        min="0"
-                        step="5"
-                        value={zone.extra_kg_rate}
-                        onChange={(e) => handleZoneChange(idx, 'extra_kg_rate', e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="setting-input-group">
-                    <label>Estimated Transit (ETA)</label>
-                    <input
-                      type="text"
-                      value={zone.eta || ''}
-                      onChange={(e) => handleZoneChange(idx, 'eta', e.target.value)}
-                      placeholder="e.g. 1 – 2 Days"
-                    />
-                  </div>
-
-                  <div className="setting-input-group">
-                    <label>Coverage Hubs, Municipalities & Districts</label>
-                    <textarea
-                      rows="2"
-                      value={zone.coverage || ''}
-                      onChange={(e) => handleZoneChange(idx, 'coverage', e.target.value)}
-                      placeholder="List districts and towns in this zone"
-                    />
-                  </div>
-                </div>
-
-                {zone.recommended && (
-                  <div className="zone-tip-box">
-                    <Info size={14} style={{ color: '#0284c7', flexShrink: 0 }} />
-                    <span><b>Strategy Guide:</b> {zone.recommended}</span>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* -------------------------------------------------------------------- */}
-      {/* TAB 2: WEIGHT & VOLUMETRIC RULES                                      */}
-      {/* -------------------------------------------------------------------- */}
-      {activeTab === 'volumetric' && (
-        <div>
-          <div className="settings-section-card">
-            <h3>Dual-Check Weight & Volumetric Standard</h3>
-            <p>
-              To protect profit margins on bulky lightweight goods (such as clothing bundles, pillows, chips, or toys),
-              the system calculates both <b>Actual Scale Weight</b> and <b>Volumetric Dimensional Weight</b>, then bills
-              whichever is higher.
-            </p>
-
-            <div className="formula-highlight-box">
-              <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '8px', fontWeight: 600 }}>
-                Standard International Logistics Volumetric Formula:
-              </div>
-              <div className="formula-text">
-                Volumetric Weight (KG) = [ Length (cm) × Width (cm) × Height (cm) ] ÷ {volumetricDivisor}
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '20px' }}>
-              <div className="setting-input-group">
-                <label>Volumetric Divisor Constant</label>
-                <input
-                  type="number"
-                  min="1000"
-                  max="10000"
-                  step="100"
-                  value={volumetricDivisor}
-                  onChange={(e) => setVolumetricDivisor(parseFloat(e.target.value) || 5000)}
-                />
-                <small style={{ color: '#6b7280', fontSize: '11.5px', marginTop: '4px', display: 'block' }}>
-                  Standard courier standard is <b>5000</b> (domestic courier industry benchmark in Nepal).
-                </small>
-              </div>
-
-              <div className="setting-input-group">
-                <label>Billing Comparison Rule</label>
-                <input
-                  type="text"
-                  disabled
-                  value="Bill Max(Actual Weight, Volumetric Weight)"
-                  style={{ background: '#f3f4f6', fontWeight: 700, color: '#15803d' }}
-                />
-                <small style={{ color: '#6b7280', fontSize: '11.5px', marginTop: '4px', display: 'block' }}>
-                  Automatically applied at parcel booking time across Vendor & Branch portals.
-                </small>
-              </div>
-            </div>
-
-            <div style={{ marginTop: '24px', paddingTop: '18px', borderTop: '1px solid #e5e7eb' }}>
-              <h4 style={{ margin: '0 0 10px', fontSize: '14px', fontWeight: 700 }}>Legacy / Flat Fallback (When no zone is matched)</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                <div className="setting-input-group">
-                  <label>Fallback Base Fee (NPR)</label>
+            return (
+              <div key={zone.id} className="cs-zone">
+                {/* Zone Head */}
+                <div className="cs-zone-head" style={{ background: preset.bg, color: preset.fg }}>
+                  <span className="cs-zone-letter" style={{ background: preset.fg }}>
+                    {zone.id}
+                  </span>
                   <input
-                    type="number"
-                    min="0"
-                    value={fallbackBaseFee}
-                    onChange={(e) => setFallbackBaseFee(parseFloat(e.target.value) || 0)}
+                    className="cs-zone-name"
+                    value={zone.name}
+                    onChange={(e) => updateZone(idx, 'name', e.target.value)}
+                    maxLength={40}
                   />
+                  {pricing.zones.length > 1 && (
+                    <button
+                      type="button"
+                      className="cs-zone-remove"
+                      onClick={() => removeZone(idx)}
+                      title={`Remove zone ${zone.id}`}
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
-                <div className="setting-input-group">
-                  <label>Fallback Per KG Fee (NPR)</label>
+
+                {/* Zone Body */}
+                <div className="cs-zone-body">
                   <input
-                    type="number"
-                    min="0"
-                    value={fallbackPerKg}
-                    onChange={(e) => setFallbackPerKg(parseFloat(e.target.value) || 0)}
+                    className="cs-zone-places"
+                    value={zone.places || ''}
+                    onChange={(e) => updateZone(idx, 'places', e.target.value)}
+                    placeholder="Cities & areas (a note for yourself)"
+                    maxLength={120}
                   />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* -------------------------------------------------------------------- */}
-      {/* TAB 3: SURCHARGES & COD HANDLING                                      */}
-      {/* -------------------------------------------------------------------- */}
-      {activeTab === 'surcharges' && (
-        <div>
-          <div className="settings-section-card">
-            <h3>Service Types, Priority Surcharges & Handling</h3>
-            <p>
-              Configure additional service fees for cash handling risk, express linehaul priority, and fragile insurance.
-            </p>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '20px' }}>
-              {/* COD Handling */}
-              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                <h4 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 700, color: '#1e293b' }}>
-                  💵 Cash on Delivery (COD) Handling
-                </h4>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div className="setting-input-group">
-                    <label>COD Fee (%)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="10"
-                      value={codFeePercent}
-                      onChange={(e) => setCodFeePercent(parseFloat(e.target.value) || 0)}
-                    />
-                    <small style={{ color: '#64748b', fontSize: '11px' }}>Standard: 1.0% – 1.5%</small>
-                  </div>
-
-                  <div className="setting-input-group">
-                    <label>Minimum COD Fee (NPR)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="5"
-                      value={codFeeMin}
-                      onChange={(e) => setCodFeeMin(parseFloat(e.target.value) || 0)}
-                    />
-                    <small style={{ color: '#64748b', fontSize: '11px' }}>Standard: NPR 30 – 50</small>
-                  </div>
-                </div>
-              </div>
-
-              {/* Express & Same-Day Multipliers */}
-              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                <h4 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 700, color: '#1e293b' }}>
-                  ⚡ Speed & Priority Multipliers
-                </h4>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div className="setting-input-group">
-                    <label>Express Multiplier (×)</label>
-                    <input
-                      type="number"
-                      step="0.05"
-                      min="1"
-                      max="3"
-                      value={expressMultiplier}
-                      onChange={(e) => setExpressMultiplier(parseFloat(e.target.value) || 1)}
-                    />
-                    <small style={{ color: '#64748b', fontSize: '11px' }}>1.4 = +40% priority surcharge</small>
-                  </div>
-
-                  <div className="setting-input-group">
-                    <label>Same-Day Multiplier (×)</label>
-                    <input
-                      type="number"
-                      step="0.05"
-                      min="1"
-                      max="4"
-                      value={sameDayMultiplier}
-                      onChange={(e) => setSameDayMultiplier(parseFloat(e.target.value) || 1)}
-                    />
-                    <small style={{ color: '#64748b', fontSize: '11px' }}>1.6 = +60% rush surcharge</small>
-                  </div>
-                </div>
-              </div>
-
-              {/* Fragile & Insurance */}
-              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                <h4 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 700, color: '#1e293b' }}>
-                  🛡️ Fragile & Special Handling
-                </h4>
-                <div className="setting-input-group">
-                  <label>Fragile Packaging / Insurance Fee (NPR)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="10"
-                    value={fragileFee}
-                    onChange={(e) => setFragileFee(parseFloat(e.target.value) || 0)}
-                  />
-                  <small style={{ color: '#64748b', fontSize: '11px' }}>Fixed surcharge for bubble wrap, crating, and special handling.</small>
-                </div>
-              </div>
-
-              {/* Tax / VAT */}
-              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                <h4 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 700, color: '#1e293b' }}>
-                  🧾 Invoice Tax & VAT
-                </h4>
-                <div className="setting-input-group">
-                  <label>Tax Rate (%)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="30"
-                    step="0.5"
-                    value={taxPercent}
-                    onChange={(e) => setTaxPercent(parseFloat(e.target.value) || 0)}
-                  />
-                  <small style={{ color: '#64748b', fontSize: '11px' }}>Nepal VAT rate is 13% for registered logistics invoices.</small>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* -------------------------------------------------------------------- */}
-      {/* TAB 4: MERCHANT VOLUME DISCOUNTS                                      */}
-      {/* -------------------------------------------------------------------- */}
-      {activeTab === 'discounts' && (
-        <div>
-          <div className="settings-section-card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <div>
-                <h3>Monthly Merchant Volume Discounts</h3>
-                <p style={{ margin: 0 }}>
-                  Incentivize local Butwal e-commerce brands, wholesalers, and boutiques to ship consistently with RTC.
-                  Discounts are automatically calculated based on monthly shipment volume.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="btn-save-charges"
-                style={{ background: '#10b981', padding: '7px 14px', fontSize: '12.5px' }}
-                onClick={handleAddDiscountTier}
-              >
-                <Plus size={14} /> Add Tier
-              </button>
-            </div>
-
-            <table className="discount-table">
-              <thead>
-                <tr>
-                  <th>Tier Label</th>
-                  <th>Minimum Monthly Orders</th>
-                  <th>Discount Percentage</th>
-                  <th style={{ width: '80px', textAlign: 'center' }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {volumeDiscounts.map((tier, idx) => (
-                  <tr key={idx}>
-                    <td>
-                      <input
-                        type="text"
-                        value={tier.label || ''}
-                        onChange={(e) => handleDiscountTierChange(idx, 'label', e.target.value)}
-                        style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: '6px' }}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        min="1"
-                        step="10"
-                        value={tier.min_orders}
-                        onChange={(e) => handleDiscountTierChange(idx, 'min_orders', e.target.value)}
-                        style={{ width: '140px', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: '6px' }}
-                      />
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div className="cs-two">
+                    <label className="cs-field">
+                      First {pricing.first_weight_kg || 2} kg
+                      <span className="cs-input-wrap">
+                        <em>NPR</em>
                         <input
                           type="number"
-                          min="1"
-                          max="50"
-                          step="1"
-                          value={tier.discount_percent}
-                          onChange={(e) => handleDiscountTierChange(idx, 'discount_percent', e.target.value)}
-                          style={{ width: '80px', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: '6px' }}
+                          min="0"
+                          value={zone.base === '' ? '' : zone.base}
+                          onChange={(e) => updateZone(idx, 'base', e.target.value)}
                         />
-                        <span style={{ fontWeight: 700, color: '#15803d' }}>%</span>
-                      </div>
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveDiscountTier(idx)}
-                        style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}
-                        title="Delete tier"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      </span>
+                      {zone.suggested && <small>Suggested {zone.suggested}</small>}
+                    </label>
+
+                    <label className="cs-field">
+                      Each extra kg
+                      <span className="cs-input-wrap">
+                        <em>NPR</em>
+                        <input
+                          type="number"
+                          min="0"
+                          value={zone.extra_per_kg === '' ? '' : zone.extra_per_kg}
+                          onChange={(e) => updateZone(idx, 'extra_per_kg', e.target.value)}
+                        />
+                      </span>
+                      <small>Suggested 50 – 100</small>
+                    </label>
+                  </div>
+
+                  {/* Districts section */}
+                  <div className="cs-districts">
+                    <div className="cs-districts-head">
+                      <strong>{(zone.districts || []).length}</strong> district{(zone.districts || []).length === 1 ? '' : 's'}
+                      {isDefault && <span className="cs-default-tag">Default</span>}
+                    </div>
+
+                    <div className="cs-chips">
+                      {shownDistricts.map((d) => (
+                        <span key={d} className="cs-chip">{d}</span>
+                      ))}
+                      {remainingCount > 0 && (
+                        <span className="cs-chip cs-chip-more">+{remainingCount} more</span>
+                      )}
+                      {!(zone.districts || []).length && (
+                        <span className="cs-none">No districts yet</span>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      className="cs-edit-districts"
+                      onClick={() => { setActiveModalZoneIdx(idx); setDistrictSearch(''); }}
+                    >
+                      Choose districts
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      )}
 
-      {/* -------------------------------------------------------------------- */}
-      {/* TAB 5: LIVE PRICING SIMULATOR                                         */}
-      {/* -------------------------------------------------------------------- */}
-      {activeTab === 'simulator' && (
-        <div className="simulator-layout">
-          {/* Inputs Section */}
-          <div className="settings-section-card">
-            <h3>Live Pricing Simulator & Test Quote</h3>
-            <p>
-              Test any package dimensions and delivery destination from Butwal to verify how your pricing rules perform in real-time.
-            </p>
+        {/* Bottom of Zones: Add zone + Default fallback */}
+        <div className="cs-zone-actions">
+          <button type="button" className="btn-add-zone" onClick={addZone}>
+            + Add a zone
+          </button>
+          <label className="cs-inline">
+            Districts that no zone lists are charged as
+            <select
+              value={pricing.default_zone}
+              onChange={(e) => updatePricing({ default_zone: e.target.value })}
+            >
+              {pricing.zones.map((z) => (
+                <option key={z.id} value={z.id}>
+                  Zone {z.id} — {z.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </section>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <div className="setting-input-group">
-                <label>Destination Zone</label>
-                <select value={simZoneId} onChange={(e) => setSimZoneId(e.target.value)}>
-                  {zones.map((z) => (
-                    <option key={z.id} value={z.id}>
-                      {z.name} (Base: NPR {z.base_rate} + {z.extra_kg_rate}/kg)
-                    </option>
-                  ))}
-                </select>
-              </div>
+      {/* ------------------------------------------------------------------ */}
+      {/* SECTION 2: WEIGHT & PARCEL SIZE                                    */}
+      {/* ------------------------------------------------------------------ */}
+      <section className="cs-section">
+        <h2>
+          <span className="cs-step">2</span> Weight &amp; parcel size
+        </h2>
+        <p className="cs-help">
+          The first slab of weight is covered by the zone's base price; every extra kilogram (or part of one) adds the zone's per-kg price. Big but light parcels (pillows, clothes, toys) are charged by <strong>size</strong>: we bill whichever is higher — the actual weight or the volumetric weight.
+        </p>
 
-              <div className="setting-input-group">
-                <label>Delivery Service Priority</label>
-                <select value={simService} onChange={(e) => setSimService(e.target.value)}>
-                  <option value="standard">Standard Delivery (1.0×)</option>
-                  <option value="express">Express Delivery ({expressMultiplier}×)</option>
-                  <option value="sameday">Same-Day Priority ({sameDayMultiplier}×)</option>
-                </select>
-              </div>
-
-              <div className="setting-input-group">
-                <label>Actual Weight (KG)</label>
+        <div className="cs-card-row">
+          <div className="cs-card">
+            <label className="cs-field">
+              Base weight covered by the base price
+              <span className="cs-input-wrap">
                 <input
                   type="number"
                   min="0.1"
-                  step="0.1"
-                  value={simActualWeight}
-                  onChange={(e) => setSimActualWeight(e.target.value)}
+                  step="any"
+                  value={pricing.first_weight_kg === '' ? '' : pricing.first_weight_kg}
+                  onChange={(e) => updatePricing({ first_weight_kg: e.target.value === '' ? '' : Number(e.target.value) })}
                 />
-              </div>
-
-              <div className="setting-input-group">
-                <label>Cash on Delivery (NPR)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="100"
-                  value={simCodAmount}
-                  onChange={(e) => setSimCodAmount(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {/* Dimensions */}
-            <div style={{ marginTop: '16px', background: '#f8fafc', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-              <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
-                Box Dimensions (Length × Width × Height in cm)
-              </label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-                <div className="setting-input-group">
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="Length (cm)"
-                    value={simLength}
-                    onChange={(e) => setSimLength(e.target.value)}
-                  />
-                </div>
-                <div className="setting-input-group">
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="Width (cm)"
-                    value={simWidth}
-                    onChange={(e) => setSimWidth(e.target.value)}
-                  />
-                </div>
-                <div className="setting-input-group">
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="Height (cm)"
-                    value={simHeight}
-                    onChange={(e) => setSimHeight(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>
-                Calculated Volumetric Weight: <b>{simVolumetric} KG</b>
-              </div>
-            </div>
-
-            {/* Checkboxes & Partner Discounts */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '10px' }}>
-                <input
-                  type="checkbox"
-                  id="sim-fragile-check"
-                  checked={simIsFragile}
-                  onChange={(e) => setSimIsFragile(e.target.checked)}
-                  style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                />
-                <label htmlFor="sim-fragile-check" style={{ fontSize: '13px', fontWeight: 600, color: '#1f2937', cursor: 'pointer' }}>
-                  Fragile Item (+NPR {fragileFee})
-                </label>
-              </div>
-
-              <div className="setting-input-group">
-                <label>Merchant Partner Discount</label>
-                <select value={simDiscountPct} onChange={(e) => setSimDiscountPct(parseFloat(e.target.value) || 0)}>
-                  <option value={0}>No Discount (0%)</option>
-                  {volumeDiscounts.map((d, i) => (
-                    <option key={i} value={d.discount_percent}>
-                      {d.label} ({d.discount_percent}%)
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+                <em>kg</em>
+              </span>
+              <small>Usually 1 kg</small>
+            </label>
           </div>
 
-          {/* Result Receipt Card */}
-          <div className="simulator-receipt-card">
-            <div className="simulator-receipt-head">
-              <h4>Estimated Freight Breakdown</h4>
-              <span style={{ fontSize: '11px', color: '#7c2d12' }}>Dispatched from Butwal Hub</span>
-            </div>
+          <div className="cs-card">
+            <label className="cs-switch">
+              <input
+                type="checkbox"
+                checked={pricing.volumetric?.enabled || false}
+                onChange={(e) => updatePricing({
+                  volumetric: { ...pricing.volumetric, enabled: e.target.checked },
+                })}
+              />
+              <span className="cs-switch-track" />
+              <span>Charge by size for bulky parcels</span>
+            </label>
 
-            <div className="receipt-line">
-              <span>Actual Scale Weight:</span>
-              <b>{simActualWeight} KG</b>
-            </div>
-            <div className="receipt-line">
-              <span>Volumetric Weight:</span>
-              <b>{simVolumetric} KG</b>
-            </div>
-            <div className="receipt-line" style={{ background: '#ffedd5', padding: '6px 8px', borderRadius: '6px', margin: '4px 0' }}>
-              <span>Billable Weight:</span>
-              <b style={{ color: '#c2410c' }}>{simBillableWeight} KG (Max)</b>
-            </div>
+            <label className="cs-field">
+              Volumetric divisor
+              <span className="cs-input-wrap">
+                <input
+                  type="number"
+                  min="1"
+                  step="any"
+                  disabled={!pricing.volumetric?.enabled}
+                  value={pricing.volumetric?.divisor === '' ? '' : pricing.volumetric?.divisor}
+                  onChange={(e) => updatePricing({
+                    volumetric: { ...pricing.volumetric, divisor: e.target.value === '' ? '' : Number(e.target.value) },
+                  })}
+                />
+              </span>
+              <small>Standard courier value is 5000</small>
+            </label>
 
-            <hr style={{ border: 'none', borderTop: '1px dashed #fdba74', margin: '10px 0' }} />
-
-            <div className="receipt-line">
-              <span>Base Freight (1st KG):</span>
-              <span>NPR {zoneBase.toFixed(2)}</span>
-            </div>
-            <div className="receipt-line">
-              <span>Extra Weight Charge:</span>
-              <span>NPR {extraWeightCharge.toFixed(2)}</span>
-            </div>
-            {serviceMultiplier > 1 && (
-              <div className="receipt-line">
-                <span>Speed Surcharge ({serviceMultiplier}×):</span>
-                <span>+NPR {(speedAdjustedFreight - standardFreight).toFixed(2)}</span>
-              </div>
-            )}
-            {codFinalFee > 0 && (
-              <div className="receipt-line">
-                <span>COD Fee ({codFeePercent}%, Min NPR {codFeeMin}):</span>
-                <span>+NPR {codFinalFee.toFixed(2)}</span>
-              </div>
-            )}
-            {fragileFinalFee > 0 && (
-              <div className="receipt-line">
-                <span>Fragile Handling Fee:</span>
-                <span>+NPR {fragileFinalFee.toFixed(2)}</span>
-              </div>
-            )}
-            {discountAmount > 0 && (
-              <div className="receipt-line" style={{ color: '#16a34a' }}>
-                <span>Partner Discount ({simDiscountPct}%):</span>
-                <span>-NPR {discountAmount.toFixed(2)}</span>
-              </div>
-            )}
-            {taxAmount > 0 && (
-              <div className="receipt-line">
-                <span>VAT / Tax ({taxPercent}%):</span>
-                <span>+NPR {taxAmount.toFixed(2)}</span>
-              </div>
-            )}
-
-            <div className="receipt-line total">
-              <span>Total Charge:</span>
-              <span>NPR {finalTotal.toFixed(2)}</span>
+            <div className="cs-formula">
+              Volumetric weight (kg) = Length × Width × Height (cm) ÷ <strong>{pricing.volumetric?.divisor || 5000}</strong>
             </div>
           </div>
         </div>
-      )}
+      </section>
 
-      {/* Sticky Save Bar */}
-      <div
-        style={{
-          marginTop: '30px',
-          padding: '14px 20px',
-          background: '#ffffff',
-          borderRadius: '12px',
-          border: '1px solid #e5e7eb',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-        }}
-      >
-        <span style={{ fontSize: '13px', color: '#6b7280' }}>
-          Configured for <b>{hubCity} Head Office</b> nationwide courier logistics.
-        </span>
+      {/* ------------------------------------------------------------------ */}
+      {/* SECTION 3: DELIVERY SPEED                                          */}
+      {/* ------------------------------------------------------------------ */}
+      <section className="cs-section">
+        <h2>
+          <span className="cs-step">3</span> Delivery speed
+        </h2>
+        <p className="cs-help">
+          Faster service types cost more. Enter the extra percentage added on top of the standard delivery charge (suggested <strong>30 – 50%</strong> for Express or Same Day). Leave 0 for standard delivery.
+        </p>
+
+        <table className="cs-table">
+          <thead>
+            <tr>
+              <th>SERVICE TYPE</th>
+              <th>EXTRA CHARGE</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(pricing.services || []).map((srv, idx) => (
+              <tr key={srv.name || idx}>
+                <td style={{ fontWeight: 600 }}>{srv.name}</td>
+                <td>
+                  <label className="cs-field">
+                    <span className="cs-input-wrap" style={{ maxWidth: '140px' }}>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={srv.surcharge_percent === '' ? '' : srv.surcharge_percent}
+                        onChange={(e) => {
+                          const services = [...pricing.services];
+                          services[idx] = { ...services[idx], surcharge_percent: e.target.value === '' ? '' : Number(e.target.value) };
+                          updatePricing({ services });
+                        }}
+                      />
+                      <em>%</em>
+                    </span>
+                  </label>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* SECTION 4: EXTRA SERVICES                                          */}
+      {/* ------------------------------------------------------------------ */}
+      <section className="cs-section">
+        <h2>
+          <span className="cs-step">4</span> Extra services
+        </h2>
+        <p className="cs-help">
+          Optional fees for cash handling, delicate parcels and valuable items. Switch off any you don't want to charge.
+        </p>
+
+        <div className="cs-card-row cs-three">
+          {/* Cash on Delivery */}
+          <div className="cs-card">
+            <div className="cs-card-title">💵 Cash on Delivery</div>
+            <label className="cs-switch">
+              <input
+                type="checkbox"
+                checked={pricing.cod?.enabled || false}
+                onChange={(e) => updatePricing({ cod: { ...pricing.cod, enabled: e.target.checked } })}
+              />
+              <span className="cs-switch-track" />
+              <span>Charge a COD handling fee</span>
+            </label>
+
+            <label className="cs-field">
+              Fee as % of the COD amount
+              <span className="cs-input-wrap">
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  disabled={!pricing.cod?.enabled}
+                  value={pricing.cod?.percent === '' ? '' : pricing.cod?.percent}
+                  onChange={(e) => updatePricing({ cod: { ...pricing.cod, percent: e.target.value === '' ? '' : Number(e.target.value) } })}
+                />
+                <em>%</em>
+              </span>
+              <small>Suggested 1 – 1.5%</small>
+            </label>
+
+            <label className="cs-field">
+              But at least
+              <span className="cs-input-wrap">
+                <em>NPR</em>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  disabled={!pricing.cod?.enabled}
+                  value={pricing.cod?.minimum === '' ? '' : pricing.cod?.minimum}
+                  onChange={(e) => updatePricing({ cod: { ...pricing.cod, minimum: e.target.value === '' ? '' : Number(e.target.value) } })}
+                />
+              </span>
+              <small>Suggested 30 – 50</small>
+            </label>
+          </div>
+
+          {/* Fragile Handling */}
+          <div className="cs-card">
+            <div className="cs-card-title">🥚 Fragile handling</div>
+            <label className="cs-switch">
+              <input
+                type="checkbox"
+                checked={pricing.fragile?.enabled || false}
+                onChange={(e) => updatePricing({ fragile: { ...pricing.fragile, enabled: e.target.checked } })}
+              />
+              <span className="cs-switch-track" />
+              <span>Charge for fragile parcels</span>
+            </label>
+
+            <label className="cs-field">
+              Extra fee per fragile parcel
+              <span className="cs-input-wrap">
+                <em>NPR</em>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  disabled={!pricing.fragile?.enabled}
+                  value={pricing.fragile?.fee === '' ? '' : pricing.fragile?.fee}
+                  onChange={(e) => updatePricing({ fragile: { ...pricing.fragile, fee: e.target.value === '' ? '' : Number(e.target.value) } })}
+                />
+              </span>
+              <small>For electronics, glassware, delicate items</small>
+            </label>
+          </div>
+
+          {/* High-value insurance */}
+          <div className="cs-card">
+            <div className="cs-card-title">🛡️ High-value insurance</div>
+            <label className="cs-switch">
+              <input
+                type="checkbox"
+                checked={pricing.insurance?.enabled || false}
+                onChange={(e) => updatePricing({ insurance: { ...pricing.insurance, enabled: e.target.checked } })}
+              />
+              <span className="cs-switch-track" />
+              <span>Charge insurance on valuable items</span>
+            </label>
+
+            <label className="cs-field">
+              Applies when item value is at least
+              <span className="cs-input-wrap">
+                <em>NPR</em>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  disabled={!pricing.insurance?.enabled}
+                  value={pricing.insurance?.threshold === '' ? '' : pricing.insurance?.threshold}
+                  onChange={(e) => updatePricing({ insurance: { ...pricing.insurance, threshold: e.target.value === '' ? '' : Number(e.target.value) } })}
+                />
+              </span>
+            </label>
+
+            <label className="cs-field">
+              Insurance rate (% of item value)
+              <span className="cs-input-wrap">
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  disabled={!pricing.insurance?.enabled}
+                  value={pricing.insurance?.percent === '' ? '' : pricing.insurance?.percent}
+                  onChange={(e) => updatePricing({ insurance: { ...pricing.insurance, percent: e.target.value === '' ? '' : Number(e.target.value) } })}
+                />
+                <em>%</em>
+              </span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* SECTION 5: MERCHANT VOLUME DISCOUNTS                                */}
+      {/* ------------------------------------------------------------------ */}
+      <section className="cs-section">
+        <h2>
+          <span className="cs-step">5</span> Merchant volume discounts
+        </h2>
+        <p className="cs-help">
+          Reward vendors who ship a lot. Once a vendor has booked <strong>at least</strong> the number of shipments below <strong>in the current month</strong>, their next shipments get that % off the delivery charge (not the extra service fees).
+        </p>
+
+        <label className="cs-switch">
+          <input
+            type="checkbox"
+            checked={pricing.volume_discounts?.enabled || false}
+            onChange={(e) => updatePricing({
+              volume_discounts: { ...pricing.volume_discounts, enabled: e.target.checked },
+            })}
+          />
+          <span className="cs-switch-track" />
+          <span>Give volume discounts</span>
+        </label>
+
+        <div className="cs-tiers">
+          {(pricing.volume_discounts?.tiers || []).map((tier, idx) => (
+            <div key={idx} className="cs-tier">
+              <label className="cs-field">
+                Shipments in a month (at least)
+                <span className="cs-input-wrap">
+                  <input
+                    type="number"
+                    min="1"
+                    disabled={!pricing.volume_discounts?.enabled}
+                    value={tier.min_shipments === '' ? '' : tier.min_shipments}
+                    onChange={(e) => updateDiscountTier(idx, 'min_shipments', e.target.value)}
+                  />
+                </span>
+              </label>
+
+              <label className="cs-field">
+                Discount
+                <span className="cs-input-wrap">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    disabled={!pricing.volume_discounts?.enabled}
+                    value={tier.percent === '' ? '' : tier.percent}
+                    onChange={(e) => updateDiscountTier(idx, 'percent', e.target.value)}
+                  />
+                  <em>% off</em>
+                </span>
+              </label>
+
+              <button
+                type="button"
+                className="btn-danger-text"
+                onClick={() => removeDiscountStep(idx)}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+
         <button
           type="button"
-          className="btn-save-charges"
-          onClick={handleSaveAll}
+          className="btn-add-zone"
+          style={{ marginTop: '10px' }}
+          disabled={!pricing.volume_discounts?.enabled}
+          onClick={addDiscountStep}
         >
-          <Save size={15} />
-          Save All Changes
+          + Add another discount step
         </button>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* SECTION 6: TAX                                                      */}
+      {/* ------------------------------------------------------------------ */}
+      <section className="cs-section">
+        <h2>
+          <span className="cs-step">6</span> Tax
+        </h2>
+        <p className="cs-help">
+          Tax is added when invoices are generated (it isn't part of the delivery charge shown on an order).
+        </p>
+
+        <div className="cs-card" style={{ maxWidth: '280px' }}>
+          <label className="cs-field">
+            Tax on invoices
+            <span className="cs-input-wrap">
+              <input
+                type="number"
+                min="0"
+                step="any"
+                value={pricing.tax_percent === '' ? '' : pricing.tax_percent}
+                onChange={(e) => updatePricing({ tax_percent: e.target.value === '' ? '' : Number(e.target.value) })}
+              />
+              <em>%</em>
+            </span>
+          </label>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* SECTION 7: TRY A PRICE (CALCULATOR)                                 */}
+      {/* ------------------------------------------------------------------ */}
+      <section className="cs-section cs-try">
+        <h2>🧮 Try a price</h2>
+        <p className="cs-help">
+          See what a delivery would cost with the rates above — even before you save them.
+        </p>
+
+        <div className="cs-calc-grid">
+          <label className="cs-field">
+            Deliver to (district)
+            <select
+              value={calcDistrict}
+              onChange={(e) => setCalcDistrict(e.target.value)}
+            >
+              {Object.entries(NEPAL_PROVINCES).map(([prov, districts]) => (
+                <optgroup key={prov} label={prov}>
+                  {districts.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+
+          <label className="cs-field">
+            Weight (kg)
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={calcWeight}
+              onChange={(e) => setCalcWeight(e.target.value)}
+            />
+          </label>
+
+          <label className="cs-field">
+            Service
+            <select
+              value={calcService}
+              onChange={(e) => setCalcService(e.target.value)}
+            >
+              {(pricing.services || []).map((s) => (
+                <option key={s.name} value={s.name}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="cs-field">
+            Length (cm)
+            <input
+              type="number"
+              min="0"
+              placeholder="optional"
+              value={calcL}
+              onChange={(e) => setCalcL(e.target.value)}
+            />
+          </label>
+
+          <label className="cs-field">
+            Width (cm)
+            <input
+              type="number"
+              min="0"
+              placeholder="optional"
+              value={calcW}
+              onChange={(e) => setCalcW(e.target.value)}
+            />
+          </label>
+
+          <label className="cs-field">
+            Height (cm)
+            <input
+              type="number"
+              min="0"
+              placeholder="optional"
+              value={calcH}
+              onChange={(e) => setCalcH(e.target.value)}
+            />
+          </label>
+
+          <label className="cs-field">
+            COD amount (NPR)
+            <input
+              type="number"
+              min="0"
+              value={calcCod}
+              onChange={(e) => setCalcCod(e.target.value)}
+            />
+          </label>
+
+          <label className="cs-field">
+            Item value (NPR)
+            <input
+              type="number"
+              min="0"
+              value={calcItemValue}
+              onChange={(e) => setCalcItemValue(e.target.value)}
+            />
+          </label>
+
+          <label className="cs-field">
+            Vendor's shipments so far this month
+            <input
+              type="number"
+              min="0"
+              value={calcMonthly}
+              onChange={(e) => setCalcMonthly(e.target.value)}
+            />
+          </label>
+
+          <label className="cs-check" style={{ paddingBottom: '6px' }}>
+            <input
+              type="checkbox"
+              checked={calcFragile}
+              onChange={(e) => setCalcFragile(e.target.checked)}
+            />
+            <span>🥚 Fragile parcel</span>
+          </label>
+        </div>
+
+        {/* Live Calculation Output Card */}
+        {calcResult && (
+          <div className="cs-result">
+            <div className="cs-result-head">
+              <span className="cs-zone-badge">
+                Zone {calcResult.zone.id} · {calcResult.zone.name}
+              </span>
+              <span className="cs-weight-note">
+                Billed on <strong>{calcResult.billableKg} kg</strong>
+                {calcResult.volumetricKg > calcResult.actualKg && (
+                  <span> (size-based — bigger than actual {calcResult.actualKg} kg)</span>
+                )}
+              </span>
+            </div>
+
+            <div className="cs-calc-line">
+              <span>Zone {calcResult.zone.id} base rate (first {calcResult.firstKg} kg)</span>
+              <span>{fmtMoney(calcResult.base)}</span>
+            </div>
+
+            {calcResult.extraKg > 0 && (
+              <div className="cs-calc-line">
+                <span>Extra weight ({calcResult.extraKg} kg × NPR {calcResult.zone.extra_per_kg})</span>
+                <span>+{fmtMoney(calcResult.extra)}</span>
+              </div>
+            )}
+
+            {calcResult.express > 0 && (
+              <div className="cs-calc-line">
+                <span>{calcService} delivery surcharge</span>
+                <span>+{fmtMoney(calcResult.express)}</span>
+              </div>
+            )}
+
+            {calcResult.codFee > 0 && (
+              <div className="cs-calc-line">
+                <span>Cash on delivery handling fee</span>
+                <span>+{fmtMoney(calcResult.codFee)}</span>
+              </div>
+            )}
+
+            {calcResult.fragileFee > 0 && (
+              <div className="cs-calc-line">
+                <span>Fragile parcel surcharge</span>
+                <span>+{fmtMoney(calcResult.fragileFee)}</span>
+              </div>
+            )}
+
+            {calcResult.insuranceFee > 0 && (
+              <div className="cs-calc-line">
+                <span>High-value parcel insurance</span>
+                <span>+{fmtMoney(calcResult.insuranceFee)}</span>
+              </div>
+            )}
+
+            {calcResult.volumeDiscount > 0 && (
+              <div className="cs-calc-line" style={{ color: '#16a34a' }}>
+                <span>Monthly vendor volume discount</span>
+                <span>-{fmtMoney(calcResult.volumeDiscount)}</span>
+              </div>
+            )}
+
+            <div className="cs-calc-total">
+              <span>Delivery charge</span>
+              <span className="cs-calc-total-amount">{fmtMoney(calcResult.total)}</span>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Error message */}
+      {errorMessage && (
+        <p className="form-error" style={{ marginBottom: '14px' }}>
+          {errorMessage}
+        </p>
+      )}
+
+      {/* Bottom Sticky Action Bar */}
+      <div className="cs-savebar">
+        <button type="button" className="btn-save-red" onClick={handleSave}>
+          Save changes
+        </button>
+        <button type="button" className="btn-reset-light" onClick={handleReset}>
+          Reset to suggested rates
+        </button>
+        {saveNote && <span className="cs-note">✓ {saveNote}</span>}
       </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* DISTRICT PICKER MODAL                                              */}
+      {/* ------------------------------------------------------------------ */}
+      {activeModalZone && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px',
+          }}
+          onClick={() => setActiveModalZoneIdx(null)}
+        >
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: '12px',
+              maxWidth: '560px',
+              width: '100%',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              padding: '20px 24px',
+              boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800 }}>
+                Districts in Zone {activeModalZone.id} — {activeModalZone.name}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setActiveModalZoneIdx(null)}
+                style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#6b7280' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ fontSize: '12.5px', color: '#6b7280', marginBottom: '12px' }}>
+              Tick the districts that belong to this zone. A district that another zone already has will be moved here.
+            </div>
+
+            <input
+              type="text"
+              placeholder="Search districts..."
+              value={districtSearch}
+              onChange={(e) => setDistrictSearch(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                fontSize: '13px',
+                marginBottom: '10px',
+                boxSizing: 'border-box',
+              }}
+            />
+
+            <div className="cs-dist-count">
+              {(activeModalZone.districts || []).length} selected
+            </div>
+
+            <div className="cs-dist-list">
+              {Object.entries(NEPAL_PROVINCES).map(([prov, districts]) => {
+                const q = districtSearch.trim().toLowerCase();
+                const filtered = districts.filter((d) => !q || d.toLowerCase().includes(q));
+                if (!filtered.length) return null;
+
+                return (
+                  <div key={prov}>
+                    <div className="cs-prov">{prov}</div>
+                    {filtered.map((d) => {
+                      const ownerZone = pricing.zones.find((z) => (z.districts || []).includes(d));
+                      const isChecked = ownerZone === activeModalZone;
+
+                      return (
+                        <label key={d} className="cs-dist-row">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setPricing((prev) => {
+                                const zones = prev.zones.map((z, idx) => {
+                                  // remove d from all zones
+                                  const cleanDistricts = (z.districts || []).filter((x) => x !== d);
+                                  // if this is the active modal zone and checked, add d
+                                  if (idx === activeModalZoneIdx && checked) {
+                                    cleanDistricts.push(d);
+                                  }
+                                  return { ...z, districts: cleanDistricts };
+                                });
+                                return { ...prev, zones };
+                              });
+                            }}
+                          />
+                          <span>{d}</span>
+                          {ownerZone && !isChecked && (
+                            <span className="cs-dist-tag">Zone {ownerZone.id}</span>
+                          )}
+                          {!ownerZone && (
+                            <span className="cs-dist-tag cs-dist-none">not in a zone</span>
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              className="btn-save-red"
+              style={{ marginTop: '16px', alignSelf: 'flex-start' }}
+              onClick={() => setActiveModalZoneIdx(null)}
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
