@@ -116,6 +116,62 @@ export const d1Api = {
     }
   },
 
+  // Read delivery service types from dedicated D1 table 'delivery_service_types'
+  getDeliveryServiceTypes: async (companyId = 1) => {
+    try {
+      const res = await fetch(`/api/delivery-service-types?company_id=${companyId}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Insert delivery service type into D1 table 'delivery_service_types'
+  addDeliveryServiceType: async (payload) => {
+    try {
+      const res = await fetch('/api/delivery-service-types', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(typeof payload === 'string' ? { name: payload, company_id: 1 } : payload),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Update delivery service type in D1 table 'delivery_service_types'
+  updateDeliveryServiceType: async (id, payload, companyId = 1) => {
+    try {
+      const res = await fetch(`/api/delivery-service-types/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: Number(id), company_id: Number(companyId), ...payload }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Delete delivery service type from D1 table 'delivery_service_types'
+  deleteDeliveryServiceType: async (id, companyId = 1) => {
+    try {
+      const res = await fetch(`/api/delivery-service-types/${id}?company_id=${companyId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: Number(id), company_id: Number(companyId) }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
   // Read branches from D1 table 'branches'
   getBranches: async (companyId = 1) => {
     try {

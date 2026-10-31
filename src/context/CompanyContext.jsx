@@ -87,6 +87,28 @@ export function CompanyProvider({ children }) {
         console.warn('Could not fetch D1 order_types:', err);
       });
 
+      // 2c. Hydrate dedicated delivery service types from Cloudflare remote D1 table 'delivery_service_types'
+      d1Api.getDeliveryServiceTypes(companyId).then((remoteTypes) => {
+        if (Array.isArray(remoteTypes) && remoteTypes.length > 0) {
+          setData((prev) => {
+            if (!prev) return prev;
+            const maxId = Math.max(...remoteTypes.map((st) => Number(st.id) || 1), prev.nextId?.deliveryServiceType || 1);
+            const updated = {
+              ...prev,
+              deliveryServiceTypes: remoteTypes,
+              nextId: {
+                ...prev.nextId,
+                deliveryServiceType: maxId + 1,
+              },
+            };
+            saveCompanyState(companyId, updated);
+            return updated;
+          });
+        }
+      }).catch((err) => {
+        console.warn('Could not fetch D1 delivery_service_types:', err);
+      });
+
       // 3. Hydrate live branches from Cloudflare remote D1 table 'branches'
       d1Api.getBranches(companyId).then((remoteBranches) => {
         if (Array.isArray(remoteBranches) && remoteBranches.length > 0) {
@@ -1229,21 +1251,80 @@ export function CompanyProvider({ children }) {
     });
   };
 
-  const addDeliveryServiceType = (name) => {
+  const addDeliveryServiceType = (payload) => {
+    const itemData = typeof payload === 'string'
+      ? { name: payload, code: payload.substring(0, 10).toUpperCase(), description: '', delivery_time: '', status: 'active' }
+      : {
+          name: payload.name || '',
+          code: payload.code || (payload.name ? payload.name.substring(0, 10).toUpperCase() : ''),
+          description: payload.description || '',
+          delivery_time: payload.delivery_time || '',
+          status: payload.status || 'active',
+        };
+
+    let tempId;
     updateData((prev) => {
-      const id = prev.nextId.deliveryServiceType;
-      const nextTypes = [...(prev.deliveryServiceTypes || []), { id, name }];
+      tempId = prev.nextId?.deliveryServiceType || Date.now();
+      const newItem = { id: tempId, company_id: companyId, ...itemData };
+      const nextTypes = [...(prev.deliveryServiceTypes || []), newItem];
       syncSettingToD1({ delivery_service_types: nextTypes });
       return {
         ...prev,
-        nextId: { ...prev.nextId, deliveryServiceType: id + 1 },
+        nextId: { ...prev.nextId, deliveryServiceType: tempId + 1 },
+        deliveryServiceTypes: nextTypes,
+      };
+    });
+
+    // Write to dedicated D1 table delivery_service_types
+    d1Api.addDeliveryServiceType({ company_id: companyId, ...itemData }).then((res) => {
+      if (res?.item?.id) {
+        updateData((prev) => ({
+          ...prev,
+          deliveryServiceTypes: (prev.deliveryServiceTypes || []).map((t) => (t.id === tempId ? res.item : t)),
+        }));
+      }
+    }).catch((err) => {
+      console.warn('Failed to insert delivery service type into D1:', err);
+    });
+  };
+
+  const updateDeliveryServiceType = (id, updates) => {
+    const numId = Number(id);
+
+    // Write to dedicated D1 table delivery_service_types
+    d1Api.updateDeliveryServiceType(numId, updates, companyId).then((res) => {
+      if (res?.item) {
+        updateData((prev) => ({
+          ...prev,
+          deliveryServiceTypes: (prev.deliveryServiceTypes || []).map((t) => (t.id === numId ? res.item : t)),
+        }));
+      }
+    }).catch((err) => {
+      console.warn('Failed to update delivery service type in D1:', err);
+    });
+
+    updateData((prev) => {
+      const nextTypes = (prev.deliveryServiceTypes || []).map((t) =>
+        t.id === numId ? { ...t, ...updates, updated_at: new Date().toISOString() } : t
+      );
+      syncSettingToD1({ delivery_service_types: nextTypes });
+      return {
+        ...prev,
         deliveryServiceTypes: nextTypes,
       };
     });
   };
+
   const deleteDeliveryServiceType = (id) => {
+    const numId = Number(id);
+
+    // Delete from dedicated D1 table delivery_service_types
+    d1Api.deleteDeliveryServiceType(numId, companyId).catch((err) => {
+      console.warn('Failed to delete delivery service type from D1:', err);
+    });
+
     updateData((prev) => {
-      const nextTypes = (prev.deliveryServiceTypes || []).filter((t) => t.id !== Number(id));
+      const nextTypes = (prev.deliveryServiceTypes || []).filter((t) => t.id !== numId);
       syncSettingToD1({ delivery_service_types: nextTypes });
       return {
         ...prev,
@@ -1602,6 +1683,7 @@ export function CompanyProvider({ children }) {
         updateOrderType,
         deleteOrderType,
         addDeliveryServiceType,
+        updateDeliveryServiceType,
         deleteDeliveryServiceType,
         addProductCategory,
         deleteProductCategory,
