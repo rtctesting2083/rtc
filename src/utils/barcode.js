@@ -72,3 +72,4 @@ export function renderBarcodeSvg(rawText, options = {}) {
     </svg>
   `.trim();
 }
+

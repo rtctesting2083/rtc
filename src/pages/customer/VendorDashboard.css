@@ -103,11 +103,39 @@
 
 .vendor-nav-link .nav-icon {
   margin-right: 10px;
-  font-size: 15px;
   display: inline-flex;
   align-items: center;
-  width: 18px;
   justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--vendor-red, #dc2626);
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.vendor-nav-link .nav-icon svg {
+  width: 16px;
+  height: 16px;
+  stroke: var(--vendor-red, #dc2626);
+  stroke-width: 2;
+  flex-shrink: 0;
+}
+
+.vendor-nav-link:hover .nav-icon {
+  transform: scale(1.12);
+  color: var(--vendor-red-dark, #b91c1c);
+}
+
+.vendor-nav-link:hover .nav-icon svg {
+  stroke: var(--vendor-red-dark, #b91c1c);
+}
+
+.vendor-nav-link.active .nav-icon {
+  color: var(--vendor-red, #dc2626);
+}
+
+.vendor-nav-link.active .nav-icon svg {
+  stroke: var(--vendor-red, #dc2626);
 }
 
 .vendor-nav-link .nav-label {
@@ -115,28 +143,53 @@
 }
 
 .vendor-nav-link .nav-chevron {
-  font-size: 10px;
-  opacity: 0.6;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #9ca3af;
+  margin-left: 6px;
 }
 
 .vendor-submenu {
-  padding: 2px 0 6px 36px;
+  padding: 2px 0 6px 32px;
 }
 
 .vendor-sublink {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 7px;
   padding: 6px 10px;
   font-size: 12px;
   color: #6b7280;
   text-decoration: none;
   border-radius: 6px;
-  margin-bottom: 1px;
+  transition: all 0.15s ease;
 }
 
-.vendor-sublink:hover, .vendor-sublink.active {
-  color: var(--vendor-red);
+.vendor-sublink .sub-nav-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vendor-red, #dc2626);
+}
+
+.vendor-sublink .sub-nav-icon svg {
+  width: 13px;
+  height: 13px;
+  stroke: var(--vendor-red, #dc2626);
+  stroke-width: 2;
+}
+
+.vendor-sublink:hover {
+  color: var(--vendor-red, #dc2626);
+  background: var(--vendor-red-light, #fef2f2);
+}
+
+.vendor-sublink.active {
+  color: var(--vendor-red, #dc2626);
   font-weight: 600;
-  background: var(--vendor-red-light);
+  background: var(--vendor-red-light, #fef2f2);
 }
 
 .vendor-sidebar-footer {

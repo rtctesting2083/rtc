@@ -1,5 +1,25 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import {
+  Home,
+  User,
+  Users,
+  UserCog,
+  Bell,
+  Package,
+  ClipboardList,
+  PlusCircle,
+  Receipt,
+  FileText,
+  Search,
+  BarChart3,
+  BookOpen,
+  HelpCircle,
+  Boxes,
+  ChevronDown,
+  ChevronUp,
+  LogOut,
+} from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
@@ -95,7 +115,7 @@ export function CustomerLayout() {
                 onClick={closeMobileMenu}
                 className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
               >
-                <span className="nav-icon">🏠</span>
+                <span className="nav-icon"><Home size={16} strokeWidth={2} /></span>
                 <span className="nav-label">Dashboard</span>
               </NavLink>
             )}
@@ -105,7 +125,7 @@ export function CustomerLayout() {
               onClick={closeMobileMenu}
               className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
             >
-              <span className="nav-icon">🪪</span>
+              <span className="nav-icon"><User size={16} strokeWidth={2} /></span>
               <span className="nav-label">Profile</span>
             </NavLink>
 
@@ -115,7 +135,7 @@ export function CustomerLayout() {
                 onClick={closeMobileMenu}
                 className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
               >
-                <span className="nav-icon">👥</span>
+                <span className="nav-icon"><Users size={16} strokeWidth={2} /></span>
                 <span className="nav-label">Customers</span>
               </NavLink>
             )}
@@ -126,7 +146,7 @@ export function CustomerLayout() {
                 onClick={closeMobileMenu}
                 className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
               >
-                <span className="nav-icon">🧑‍💼</span>
+                <span className="nav-icon"><UserCog size={16} strokeWidth={2} /></span>
                 <span className="nav-label">Manage Staffs</span>
               </NavLink>
             )}
@@ -136,7 +156,7 @@ export function CustomerLayout() {
               onClick={closeMobileMenu}
               className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
             >
-              <span className="nav-icon">🔔</span>
+              <span className="nav-icon"><Bell size={16} strokeWidth={2} /></span>
               <span className="nav-label">Notice Board</span>
             </NavLink>
 
@@ -148,9 +168,9 @@ export function CustomerLayout() {
                   className={`vendor-nav-link ${orderOpen ? 'active' : ''}`}
                   onClick={() => setOrderOpen(!orderOpen)}
                 >
-                  <span className="nav-icon">📦</span>
+                  <span className="nav-icon"><Package size={16} strokeWidth={2} /></span>
                   <span className="nav-label">Order page</span>
-                  <span className="nav-chevron">{orderOpen ? '▴' : '▾'}</span>
+                  <span className="nav-chevron">{orderOpen ? <ChevronUp size={13} strokeWidth={2} /> : <ChevronDown size={13} strokeWidth={2} />}</span>
                 </button>
                 {orderOpen && (
                   <div className="vendor-submenu">
@@ -159,15 +179,17 @@ export function CustomerLayout() {
                       onClick={closeMobileMenu}
                       className={({ isActive }) => `vendor-sublink ${isActive ? 'active' : ''}`}
                     >
-                      My Order List
+                      <span className="sub-nav-icon"><ClipboardList size={13} strokeWidth={2} /></span>
+                      <span>My Order List</span>
                     </NavLink>
                     <button
                       type="button"
                       className="vendor-sublink cursor-pointer"
                       onClick={handleOpenCreateOrder}
-                      style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left' }}
+                      style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left', cursor: 'pointer' }}
                     >
-                      + Create Order
+                      <span className="sub-nav-icon"><PlusCircle size={13} strokeWidth={2} /></span>
+                      <span>+ Create Order</span>
                     </button>
                   </div>
                 )}
@@ -182,9 +204,9 @@ export function CustomerLayout() {
                   className={`vendor-nav-link ${accountsOpen ? 'active' : ''}`}
                   onClick={() => setAccountsOpen(!accountsOpen)}
                 >
-                  <span className="nav-icon">💳</span>
+                  <span className="nav-icon"><Receipt size={16} strokeWidth={2} /></span>
                   <span className="nav-label">Accounts</span>
-                  <span className="nav-chevron">{accountsOpen ? '▴' : '▾'}</span>
+                  <span className="nav-chevron">{accountsOpen ? <ChevronUp size={13} strokeWidth={2} /> : <ChevronDown size={13} strokeWidth={2} />}</span>
                 </button>
                 {accountsOpen && (
                   <div className="vendor-submenu">
@@ -193,7 +215,8 @@ export function CustomerLayout() {
                       onClick={closeMobileMenu}
                       className={({ isActive }) => `vendor-sublink ${isActive ? 'active' : ''}`}
                     >
-                      Invoices
+                      <span className="sub-nav-icon"><FileText size={13} strokeWidth={2} /></span>
+                      <span>Invoices</span>
                     </NavLink>
                   </div>
                 )}
@@ -207,9 +230,9 @@ export function CustomerLayout() {
                 className={`vendor-nav-link ${actionsOpen ? 'active' : ''}`}
                 onClick={() => setActionsOpen(!actionsOpen)}
               >
-                <span className="nav-icon">🚩</span>
+                <span className="nav-icon"><Search size={16} strokeWidth={2} /></span>
                 <span className="nav-label">Actions</span>
-                <span className="nav-chevron">{actionsOpen ? '▴' : '▾'}</span>
+                <span className="nav-chevron">{actionsOpen ? <ChevronUp size={13} strokeWidth={2} /> : <ChevronDown size={13} strokeWidth={2} />}</span>
               </button>
               {actionsOpen && (
                 <div className="vendor-submenu">
@@ -218,7 +241,8 @@ export function CustomerLayout() {
                     onClick={closeMobileMenu}
                     className={({ isActive }) => `vendor-sublink ${isActive ? 'active' : ''}`}
                   >
-                    Track a Package
+                    <span className="sub-nav-icon"><Search size={13} strokeWidth={2} /></span>
+                    <span>Track a Package</span>
                   </NavLink>
                 </div>
               )}
@@ -230,7 +254,7 @@ export function CustomerLayout() {
               onClick={closeMobileMenu}
               className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
             >
-              <span className="nav-icon">📊</span>
+              <span className="nav-icon"><BarChart3 size={16} strokeWidth={2} /></span>
               <span className="nav-label">Report</span>
             </NavLink>
 
@@ -241,9 +265,9 @@ export function CustomerLayout() {
                 className={`vendor-nav-link ${resourcesOpen ? 'active' : ''}`}
                 onClick={() => setResourcesOpen(!resourcesOpen)}
               >
-                <span className="nav-icon">📚</span>
+                <span className="nav-icon"><BookOpen size={16} strokeWidth={2} /></span>
                 <span className="nav-label">Resources</span>
-                <span className="nav-chevron">{resourcesOpen ? '▴' : '▾'}</span>
+                <span className="nav-chevron">{resourcesOpen ? <ChevronUp size={13} strokeWidth={2} /> : <ChevronDown size={13} strokeWidth={2} />}</span>
               </button>
               {resourcesOpen && (
                 <div className="vendor-submenu">
@@ -252,7 +276,8 @@ export function CustomerLayout() {
                     onClick={closeMobileMenu}
                     className={({ isActive }) => `vendor-sublink ${isActive ? 'active' : ''}`}
                   >
-                    Guidelines & FAQ
+                    <span className="sub-nav-icon"><HelpCircle size={13} strokeWidth={2} /></span>
+                    <span>Guidelines & FAQ</span>
                   </NavLink>
                 </div>
               )}
@@ -264,7 +289,7 @@ export function CustomerLayout() {
               onClick={closeMobileMenu}
               className={({ isActive }) => `vendor-nav-link ${isActive ? 'active' : ''}`}
             >
-              <span className="nav-icon">📮</span>
+              <span className="nav-icon"><Boxes size={16} strokeWidth={2} /></span>
               <span className="nav-label">Packaging</span>
             </NavLink>
           </nav>
@@ -274,7 +299,13 @@ export function CustomerLayout() {
         <div className="vendor-sidebar-footer">
           <div>Vendor dashboard — part of the company's shared data.</div>
           <div>
-            <button type="button" className="vendor-logout-btn" onClick={handleLogout}>
+            <button
+              type="button"
+              className="vendor-logout-btn"
+              onClick={handleLogout}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              <LogOut size={13} strokeWidth={2} style={{ color: '#dc2626' }} />
               Log out
             </button>
           </div>
@@ -318,15 +349,15 @@ export function CustomerLayout() {
             </div>
             {userDropdownOpen && (
               <div className="vendor-topbar-dropdown">
-                <NavLink to="/customer/profile" onClick={() => { setUserDropdownOpen(false); closeMobileMenu(); }}>
-                  👤 My Profile
+                <NavLink to="/customer/profile" onClick={() => { setUserDropdownOpen(false); closeMobileMenu(); }} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <User size={14} style={{ color: '#dc2626' }} /> My Profile
                 </NavLink>
-                <NavLink to="/customer/orders" onClick={() => { setUserDropdownOpen(false); closeMobileMenu(); }}>
-                  📦 Orders
+                <NavLink to="/customer/orders" onClick={() => { setUserDropdownOpen(false); closeMobileMenu(); }} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Package size={14} style={{ color: '#dc2626' }} /> Orders
                 </NavLink>
                 <hr style={{ margin: '4px 0', border: 'none', borderTop: '1px solid #f3f4f6' }} />
-                <button type="button" onClick={handleLogout}>
-                  🚪 Log out
+                <button type="button" onClick={handleLogout} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
+                  <LogOut size={14} style={{ color: '#dc2626' }} /> Log out
                 </button>
               </div>
             )}
