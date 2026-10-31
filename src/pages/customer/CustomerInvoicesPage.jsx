@@ -5,10 +5,10 @@ import { printInvoice } from '../../utils/print';
 import { fmtMoney, fmtDate } from '../../utils/helpers';
 
 export function CustomerInvoicesPage() {
-  const { currentCustomer } = useOutletContext();
-  const { company, invoices, shipments } = useCompany();
+  const { currentCustomer } = useOutletContext() || {};
+  const { company, invoices = [], shipments = [] } = useCompany() || {};
 
-  const myInvoices = invoices.filter((i) => i.customer_id === currentCustomer.id);
+  const myInvoices = (invoices || []).filter((i) => i.customer_id === currentCustomer?.id);
 
   const handlePrint = (inv) => {
     const billed = shipments.filter((s) => s.invoice_id === inv.id);

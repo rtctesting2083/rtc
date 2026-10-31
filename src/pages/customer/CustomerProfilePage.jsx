@@ -5,10 +5,14 @@ import { addressSummary } from '../../utils/helpers';
 import { VENDOR_DOCUMENTS } from '../../utils/constants';
 
 export function CustomerProfilePage() {
-  const { currentCustomer } = useOutletContext();
-  const { findBranch } = useCompany();
+  const { currentCustomer } = useOutletContext() || {};
+  const { findBranch } = useCompany() || {};
 
-  const branch = currentCustomer.branch_id ? findBranch(currentCustomer.branch_id) : null;
+  if (!currentCustomer) {
+    return <div style={{ padding: '24px' }}>Loading vendor profile...</div>;
+  }
+
+  const branch = currentCustomer?.branch_id && typeof findBranch === 'function' ? findBranch(currentCustomer.branch_id) : null;
 
   return (
     <div>

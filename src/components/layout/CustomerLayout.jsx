@@ -51,21 +51,22 @@ export function CustomerLayout() {
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const currentCustomer = (customers || []).find((c) => c.id === Number(session?.customerId)) || {
-    id: 1,
-    name: 'Jafar Ali',
-    email: 'jafar@rtc.com.np',
-    phone: '9847060846',
-    address: 'Butwal',
-    city: 'Butwal',
-  };
+  const currentCustomer = (customers || []).find((c) => Number(c.id) === Number(session?.customerId)) ||
+    (customers && customers.length > 0 ? customers[0] : null) || {
+      id: 1,
+      name: 'Himalayan Traders',
+      email: 'contact@himalayantraders.com.np',
+      phone: '9800000001',
+      address: 'Butwal',
+      city: 'Butwal',
+    };
 
   const staffUser = currentCustomer && session?.staffUserId
-    ? (currentCustomer.staffUsers || []).find((u) => u.id === Number(session.staffUserId))
+    ? (currentCustomer.staffUsers || []).find((u) => Number(u.id) === Number(session.staffUserId))
     : null;
 
   const staffRole = staffUser && currentCustomer
-    ? (currentCustomer.staffRoles || []).find((r) => r.id === Number(staffUser.role_id))
+    ? (currentCustomer.staffRoles || []).find((r) => Number(r.id) === Number(staffUser.role_id))
     : null;
 
   const allowedPermissions = staffRole ? staffRole.permissions : null;
@@ -92,9 +93,23 @@ export function CustomerLayout() {
     }
   };
 
-  const customerName = staffUser?.name || currentCustomer.name || 'Jafar Ali';
+  const customerName = (staffUser && typeof staffUser.name === 'string' && staffUser.name)
+    ? staffUser.name
+    : (currentCustomer && typeof currentCustomer.name === 'string' && currentCustomer.name)
+    ? currentCustomer.name
+    : 'Himalayan Traders';
+
   const customerInitials = initialsFor(customerName);
-  const locationCity = currentCustomer.city || currentCustomer.address || 'Butwal';
+
+  const locationCity = (() => {
+    if (!currentCustomer) return 'Butwal';
+    if (typeof currentCustomer.city === 'string' && currentCustomer.city) return currentCustomer.city;
+    if (typeof currentCustomer.address === 'string' && currentCustomer.address) return currentCustomer.address;
+    if (typeof currentCustomer.address === 'object' && currentCustomer.address) {
+      return currentCustomer.address.municipality || currentCustomer.address.district || currentCustomer.address.province || 'Butwal';
+    }
+    return 'Butwal';
+  })();
 
   return (
     <div className="vendor-shell">

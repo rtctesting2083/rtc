@@ -9,8 +9,8 @@ import { printShipmentLabel } from '../../utils/print';
 import { fmtMoney, fmtDate } from '../../utils/helpers';
 
 export function CustomerOrdersPage() {
-  const { currentCustomer, handleOpenCreateOrder } = useOutletContext();
-  const { company, shipments, findBranch, loadVendorOrders, deleteVendorOrder, chargeSettings } = useCompany();
+  const { currentCustomer, handleOpenCreateOrder } = useOutletContext() || {};
+  const { company, shipments = [], findBranch, loadVendorOrders, deleteVendorOrder, chargeSettings } = useCompany() || {};
   const { openModal } = useModal();
   const [searchParams, setSearchParams] = useSearchParams();
 

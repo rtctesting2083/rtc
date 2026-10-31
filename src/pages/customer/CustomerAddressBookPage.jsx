@@ -5,8 +5,8 @@ import { useModal } from '../../context/ModalContext';
 import { isValidMobile } from '../../utils/helpers';
 
 export function CustomerAddressBookPage() {
-  const { currentCustomer } = useOutletContext();
-  const { addVendorCustomer, updateVendorCustomer, deleteVendorCustomer, loadVendorCustomers } = useCompany();
+  const { currentCustomer } = useOutletContext() || {};
+  const { addVendorCustomer, updateVendorCustomer, deleteVendorCustomer, loadVendorCustomers } = useCompany() || {};
   const { openModal, closeModal } = useModal();
 
   const [search, setSearch] = useState('');
@@ -14,11 +14,20 @@ export function CustomerAddressBookPage() {
 
   // Load from D1 on mount
   useEffect(() => {
-    if (currentCustomer?.id) {
+    if (currentCustomer?.id && typeof loadVendorCustomers === 'function') {
       setLoading(true);
-      loadVendorCustomers(currentCustomer.id).finally(() => setLoading(false));
+      try {
+        const p = loadVendorCustomers(currentCustomer.id);
+        if (p && typeof p.finally === 'function') {
+          p.finally(() => setLoading(false));
+        } else {
+          setLoading(false);
+        }
+      } catch {
+        setLoading(false);
+      }
     }
-  }, [currentCustomer?.id]);
+  }, [currentCustomer?.id, loadVendorCustomers]);
 
   const rawList = currentCustomer?.vendorCustomers || [];
 

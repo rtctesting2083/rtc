@@ -21,8 +21,12 @@ import { fmtMoney, isToday } from '../../utils/helpers';
 
 export function CustomerDashboardPage() {
   const navigate = useNavigate();
-  const { currentCustomer, handleOpenCreateOrder, dateFilter } = useOutletContext();
-  const { shipments, invoices, loadVendorOrders } = useCompany();
+  const outletCtx = useOutletContext() || {};
+  const currentCustomer = outletCtx.currentCustomer;
+  const handleOpenCreateOrder = outletCtx.handleOpenCreateOrder;
+  const dateFilter = outletCtx.dateFilter;
+
+  const { shipments = [], invoices = [], loadVendorOrders } = useCompany() || {};
   const { openModal, closeModal } = useModal();
 
   const [loading, setLoading] = useState(false);
@@ -30,10 +34,19 @@ export function CustomerDashboardPage() {
 
   /* ── Load vendor orders from D1 ───────────────────────── */
   useEffect(() => {
-    if (!currentCustomer?.id) return;
+    if (!currentCustomer?.id || typeof loadVendorOrders !== 'function') return;
     setLoading(true);
-    loadVendorOrders(currentCustomer.id).finally(() => setLoading(false));
-  }, [currentCustomer?.id]);
+    try {
+      const p = loadVendorOrders(currentCustomer.id);
+      if (p && typeof p.finally === 'function') {
+        p.finally(() => setLoading(false));
+      } else {
+        setLoading(false);
+      }
+    } catch {
+      setLoading(false);
+    }
+  }, [currentCustomer?.id, loadVendorOrders]);
 
   /* ── Filter to this vendor's shipments ────────────────── */
   const myShipments = useMemo(
@@ -205,7 +218,11 @@ export function CustomerDashboardPage() {
             </label>
             <input
               type="text"
-              defaultValue={currentCustomer?.address || 'Milanchowk, Butwal, Rupandehi'}
+              defaultValue={
+                typeof currentCustomer?.address === 'object' && currentCustomer.address
+                  ? (currentCustomer.address.municipality || currentCustomer.address.district || 'Milanchowk, Butwal, Rupandehi')
+                  : (typeof currentCustomer?.address === 'string' && currentCustomer.address ? currentCustomer.address : 'Milanchowk, Butwal, Rupandehi')
+              }
               style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px' }}
             />
           </div>

@@ -5,12 +5,16 @@ import { useModal } from '../../context/ModalContext';
 import { VENDOR_PERMISSION_VIEWS, ALL_VENDOR_PERMISSION_KEYS } from '../../utils/constants';
 
 export function CustomerStaffPage() {
-  const { currentCustomer } = useOutletContext();
-  const { updateCustomer } = useCompany();
+  const { currentCustomer } = useOutletContext() || {};
+  const { updateCustomer } = useCompany() || {};
   const { openModal, closeModal } = useModal();
 
-  const roles = currentCustomer.staffRoles || [];
-  const users = currentCustomer.staffUsers || [];
+  if (!currentCustomer) {
+    return <div style={{ padding: '24px' }}>Loading staff management...</div>;
+  }
+
+  const roles = currentCustomer?.staffRoles || [];
+  const users = currentCustomer?.staffUsers || [];
 
   const handleAddRole = (name, permissions) => {
     const nextId = (currentCustomer.staffNextId?.role || (roles.length + 1)) + 1;
