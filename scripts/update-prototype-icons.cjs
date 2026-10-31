@@ -75,3 +75,4 @@ for (const [key, svg] of Object.entries(icons)) {
 
 fs.writeFileSync(filePath, content, 'utf8');
 console.log('Successfully updated prototype HTML with brand-colored icons!');
+

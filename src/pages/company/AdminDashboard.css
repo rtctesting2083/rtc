@@ -30,7 +30,7 @@
 
 /* ---------- Top Red Bar ---------- */
 .admin-topbar {
-  background: var(--admin-red);
+  background: #dc2626 !important;
   height: 52px;
   display: flex;
   align-items: center;
@@ -40,7 +40,7 @@
   position: sticky;
   top: 0;
   z-index: 30;
-  box-shadow: 0 2px 8px rgba(185, 28, 28, 0.15);
+  box-shadow: 0 2px 8px rgba(185, 28, 28, 0.2);
 }
 
 .admin-topbar-left {

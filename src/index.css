@@ -291,11 +291,11 @@
   .coverage-areas-box strong { color: #16431f; }
 
   /* ---------- Admin (super-admin) app ---------- */
-  .admin-topbar { display: flex; align-items: center; justify-content: space-between; padding: 18px 34px; border-bottom: 1px solid var(--border); background: var(--surface); }
-  .admin-topbar .brand { padding: 0; border: none; margin: 0; }
-  .admin-topbar .brand-badge { background: var(--accent); color: #fff; }
-  .admin-topbar .brand-word { color: var(--text); }
-  .admin-topbar .brand-word small { color: var(--text-muted); }
+  .admin-topbar { display: flex; align-items: center; justify-content: space-between; padding: 12px 24px; border-bottom: none; background: #dc2626 !important; color: #ffffff !important; box-shadow: 0 2px 8px rgba(185, 28, 28, 0.2); }
+  .admin-topbar .brand { padding: 0; border: none; margin: 0; display: flex; align-items: center; gap: 10px; }
+  .admin-topbar .brand-badge { background: #ffffff !important; color: #dc2626 !important; font-weight: 800; border-radius: 8px; }
+  .admin-topbar .brand-word { color: #ffffff !important; font-weight: 700; }
+  .admin-topbar .brand-word small { color: rgba(255, 255, 255, 0.85) !important; font-weight: 500; }
   .admin-main { padding: 28px 34px; max-width: 1150px; }
 
   /* ---------- Vendor dashboard (Upaya-style layout) ---------- */

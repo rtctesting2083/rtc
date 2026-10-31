@@ -177,7 +177,7 @@
 /* ---------- Top Red Bar ---------- */
 .vendor-topbar {
   height: 48px;
-  background: #d81a28;
+  background: #dc2626 !important;
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -188,7 +188,7 @@
   position: sticky;
   top: 0;
   z-index: 15;
-  box-shadow: 0 2px 10px rgba(216, 26, 40, 0.15);
+  box-shadow: 0 2px 10px rgba(220, 38, 38, 0.18);
 }
 
 .vendor-topbar-left {
@@ -213,7 +213,7 @@
   height: 28px;
   border-radius: 50%;
   background: #ffffff;
-  color: #d81a28;
+  color: #dc2626;
   border: none;
   display: inline-flex;
   align-items: center;
@@ -245,7 +245,7 @@
   height: 26px;
   border-radius: 50%;
   background: #ffffff;
-  color: #d81a28;
+  color: #dc2626;
   display: flex;
   align-items: center;
   justify-content: center;

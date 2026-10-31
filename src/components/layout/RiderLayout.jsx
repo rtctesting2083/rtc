@@ -33,19 +33,21 @@ export function RiderLayout() {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
-      <header className="admin-topbar">
-        <div className="brand">
-          <div className="brand-badge">{initialsFor(company?.name || 'RD')}</div>
-          <div className="brand-word">
+      <header className="admin-topbar" style={{ background: '#dc2626', color: '#ffffff' }}>
+        <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div className="brand-badge" style={{ background: '#ffffff', color: '#dc2626', fontWeight: 800 }}>
+            {initialsFor(company?.name || 'RD')}
+          </div>
+          <div className="brand-word" style={{ color: '#ffffff' }}>
             {company?.name || 'Company'}
-            <small>Rider: {currentRider.name}</small>
+            <small style={{ color: 'rgba(255, 255, 255, 0.85)' }}>Rider: {currentRider.name}</small>
           </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           {/* Duty Status Display (Read-Only) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Duty:</span>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: '#ffffff' }}>Duty:</span>
             <span
               style={{
                 display: 'inline-flex',
@@ -54,14 +56,9 @@ export function RiderLayout() {
                 padding: '4px 12px',
                 borderRadius: '20px',
                 fontSize: '12.5px',
-                fontWeight: 600,
-                border: '1.5px solid var(--border)',
-                background:
-                  currentStatus === 'out_for_delivery'
-                    ? '#dbeafe'
-                    : currentStatus === 'unavailable'
-                    ? '#fee2e2'
-                    : '#dcfce7',
+                fontWeight: 700,
+                border: '1.5px solid rgba(255, 255, 255, 0.3)',
+                background: '#ffffff',
                 color:
                   currentStatus === 'out_for_delivery'
                     ? '#1d4ed8'
@@ -79,11 +76,37 @@ export function RiderLayout() {
             </span>
           </div>
 
-          <div className="row-actions">
-            <button type="button" className="btn-secondary" onClick={handleViewProfile}>
+          <div className="row-actions" style={{ display: 'flex', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={handleViewProfile}
+              style={{
+                background: 'rgba(255, 255, 255, 0.2)',
+                color: '#ffffff',
+                border: '1px solid rgba(255, 255, 255, 0.4)',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
               View Profile
             </button>
-            <button type="button" className="btn-secondary" onClick={handleLogout}>
+            <button
+              type="button"
+              onClick={handleLogout}
+              style={{
+                background: '#ffffff',
+                color: '#dc2626',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
               Log out
             </button>
           </div>
