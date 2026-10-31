@@ -509,6 +509,98 @@ export async function onRequest(context) {
       }
     }
 
+    // 5d. Product Categories endpoint: CRUD on D1 table 'product_categories'
+    if (path === 'product-categories' || path.startsWith('product-categories/')) {
+      const companyId = url.searchParams.get('company_id') || 1;
+      const idMatch = path.match(/^product-categories\/(\d+)$/);
+      const paramId = idMatch ? Number(idMatch[1]) : (url.searchParams.get('id') ? Number(url.searchParams.get('id')) : null);
+
+      // GET: list product categories for company
+      if (method === 'GET') {
+        const { results } = await db
+          .prepare('SELECT * FROM product_categories WHERE company_id = ? ORDER BY id ASC')
+          .bind(Number(companyId))
+          .all();
+        return jsonResponse(results || []);
+      }
+
+      // POST: insert new product category
+      if (method === 'POST') {
+        const body = await request.json();
+        const cid = Number(body.company_id || companyId);
+        const name = (body.name || '').trim();
+        const code = (body.code || '').trim() || name.substring(0, 10).toUpperCase();
+        const description = (body.description || '').trim();
+        const status = body.status || 'active';
+
+        if (!name) {
+          return jsonResponse({ error: 'Product category name is required' }, 400);
+        }
+
+        const res = await db.prepare(`
+          INSERT INTO product_categories (company_id, name, code, description, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        `).bind(cid, name, code, description, status).run();
+
+        const createdId = res.meta?.last_row_id;
+        const newRow = await db.prepare('SELECT * FROM product_categories WHERE id = ?').bind(createdId).first();
+
+        return jsonResponse({ success: true, item: newRow || { id: createdId, company_id: cid, name, code, description, status } });
+      }
+
+      // PUT: update existing product category
+      if (method === 'PUT') {
+        const body = await request.json();
+        const targetId = paramId || Number(body.id);
+        const cid = Number(body.company_id || companyId);
+
+        if (!targetId) {
+          return jsonResponse({ error: 'Product category id is required' }, 400);
+        }
+
+        const name = (body.name || '').trim();
+        const code = (body.code || '').trim();
+        const description = (body.description !== undefined ? body.description : '').trim();
+        const status = body.status || 'active';
+
+        if (!name) {
+          return jsonResponse({ error: 'Product category name is required' }, 400);
+        }
+
+        await db.prepare(`
+          UPDATE product_categories
+          SET name = ?, code = ?, description = ?, status = ?, updated_at = datetime('now')
+          WHERE id = ? AND company_id = ?
+        `).bind(name, code, description, status, targetId, cid).run();
+
+        const updatedRow = await db.prepare('SELECT * FROM product_categories WHERE id = ?').bind(targetId).first();
+
+        return jsonResponse({ success: true, item: updatedRow });
+      }
+
+      // DELETE: delete product category
+      if (method === 'DELETE') {
+        let targetId = paramId;
+        if (!targetId) {
+          try {
+            const body = await request.json();
+            targetId = Number(body.id);
+          } catch (e) {
+            targetId = null;
+          }
+        }
+
+        if (!targetId) {
+          return jsonResponse({ error: 'Product category id is required' }, 400);
+        }
+
+        const cid = Number(companyId);
+        await db.prepare('DELETE FROM product_categories WHERE id = ? AND company_id = ?').bind(targetId, cid).run();
+
+        return jsonResponse({ success: true, message: `Product category ${targetId} deleted successfully` });
+      }
+    }
+
     // 6. Branches endpoint: read and write on D1 table 'branches'
     if (path === 'branches' || path.startsWith('branches/')) {
       const companyId = url.searchParams.get('company_id') || 1;

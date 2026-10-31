@@ -197,6 +197,18 @@ CREATE TABLE IF NOT EXISTS delivery_service_types (
   FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS product_categories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id INTEGER NOT NULL DEFAULT 1,
+  name TEXT NOT NULL,
+  code TEXT,
+  description TEXT,
+  status TEXT DEFAULT 'active',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_shipments_tracking ON shipments(tracking_number);
 CREATE INDEX IF NOT EXISTS idx_shipments_company ON shipments(company_id);

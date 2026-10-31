@@ -172,6 +172,62 @@ export const d1Api = {
     }
   },
 
+  // Read product categories from dedicated D1 table 'product_categories'
+  getProductCategories: async (companyId = 1) => {
+    try {
+      const res = await fetch(`/api/product-categories?company_id=${companyId}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Insert product category into D1 table 'product_categories'
+  addProductCategory: async (payload) => {
+    try {
+      const res = await fetch('/api/product-categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(typeof payload === 'string' ? { name: payload, company_id: 1 } : payload),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Update product category in D1 table 'product_categories'
+  updateProductCategory: async (id, payload, companyId = 1) => {
+    try {
+      const res = await fetch(`/api/product-categories/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: Number(id), company_id: Number(companyId), ...payload }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Delete product category from D1 table 'product_categories'
+  deleteProductCategory: async (id, companyId = 1) => {
+    try {
+      const res = await fetch(`/api/product-categories/${id}?company_id=${companyId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: Number(id), company_id: Number(companyId) }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
   // Read branches from D1 table 'branches'
   getBranches: async (companyId = 1) => {
     try {

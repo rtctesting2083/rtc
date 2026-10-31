@@ -109,6 +109,28 @@ export function CompanyProvider({ children }) {
         console.warn('Could not fetch D1 delivery_service_types:', err);
       });
 
+      // 2d. Hydrate dedicated product categories from Cloudflare remote D1 table 'product_categories'
+      d1Api.getProductCategories(companyId).then((remoteCategories) => {
+        if (Array.isArray(remoteCategories) && remoteCategories.length > 0) {
+          setData((prev) => {
+            if (!prev) return prev;
+            const maxId = Math.max(...remoteCategories.map((c) => Number(c.id) || 1), prev.nextId?.productCategory || 1);
+            const updated = {
+              ...prev,
+              productCategories: remoteCategories,
+              nextId: {
+                ...prev.nextId,
+                productCategory: maxId + 1,
+              },
+            };
+            saveCompanyState(companyId, updated);
+            return updated;
+          });
+        }
+      }).catch((err) => {
+        console.warn('Could not fetch D1 product_categories:', err);
+      });
+
       // 3. Hydrate live branches from Cloudflare remote D1 table 'branches'
       d1Api.getBranches(companyId).then((remoteBranches) => {
         if (Array.isArray(remoteBranches) && remoteBranches.length > 0) {
@@ -1333,21 +1355,79 @@ export function CompanyProvider({ children }) {
     });
   };
 
-  const addProductCategory = (name) => {
+  const addProductCategory = (payload) => {
+    const itemData = typeof payload === 'string'
+      ? { name: payload, code: payload.substring(0, 10).toUpperCase(), description: '', status: 'active' }
+      : {
+          name: payload.name || '',
+          code: payload.code || (payload.name ? payload.name.substring(0, 10).toUpperCase() : ''),
+          description: payload.description || '',
+          status: payload.status || 'active',
+        };
+
+    let tempId;
     updateData((prev) => {
-      const id = prev.nextId.productCategory;
-      const nextCategories = [...(prev.productCategories || []), { id, name }];
+      tempId = prev.nextId?.productCategory || Date.now();
+      const newItem = { id: tempId, company_id: companyId, ...itemData };
+      const nextCategories = [...(prev.productCategories || []), newItem];
       syncSettingToD1({ product_categories: nextCategories });
       return {
         ...prev,
-        nextId: { ...prev.nextId, productCategory: id + 1 },
+        nextId: { ...prev.nextId, productCategory: tempId + 1 },
+        productCategories: nextCategories,
+      };
+    });
+
+    // Write to dedicated D1 table product_categories
+    d1Api.addProductCategory({ company_id: companyId, ...itemData }).then((res) => {
+      if (res?.item?.id) {
+        updateData((prev) => ({
+          ...prev,
+          productCategories: (prev.productCategories || []).map((c) => (c.id === tempId ? res.item : c)),
+        }));
+      }
+    }).catch((err) => {
+      console.warn('Failed to insert product category into D1:', err);
+    });
+  };
+
+  const updateProductCategory = (id, updates) => {
+    const numId = Number(id);
+
+    // Write to dedicated D1 table product_categories
+    d1Api.updateProductCategory(numId, updates, companyId).then((res) => {
+      if (res?.item) {
+        updateData((prev) => ({
+          ...prev,
+          productCategories: (prev.productCategories || []).map((c) => (c.id === numId ? res.item : c)),
+        }));
+      }
+    }).catch((err) => {
+      console.warn('Failed to update product category in D1:', err);
+    });
+
+    updateData((prev) => {
+      const nextCategories = (prev.productCategories || []).map((c) =>
+        c.id === numId ? { ...c, ...updates, updated_at: new Date().toISOString() } : c
+      );
+      syncSettingToD1({ product_categories: nextCategories });
+      return {
+        ...prev,
         productCategories: nextCategories,
       };
     });
   };
+
   const deleteProductCategory = (id) => {
+    const numId = Number(id);
+
+    // Delete from dedicated D1 table product_categories
+    d1Api.deleteProductCategory(numId, companyId).catch((err) => {
+      console.warn('Failed to delete product category from D1:', err);
+    });
+
     updateData((prev) => {
-      const nextCategories = (prev.productCategories || []).filter((t) => t.id !== Number(id));
+      const nextCategories = (prev.productCategories || []).filter((t) => t.id !== numId);
       syncSettingToD1({ product_categories: nextCategories });
       return {
         ...prev,
@@ -1686,6 +1766,7 @@ export function CompanyProvider({ children }) {
         updateDeliveryServiceType,
         deleteDeliveryServiceType,
         addProductCategory,
+        updateProductCategory,
         deleteProductCategory,
         addLandmark,
         deleteLandmark,
