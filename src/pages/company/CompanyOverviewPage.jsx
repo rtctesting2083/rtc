@@ -1,5 +1,20 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  Plus,
+  Clock,
+  Bike,
+  Users,
+  Banknote,
+  Bell,
+  Package,
+  Building2,
+  Network,
+  Receipt,
+  BarChart3,
+  Sliders,
+  UserCheck,
+} from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
 import { StatusPill } from '../../components/common/StatusPill';
@@ -520,42 +535,42 @@ export function CompanyOverviewPage() {
               className="admin-action-btn"
               onClick={() => openModal('New Shipment', <NewShipmentModal />)}
             >
-              <span className="admin-action-icon">+</span>
+              <span className="admin-action-icon"><Plus size={18} strokeWidth={2.5} /></span>
               <span>New Shipment</span>
             </div>
             <div
               className="admin-action-btn"
               onClick={() => navigate('/company/shipments')}
             >
-              <span className="admin-action-icon">🕒</span>
+              <span className="admin-action-icon"><Clock size={18} strokeWidth={2.5} /></span>
               <span>Pickups</span>
             </div>
             <div
               className="admin-action-btn"
               onClick={() => navigate('/company/couriers')}
             >
-              <span className="admin-action-icon">🛵</span>
+              <span className="admin-action-icon"><Bike size={18} strokeWidth={2.5} /></span>
               <span>Riders</span>
             </div>
             <div
               className="admin-action-btn"
               onClick={() => navigate('/company/customers')}
             >
-              <span className="admin-action-icon">👥</span>
+              <span className="admin-action-icon"><Users size={18} strokeWidth={2.5} /></span>
               <span>Vendors</span>
             </div>
             <div
               className="admin-action-btn"
               onClick={() => navigate('/company/cod-settlement')}
             >
-              <span className="admin-action-icon">💰</span>
+              <span className="admin-action-icon"><Banknote size={18} strokeWidth={2.5} /></span>
               <span>COD Settlement</span>
             </div>
             <div
               className="admin-action-btn"
               onClick={() => alert('Send announcement to network.')}
             >
-              <span className="admin-action-icon">📢</span>
+              <span className="admin-action-icon"><Bell size={18} strokeWidth={2.5} /></span>
               <span>Send Notice</span>
             </div>
           </div>
@@ -764,29 +779,34 @@ export function CompanyOverviewPage() {
 
         <div className="admin-modules-grid">
           {[
-            { label: 'Shipments', sub: `${totalShipments} orders`, icon: '📦', path: '/company/shipments' },
-            { label: 'Pickup Requests', sub: '0 open', icon: '🕒', path: '/company/shipments' },
-            { label: 'Riders', sub: `${totalRiders} riders`, icon: '🛵', path: '/company/couriers' },
-            { label: 'Vendors', sub: `${customers.length || 3} vendors`, icon: '👥', path: '/company/customers' },
-            { label: 'Branches', sub: `${branches.length || 5} branches`, icon: '🏢', path: '/company/branches' },
-            { label: 'Courier Network', sub: '4 tiers', icon: '🗺️', path: '/company/branches' },
-            { label: 'Billing', sub: `${invoices.filter((i) => i.status === 'unpaid').length} unpaid`, icon: '🧾', path: '/company/invoices' },
-            { label: 'COD Settlement', sub: `NPR ${codPendingTotal.toFixed(0)}`, icon: '💰', path: '/company/cod-settlement' },
-            { label: 'Reports', sub: 'Sales & location', icon: '📊', path: '/company/shipment-reports' },
-            { label: 'Notices', sub: '0 posted', icon: '📢', path: '/company/shipments' },
-            { label: 'Settings', sub: 'Pricing & status', icon: '⚙️', path: '/company/settings/delivery-charges' },
-            { label: 'Staff', sub: '1 users', icon: '🧑‍💼', path: '/company/settings/users' },
-          ].map((m) => (
-            <div
-              key={m.label}
-              className="admin-module-card"
-              onClick={() => navigate(m.path)}
-            >
-              <div className="admin-module-icon">{m.icon}</div>
-              <div className="admin-module-name">{m.label}</div>
-              <div className="admin-module-sub">{m.sub}</div>
-            </div>
-          ))}
+            { label: 'Shipments', sub: `${totalShipments} orders`, Icon: Package, path: '/company/shipments' },
+            { label: 'Pickup Requests', sub: '0 open', Icon: Clock, path: '/company/shipments' },
+            { label: 'Riders', sub: `${totalRiders} riders`, Icon: Bike, path: '/company/couriers' },
+            { label: 'Vendors', sub: `${customers.length || 3} vendors`, Icon: Users, path: '/company/customers' },
+            { label: 'Branches', sub: `${branches.length || 5} branches`, Icon: Building2, path: '/company/branches' },
+            { label: 'Courier Network', sub: '4 tiers', Icon: Network, path: '/company/branches' },
+            { label: 'Billing', sub: `${invoices.filter((i) => i.status === 'unpaid').length} unpaid`, Icon: Receipt, path: '/company/invoices' },
+            { label: 'COD Settlement', sub: `NPR ${codPendingTotal.toFixed(0)}`, Icon: Banknote, path: '/company/cod-settlement' },
+            { label: 'Reports', sub: 'Sales & location', Icon: BarChart3, path: '/company/shipment-reports' },
+            { label: 'Notices', sub: '0 posted', Icon: Bell, path: '/company/shipments' },
+            { label: 'Settings', sub: 'Pricing & status', Icon: Sliders, path: '/company/settings/delivery-charges' },
+            { label: 'Staff', sub: '1 users', Icon: UserCheck, path: '/company/settings/users' },
+          ].map((m) => {
+            const ModIcon = m.Icon;
+            return (
+              <div
+                key={m.label}
+                className="admin-module-card"
+                onClick={() => navigate(m.path)}
+              >
+                <div className="admin-module-icon">
+                  <ModIcon size={22} strokeWidth={2} />
+                </div>
+                <div className="admin-module-name">{m.label}</div>
+                <div className="admin-module-sub">{m.sub}</div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

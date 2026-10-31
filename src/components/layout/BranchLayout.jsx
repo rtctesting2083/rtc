@@ -1,5 +1,17 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import {
+  Home,
+  Package,
+  Inbox,
+  Search,
+  FileText,
+  Banknote,
+  Bike,
+  Users,
+  Building2,
+  UserCheck,
+} from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCompany } from '../../context/CompanyContext';
 import { initialsFor } from '../../utils/helpers';
@@ -46,16 +58,16 @@ export function BranchLayout() {
   const label = staffUser ? `${staffUser.name} (${staffRole?.name || 'Staff'})` : currentBranch.name;
 
   const navItems = [
-    { key: 'overview', label: 'Overview', icon: '🏠', path: '/branch/overview' },
-    { key: 'shipments', label: 'Shipments', icon: '📦', path: '/branch/shipments' },
-    { key: 'received-shipments', label: 'Received Shipment', icon: '📥', path: '/branch/received-shipments' },
-    { key: 'track', label: 'Track Package', icon: '🎯', path: '/branch/track' },
-    { key: 'shipment-report', label: 'Shipment Report', icon: '📄', path: '/branch/reports' },
-    { key: 'cod-settlement', label: 'COD Settlement', icon: '💰', path: '/branch/cod-settlement' },
-    { key: 'riders', label: 'Branch Riders', icon: '🛵', path: '/branch/riders' },
-    { key: 'customers', label: 'Vendors', icon: '👥', path: '/branch/vendors' },
-    { key: 'profile', label: 'Branch Profile', icon: '🏢', path: '/branch/profile' },
-    { key: 'user-management', label: 'User Management', icon: '🧑‍💼', path: '/branch/users' },
+    { key: 'overview', label: 'Overview', Icon: Home, path: '/branch/overview' },
+    { key: 'shipments', label: 'Shipments', Icon: Package, path: '/branch/shipments' },
+    { key: 'received-shipments', label: 'Received Shipment', Icon: Inbox, path: '/branch/received-shipments' },
+    { key: 'track', label: 'Track Package', Icon: Search, path: '/branch/track' },
+    { key: 'shipment-report', label: 'Shipment Report', Icon: FileText, path: '/branch/reports' },
+    { key: 'cod-settlement', label: 'COD Settlement', Icon: Banknote, path: '/branch/cod-settlement' },
+    { key: 'riders', label: 'Branch Riders', Icon: Bike, path: '/branch/riders' },
+    { key: 'customers', label: 'Vendors', Icon: Users, path: '/branch/vendors' },
+    { key: 'profile', label: 'Branch Profile', Icon: Building2, path: '/branch/profile' },
+    { key: 'user-management', label: 'User Management', Icon: UserCheck, path: '/branch/users' },
   ];
 
   return (
@@ -85,18 +97,24 @@ export function BranchLayout() {
 
           <nav className="admin-nav">
             {navItems.map(
-              (item) =>
-                isAllowed(item.key) && (
-                  <NavLink
-                    key={item.key}
-                    to={item.path}
-                    onClick={closeMobileMenu}
-                    className={({ isActive }) => `admin-nav-link ${isActive ? 'active' : ''}`}
-                  >
-                    <span className="admin-nav-icon">{item.icon}</span>
-                    <span>{item.label}</span>
-                  </NavLink>
-                )
+              (item) => {
+                const IconComp = item.Icon;
+                return (
+                  isAllowed(item.key) && (
+                    <NavLink
+                      key={item.key}
+                      to={item.path}
+                      onClick={closeMobileMenu}
+                      className={({ isActive }) => `admin-nav-link ${isActive ? 'active' : ''}`}
+                    >
+                      <span className="admin-nav-icon">
+                        <IconComp size={16} strokeWidth={2} />
+                      </span>
+                      <span>{item.label}</span>
+                    </NavLink>
+                  )
+                );
+              }
             )}
           </nav>
         </div>

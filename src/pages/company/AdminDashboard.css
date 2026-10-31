@@ -250,11 +250,31 @@
   margin-right: 10px;
   font-size: 15px;
   width: 18px;
+  height: 18px;
   text-align: center;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  color: var(--admin-red, #dc2626);
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.admin-nav-icon svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 2;
+  flex-shrink: 0;
+}
+
+.admin-nav-link:hover .admin-nav-icon {
+  color: var(--admin-red, #dc2626);
+  transform: scale(1.08);
+}
+
+.admin-nav-link.active .admin-nav-icon {
+  color: var(--admin-red, #dc2626);
 }
 
 .admin-nav-badge {
