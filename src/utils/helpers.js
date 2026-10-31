@@ -62,26 +62,62 @@ export function fmtDate(d) {
 
 export function detectShippingZone(branchNameOrAddress, settings) {
   const str = (branchNameOrAddress || '').toLowerCase();
-  const s = settings || {};
-  const zones = s.zones || [];
+  const pricing = settings?.pricing || settings || {};
+  const zones = pricing.zones || [];
   if (!zones.length) return null;
 
-  if (/butwal|tilottama|bhairahawa|siddharthanagar|yogikuti|manigram|devdaha/i.test(str)) {
-    return zones.find((z) => z.id === 'zone_a') || zones[0];
+  // 1. Direct match on district name inside zone.districts
+  for (const z of zones) {
+    const districts = z.districts || [];
+    for (const d of districts) {
+      if (typeof d === 'string' && d.length > 2 && str.includes(d.toLowerCase())) {
+        return {
+          id: z.id || z.zone_code,
+          name: z.name,
+          color: z.color || 'gray',
+          base: Number(z.base ?? z.base_rate) || 120,
+          extra_per_kg: Number(z.extra_per_kg ?? z.extra_kg_rate) || 60,
+          districts: z.districts || [],
+          is_default: Boolean(z.is_default),
+        };
+      }
+    }
+  }
+
+  // 2. Keyword heuristic for common hubs / municipalities / areas
+  if (/butwal|tilottama|bhairahawa|siddharthanagar|yogikuti|manigram|devdaha|rupandehi/i.test(str)) {
+    const zA = zones.find((z) => (z.id === 'A' || z.id === 'zone_a'));
+    if (zA) return zA;
   }
   if (/kathmandu|lalitpur|bhaktapur|pokhara|kaski|chitwan|narayangarh|bharatpur|nepalgunj|banke/i.test(str)) {
-    return zones.find((z) => z.id === 'zone_b') || zones[1] || zones[0];
+    const zB = zones.find((z) => (z.id === 'B' || z.id === 'zone_b'));
+    if (zB) return zB;
   }
-  if (/dang|kapilvastu|nawalparasi|biratnagar|morang|itahari|sunsari|birtamod|jhapa|janakpur|birgunj/i.test(str)) {
-    return zones.find((z) => z.id === 'zone_c') || zones[2] || zones[0];
+  if (/dang|kapilvastu|nawalparasi|nawalpur|parasi|biratnagar|morang|itahari|sunsari|birtamod|jhapa|janakpur|birgunj/i.test(str)) {
+    const zC = zones.find((z) => (z.id === 'C' || z.id === 'zone_c'));
+    if (zC) return zC;
   }
-  if (/gulmi|arghakhanchi|palpa|tansen|syangja|baglung|pyuthan|rolpa|gorkha|parbat/i.test(str)) {
-    return zones.find((z) => z.id === 'zone_d') || zones[3] || zones[0];
+  if (/gulmi|arghakhanchi|palpa|tansen|syangja|baglung|pyuthan|rolpa|gorkha|parbat|tanahun|lamjung/i.test(str)) {
+    const zD = zones.find((z) => (z.id === 'D' || z.id === 'zone_d'));
+    if (zD) return zD;
   }
   if (/humla|jumla|mugu|dolpa|bajura|kalikot|darchula|karnali|mustang|manang/i.test(str)) {
-    return zones.find((z) => z.id === 'zone_e') || zones[4] || zones[0];
+    const zE = zones.find((z) => (z.id === 'E' || z.id === 'zone_e'));
+    if (zE) return zE;
   }
-  return zones[1] || zones[0];
+
+  // 3. Fallback to default designated zone (e.g. Zone C)
+  const defaultZoneId = pricing.default_zone || 'C';
+  const defaultZ = zones.find((z) => z.id === defaultZoneId || z.zone_code === defaultZoneId || z.is_default) || zones[0];
+  return defaultZ ? {
+    id: defaultZ.id || defaultZ.zone_code,
+    name: defaultZ.name,
+    color: defaultZ.color || 'gray',
+    base: Number(defaultZ.base ?? defaultZ.base_rate) || 120,
+    extra_per_kg: Number(defaultZ.extra_per_kg ?? defaultZ.extra_kg_rate) || 60,
+    districts: defaultZ.districts || [],
+    is_default: Boolean(defaultZ.is_default),
+  } : null;
 }
 
 export function calcVolumetricWeight(lengthCm, widthCm, heightCm, divisor = 5000) {
@@ -93,6 +129,137 @@ export function calcVolumetricWeight(lengthCm, widthCm, heightCm, divisor = 5000
   return Math.round(((l * w * h) / div) * 100) / 100;
 }
 
+export function calculateDeliveryCharge({
+  destination = '',
+  weightKg = 1,
+  lengthCm = 0,
+  widthCm = 0,
+  heightCm = 0,
+  serviceType = 'Standard',
+  codAmount = 0,
+  declaredValue = 0,
+  isFragile = false,
+  monthlyShipments = 0,
+  zoneId = null,
+  settings = {},
+}) {
+  const p = settings?.pricing || settings || {};
+  const zones = p.zones || [];
+
+  // 1. Matched Zone
+  let matchedZone = null;
+  if (zoneId) {
+    matchedZone = zones.find((z) => z.id === zoneId || z.zone_code === zoneId);
+  }
+  if (!matchedZone && destination) {
+    matchedZone = detectShippingZone(destination, p);
+  }
+  if (!matchedZone) {
+    const defaultZoneId = p.default_zone || 'C';
+    matchedZone = zones.find((z) => z.id === defaultZoneId || z.zone_code === defaultZoneId || z.is_default) || zones[0];
+  }
+
+  // 2. Weight & Parcel Size
+  const actualKg = Math.max(0.01, Number(weightKg) || 1);
+  const volDiv = p.volumetric?.enabled !== false && Number(p.volumetric?.divisor) > 0 ? Number(p.volumetric.divisor) : 5000;
+  const l = Number(lengthCm) || 0;
+  const w = Number(widthCm) || 0;
+  const h = Number(heightCm) || 0;
+  const volumetricKg = p.volumetric?.enabled !== false && l > 0 && w > 0 && h > 0
+    ? Math.round(((l * w * h) / volDiv) * 100) / 100
+    : 0;
+
+  const billableKg = Math.max(actualKg, volumetricKg);
+  const firstKg = Number(p.first_weight_kg) || 2;
+  const extraKg = billableKg > firstKg ? Math.ceil(billableKg - firstKg) : 0;
+
+  const baseRate = Number(matchedZone?.base ?? matchedZone?.base_rate) || 120;
+  const extraPerKg = Number(matchedZone?.extra_per_kg ?? matchedZone?.extra_kg_rate) || 60;
+  const extraWeightFee = extraKg * extraPerKg;
+  const zoneSubtotal = baseRate + extraWeightFee;
+
+  // 3. Delivery Speed
+  const services = p.services || [
+    { id: 1, name: 'Standard', surcharge_percent: 0 },
+    { id: 2, name: 'Express', surcharge_percent: 30 },
+  ];
+  const srv = services.find((s) => s.name?.toLowerCase() === (serviceType || '').toLowerCase()) ||
+    (serviceType && /express|same/i.test(serviceType) ? { surcharge_percent: 30 } : null);
+  const speedPct = srv ? Number(srv.surcharge_percent) || 0 : 0;
+  const speedFee = Math.round(zoneSubtotal * (speedPct / 100));
+
+  // 4. Extra Services
+  // COD fee
+  let codFee = 0;
+  const codCfg = p.cod || { enabled: false, percent: 1.5, minimum: 30 };
+  const codVal = Number(codAmount) || 0;
+  if (codCfg.enabled && codVal > 0) {
+    const rawCod = (codVal * (Number(codCfg.percent) || 1.5)) / 100;
+    codFee = Math.round(Math.max(Number(codCfg.minimum) || 30, rawCod));
+  }
+
+  // Fragile fee
+  let fragileFee = 0;
+  const fragileCfg = p.fragile || { enabled: false, fee: 50 };
+  if (fragileCfg.enabled && isFragile) {
+    fragileFee = Number(fragileCfg.fee) || 50;
+  }
+
+  // High-value Insurance fee
+  let insuranceFee = 0;
+  const insCfg = p.insurance || { enabled: false, threshold: 20000, percent: 0.5 };
+  const itemVal = Number(declaredValue) || 0;
+  if (insCfg.enabled && itemVal >= (Number(insCfg.threshold) || 20000)) {
+    insuranceFee = Math.round((itemVal * (Number(insCfg.percent) || 0.5)) / 100);
+  }
+
+  // 5. Merchant Volume Discount
+  let discountAmount = 0;
+  let discountPercent = 0;
+  const discCfg = p.volume_discounts || { enabled: true, tiers: [{ min_shipments: 200, percent: 10 }] };
+  const monthCount = Number(monthlyShipments) || 0;
+  if (discCfg.enabled && discCfg.tiers?.length && monthCount > 0) {
+    const sortedTiers = [...discCfg.tiers].sort((a, b) => Number(b.min_shipments) - Number(a.min_shipments));
+    const matchedTier = sortedTiers.find((t) => monthCount >= Number(t.min_shipments));
+    if (matchedTier && Number(matchedTier.percent) > 0) {
+      discountPercent = Number(matchedTier.percent);
+      // Discount applies to delivery charge (zone base + extra weight + speed surcharge), not extra service fees
+      discountAmount = Math.round((zoneSubtotal + speedFee) * (discountPercent / 100));
+    }
+  }
+
+  // Final Total Delivery Charge
+  const baseDeliveryCharge = Math.max(0, zoneSubtotal + speedFee - discountAmount);
+  const deliveryFee = baseDeliveryCharge + codFee + fragileFee + insuranceFee;
+
+  // 6. Tax
+  const taxPct = Number(p.tax_percent !== undefined ? p.tax_percent : 13);
+  const taxAmount = Math.round(deliveryFee * (taxPct / 100) * 100) / 100;
+
+  return {
+    matchedZone,
+    billableKg,
+    actualKg,
+    volumetricKg,
+    firstKg,
+    extraKg,
+    baseFee: baseRate,
+    extraWeightFee,
+    speedFee,
+    speedPercent: speedPct,
+    codFee,
+    fragileFee,
+    insuranceFee,
+    discountAmount,
+    discountPercent,
+    zoneSubtotal,
+    deliveryFee: Math.round(deliveryFee * 100) / 100,
+    taxPercent: taxPct,
+    taxAmount,
+    totalWithTax: Math.round((deliveryFee + taxAmount) * 100) / 100,
+  };
+}
+
 export function calcFee(distanceKm, priority, settings) {
   const s = settings || { base_fee: 100, per_km_fee: 15, express_multiplier: 1.4 };
   let fee = (s.base_fee || 0) + (s.per_km_fee || 0) * (Number(distanceKm) || 0);
@@ -101,43 +268,21 @@ export function calcFee(distanceKm, priority, settings) {
 }
 
 export function calcFeeByWeight(weightKg, serviceTypeName, settings, options = {}) {
-  const s = settings || { base_fee: 100, per_kg_fee: 20, express_multiplier: 1.4 };
-  const w = Math.max(0.1, Number(weightKg) || 1);
-
-  // If a zone is specified or found in settings
-  const zoneId = options?.zoneId;
-  const zone = s.zones?.find((z) => z.id === zoneId) || (options?.useFirstZone ? s.zones?.[0] : null);
-
-  let fee = 0;
-  if (zone) {
-    const base = Number(zone.base_rate) || 80;
-    const extraPerKg = Number(zone.extra_kg_rate) || 40;
-    const extraWeight = Math.max(0, w - 1);
-    fee = base + Math.ceil(extraWeight) * extraPerKg;
-  } else {
-    fee = (s.base_fee || 100) + (s.per_kg_fee || 20) * w;
-  }
-
-  // Multipliers for service types
-  if (/same\s*day/i.test(serviceTypeName || '')) {
-    fee *= (s.same_day_multiplier || 1.6);
-  } else if (/express/i.test(serviceTypeName || '')) {
-    fee *= (s.express_multiplier || 1.4);
-  }
-
-  // COD fee
-  if (options?.codAmount && Number(options.codAmount) > 0) {
-    const codPct = ((s.cod_fee_percent || 1.5) / 100) * Number(options.codAmount);
-    const codFee = Math.max(s.cod_fee_min || 30, codPct);
-    fee += codFee;
-  }
-
-  // Fragile handling
-  if (options?.isFragile) {
-    fee += (s.fragile_fee || 50);
-  }
-
-  return Math.round(fee * 100) / 100;
+  const result = calculateDeliveryCharge({
+    destination: options?.destination || options?.address || options?.branchName,
+    weightKg,
+    serviceType: serviceTypeName,
+    codAmount: options?.codAmount,
+    declaredValue: options?.declaredValue,
+    isFragile: options?.isFragile,
+    monthlyShipments: options?.monthlyShipments,
+    lengthCm: options?.lengthCm || options?.l,
+    widthCm: options?.widthCm || options?.w,
+    heightCm: options?.heightCm || options?.h,
+    zoneId: options?.zoneId,
+    settings,
+  });
+  return result.deliveryFee;
 }
 
 export function readImageAsDataUrl(file, maxDim = 800, quality = 0.82) {

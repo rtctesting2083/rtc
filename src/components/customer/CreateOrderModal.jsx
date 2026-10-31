@@ -4,6 +4,7 @@ import { useModal } from '../../context/ModalContext';
 import {
   calcFeeByWeight,
   detectShippingZone,
+  calculateDeliveryCharge,
   fmtMoney,
   isValidMobile,
   addressSummary,
@@ -165,13 +166,23 @@ export function CreateOrderModal({ currentCustomer }) {
 
   // Pricing calculations
   const weight = parseFloat(weightKg) || 0;
-  const matchedZone = destBranch
-    ? detectShippingZone(`${destBranch.name} ${destBranch.address?.district || ''}`, chargeSettings())
-    : null;
-  const rawFee = calcFeeByWeight(weight, serviceType, chargeSettings(), {
-    zoneId: matchedZone?.id,
+  const destinationText = destBranch
+    ? `${destBranch.name} ${destBranch.address?.district || ''}`
+    : deliveryAddress;
+
+  const isFragileItem = /fragile|glass/i.test(productCategory || '');
+  const feeCalc = calculateDeliveryCharge({
+    destination: destinationText,
+    weightKg: weight,
+    serviceType,
     codAmount: parseFloat(codAmount) || 0,
+    declaredValue: parseFloat(itemValue) || 0,
+    isFragile: isFragileItem,
+    settings: chargeSettings(),
   });
+
+  const matchedZone = feeCalc.matchedZone;
+  const rawFee = feeCalc.deliveryFee;
   const discountAmount = appliedDiscount ? Math.round(rawFee * appliedDiscount * 100) / 100 : 0;
   const finalFee = Math.max(0, Math.round((rawFee - discountAmount) * 100) / 100);
   const codVal = parseFloat(codAmount) || 0;
@@ -544,11 +555,51 @@ export function CreateOrderModal({ currentCustomer }) {
             {matchedZone && (
               <div className="order-summary-row" style={{ fontSize: '11.5px', color: '#6b7280' }}>
                 <span>Route Zone</span>
-                <span style={{ fontWeight: 600, color: '#dc2626' }}>{matchedZone.code || matchedZone.name.split(':')[0]} · ETA {matchedZone.eta || '1-2 Days'}</span>
+                <span style={{ fontWeight: 600, color: '#dc2626' }}>
+                  Zone {matchedZone.id} · {matchedZone.name}
+                </span>
               </div>
             )}
+            {feeCalc && (
+              <>
+                <div className="order-summary-row" style={{ fontSize: '12px' }}>
+                  <span>Base Rate (First {feeCalc.firstKg} kg)</span>
+                  <span>{fmtMoney(feeCalc.baseFee)}</span>
+                </div>
+                {feeCalc.extraKg > 0 && (
+                  <div className="order-summary-row" style={{ fontSize: '12px' }}>
+                    <span>Extra Weight ({feeCalc.extraKg} kg)</span>
+                    <span>+{fmtMoney(feeCalc.extraWeightFee)}</span>
+                  </div>
+                )}
+                {feeCalc.speedFee > 0 && (
+                  <div className="order-summary-row" style={{ fontSize: '12px' }}>
+                    <span>{serviceType} Surcharge ({feeCalc.speedPercent}%)</span>
+                    <span>+{fmtMoney(feeCalc.speedFee)}</span>
+                  </div>
+                )}
+                {feeCalc.codFee > 0 && (
+                  <div className="order-summary-row" style={{ fontSize: '12px' }}>
+                    <span>COD Handling Fee</span>
+                    <span>+{fmtMoney(feeCalc.codFee)}</span>
+                  </div>
+                )}
+                {feeCalc.fragileFee > 0 && (
+                  <div className="order-summary-row" style={{ fontSize: '12px' }}>
+                    <span>Fragile Handling</span>
+                    <span>+{fmtMoney(feeCalc.fragileFee)}</span>
+                  </div>
+                )}
+                {feeCalc.insuranceFee > 0 && (
+                  <div className="order-summary-row" style={{ fontSize: '12px' }}>
+                    <span>High-Value Insurance</span>
+                    <span>+{fmtMoney(feeCalc.insuranceFee)}</span>
+                  </div>
+                )}
+              </>
+            )}
             <div className="order-summary-row">
-              <span>Service Charge</span>
+              <span>Subtotal Delivery Charge</span>
               <span>{fmtMoney(rawFee)}</span>
             </div>
             {appliedDiscount > 0 && (

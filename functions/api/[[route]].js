@@ -601,6 +601,418 @@ export async function onRequest(context) {
       }
     }
 
+    // 5e. Delivery Charge Settings & Shipping Zones endpoints: CRUD on D1 tables 'delivery_charge_settings' and 'shipping_zones'
+    if (path === 'delivery-charges' || path.startsWith('delivery-charges/') || path === 'delivery-charge-settings' || path.startsWith('delivery-charge-settings/')) {
+      const companyId = Number(url.searchParams.get('company_id') || 1);
+
+      // Lazy table creation helper
+      const ensureDeliveryTables = async () => {
+        try {
+          await db.exec(`
+            CREATE TABLE IF NOT EXISTS delivery_charge_settings (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              company_id INTEGER NOT NULL UNIQUE DEFAULT 1,
+              first_weight_kg REAL NOT NULL DEFAULT 2,
+              default_zone TEXT NOT NULL DEFAULT 'C',
+              volumetric_enabled INTEGER NOT NULL DEFAULT 1,
+              volumetric_divisor INTEGER NOT NULL DEFAULT 5000,
+              cod_enabled INTEGER NOT NULL DEFAULT 0,
+              cod_percent REAL NOT NULL DEFAULT 1.5,
+              cod_minimum REAL NOT NULL DEFAULT 30,
+              fragile_enabled INTEGER NOT NULL DEFAULT 0,
+              fragile_fee REAL NOT NULL DEFAULT 50,
+              insurance_enabled INTEGER NOT NULL DEFAULT 0,
+              insurance_threshold REAL NOT NULL DEFAULT 20000,
+              insurance_percent REAL NOT NULL DEFAULT 0.5,
+              volume_discounts_enabled INTEGER NOT NULL DEFAULT 1,
+              volume_discounts_tiers TEXT DEFAULT '[{"min_shipments":200,"percent":10}]',
+              services TEXT DEFAULT '[{"id":1,"name":"Standard","surcharge_percent":0},{"id":2,"name":"Express","surcharge_percent":30}]',
+              tax_percent REAL NOT NULL DEFAULT 13,
+              pricing_json TEXT,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS shipping_zones (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              company_id INTEGER NOT NULL DEFAULT 1,
+              zone_code TEXT NOT NULL,
+              name TEXT NOT NULL,
+              color TEXT DEFAULT 'gray',
+              base_rate REAL NOT NULL DEFAULT 120,
+              extra_per_kg REAL NOT NULL DEFAULT 60,
+              suggested_range TEXT,
+              places TEXT,
+              districts TEXT NOT NULL DEFAULT '[]',
+              is_default INTEGER DEFAULT 0,
+              sort_order INTEGER DEFAULT 0,
+              status TEXT DEFAULT 'active',
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+            );
+          `);
+        } catch (e) {}
+      };
+
+      await ensureDeliveryTables();
+
+      // GET: Retrieve all delivery charge settings & shipping zones from D1
+      if (method === 'GET') {
+        let settingsRow = await db.prepare('SELECT * FROM delivery_charge_settings WHERE company_id = ?').bind(companyId).first();
+        let { results: zoneRows } = await db.prepare('SELECT * FROM shipping_zones WHERE company_id = ? ORDER BY sort_order ASC, id ASC').bind(companyId).all();
+
+        // If no records in delivery_charge_settings, check setting table or seed defaults
+        if (!settingsRow || !zoneRows || zoneRows.length === 0) {
+          const settingRow = await db.prepare('SELECT delivery_charges FROM setting WHERE company_id = ?').bind(companyId).first();
+          let parsedSetting = null;
+          if (settingRow?.delivery_charges) {
+            try { parsedSetting = JSON.parse(settingRow.delivery_charges); } catch (e) {}
+          }
+
+          const pricingSource = parsedSetting?.pricing || parsedSetting;
+          const defaultZones = [
+            { id: 'A', name: 'Local & Nearby Terai', color: 'green', base: 120, extra_per_kg: 60, suggested: '60 – 100', places: 'Butwal, Tilottama, Bhairahawa (Siddharthanagar), Yogikuti', districts: ['Rupandehi'] },
+            { id: 'B', name: 'Major Inter-City Hubs', color: 'blue', base: 180, extra_per_kg: 90, suggested: '150 – 200', places: 'Kathmandu Valley, Pokhara, Narayangarh (Chitwan), Nepalgunj', districts: ['Kathmandu', 'Lalitpur', 'Bhaktapur', 'Kaski', 'Chitwan', 'Banke'] },
+            { id: 'C', name: 'Other Terai & Inner Terai', color: 'amber', base: 215, extra_per_kg: 70, suggested: '180 – 250', places: 'Dang, Kapilvastu, Nawalparasi, Biratnagar, Itahari, Birtamod and more', districts: ['Dang', 'Kapilvastu', 'Nawalpur', 'Parasi', 'Morang', 'Sunsari', 'Jhapa', 'Bardiya', 'Kailali', 'Kanchanpur', 'Parsa', 'Bara', 'Rautahat', 'Sarlahi', 'Mahottari', 'Dhanusha', 'Siraha', 'Saptari', 'Makwanpur', 'Udayapur'] },
+            { id: 'D', name: 'Hill Districts', color: 'tan', base: 300, extra_per_kg: 80, suggested: '250 – 350', places: 'Gulmi, Arghakhanchi, Syangja, Baglung, Pyuthan, Rolpa, Gorkha and more', districts: ['Gulmi', 'Arghakhanchi', 'Syangja', 'Baglung', 'Pyuthan', 'Rolpa', 'Gorkha', 'Palpa', 'Tanahun', 'Lamjung', 'Parbat', 'Myagdi', 'Eastern Rukum', 'Western Rukum', 'Salyan', 'Surkhet', 'Dailekh', 'Kavrepalanchok', 'Nuwakot', 'Dhading', 'Sindhupalchok', 'Dolakha', 'Ramechhap', 'Sindhuli', 'Rasuwa', 'Okhaldhunga', 'Khotang', 'Bhojpur', 'Dhankuta', 'Terhathum', 'Sankhuwasabha', 'Ilam', 'Panchthar', 'Taplejung', 'Solukhumbu', 'Doti', 'Dadeldhura', 'Baitadi'] },
+            { id: 'E', name: 'Remote Mountain & High-Hill', color: 'red', base: 500, extra_per_kg: 100, suggested: '400 – 600+', places: 'Humla, Jumla, Mugu, Dolpa, Bajura and other remote districts', districts: ['Humla', 'Jumla', 'Mugu', 'Dolpa', 'Bajura', 'Kalikot', 'Jajarkot', 'Bajhang', 'Darchula', 'Achham', 'Mustang', 'Manang'] },
+          ];
+
+          const seedZones = (pricingSource?.zones && pricingSource.zones.length) ? pricingSource.zones : defaultZones;
+
+          // Insert into shipping_zones table
+          for (let i = 0; i < seedZones.length; i++) {
+            const z = seedZones[i];
+            await db.prepare(`
+              INSERT INTO shipping_zones (company_id, zone_code, name, color, base_rate, extra_per_kg, suggested_range, places, districts, is_default, sort_order)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).bind(
+              companyId,
+              z.id || z.zone_code || String.fromCharCode(65 + i),
+              z.name,
+              z.color || 'gray',
+              Number(z.base ?? z.base_rate) || 120,
+              Number(z.extra_per_kg) || 60,
+              z.suggested || z.suggested_range || '',
+              z.places || '',
+              JSON.stringify(z.districts || []),
+              (z.id === 'C' || z.is_default) ? 1 : 0,
+              i + 1
+            ).run();
+          }
+
+          // Insert into delivery_charge_settings table
+          await db.prepare(`
+            INSERT INTO delivery_charge_settings (
+              company_id, first_weight_kg, default_zone, volumetric_enabled, volumetric_divisor,
+              cod_enabled, cod_percent, cod_minimum, fragile_enabled, fragile_fee,
+              insurance_enabled, insurance_threshold, insurance_percent,
+              volume_discounts_enabled, volume_discounts_tiers, services, tax_percent, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            ON CONFLICT(company_id) DO NOTHING
+          `).bind(
+            companyId,
+            Number(pricingSource?.first_weight_kg) || 2,
+            pricingSource?.default_zone || 'C',
+            pricingSource?.volumetric?.enabled !== false ? 1 : 0,
+            Number(pricingSource?.volumetric?.divisor) || 5000,
+            pricingSource?.cod?.enabled ? 1 : 0,
+            Number(pricingSource?.cod?.percent) || 1.5,
+            Number(pricingSource?.cod?.minimum) || 30,
+            pricingSource?.fragile?.enabled ? 1 : 0,
+            Number(pricingSource?.fragile?.fee) || 50,
+            pricingSource?.insurance?.enabled ? 1 : 0,
+            Number(pricingSource?.insurance?.threshold) || 20000,
+            Number(pricingSource?.insurance?.percent) || 0.5,
+            pricingSource?.volume_discounts?.enabled !== false ? 1 : 0,
+            JSON.stringify(pricingSource?.volume_discounts?.tiers || [{ min_shipments: 200, percent: 10 }]),
+            JSON.stringify(pricingSource?.services || [{ id: 1, name: 'Standard', surcharge_percent: 0 }, { id: 2, name: 'Express', surcharge_percent: 30 }]),
+            Number(pricingSource?.tax_percent) || 13
+          ).run();
+
+          settingsRow = await db.prepare('SELECT * FROM delivery_charge_settings WHERE company_id = ?').bind(companyId).first();
+          const freshZones = await db.prepare('SELECT * FROM shipping_zones WHERE company_id = ? ORDER BY sort_order ASC, id ASC').bind(companyId).all();
+          zoneRows = freshZones.results || [];
+        }
+
+        // Format formatted zones
+        const formattedZones = (zoneRows || []).map((z) => {
+          let districts = [];
+          try { districts = JSON.parse(z.districts); } catch (e) {}
+          return {
+            id: z.zone_code,
+            db_id: z.id,
+            zone_code: z.zone_code,
+            name: z.name,
+            color: z.color || 'gray',
+            base: Number(z.base_rate),
+            extra_per_kg: Number(z.extra_per_kg),
+            suggested: z.suggested_range || '',
+            places: z.places || '',
+            districts,
+            is_default: z.is_default === 1,
+            sort_order: z.sort_order,
+          };
+        });
+
+        let volumeTiers = [{ min_shipments: 200, percent: 10 }];
+        try { volumeTiers = JSON.parse(settingsRow.volume_discounts_tiers); } catch (e) {}
+
+        let services = [
+          { id: 1, name: 'Standard', surcharge_percent: 0 },
+          { id: 2, name: 'Express', surcharge_percent: 30 },
+        ];
+        try { services = JSON.parse(settingsRow.services); } catch (e) {}
+
+        const pricing = {
+          first_weight_kg: Number(settingsRow.first_weight_kg) || 2,
+          default_zone: settingsRow.default_zone || 'C',
+          zones: formattedZones,
+          volumetric: {
+            enabled: settingsRow.volumetric_enabled === 1,
+            divisor: Number(settingsRow.volumetric_divisor) || 5000,
+          },
+          services,
+          cod: {
+            enabled: settingsRow.cod_enabled === 1,
+            percent: Number(settingsRow.cod_percent) || 1.5,
+            minimum: Number(settingsRow.cod_minimum) || 30,
+          },
+          fragile: {
+            enabled: settingsRow.fragile_enabled === 1,
+            fee: Number(settingsRow.fragile_fee) || 50,
+          },
+          insurance: {
+            enabled: settingsRow.insurance_enabled === 1,
+            threshold: Number(settingsRow.insurance_threshold) || 20000,
+            percent: Number(settingsRow.insurance_percent) || 0.5,
+          },
+          volume_discounts: {
+            enabled: settingsRow.volume_discounts_enabled === 1,
+            tiers: volumeTiers,
+          },
+          tax_percent: Number(settingsRow.tax_percent) || 13,
+        };
+
+        return jsonResponse({
+          company_id: companyId,
+          base_fee: formattedZones[0]?.base || 120,
+          per_km_fee: 15,
+          per_kg_fee: formattedZones[0]?.extra_per_kg || 60,
+          express_multiplier: 1 + (Number(services.find((s) => s.name === 'Express')?.surcharge_percent) || 30) / 100,
+          tax_percent: pricing.tax_percent,
+          pricing,
+          zones: formattedZones,
+          settings: settingsRow,
+        });
+      }
+
+      // POST or PUT: Save delivery charge settings and sync shipping_zones in D1
+      if (method === 'POST' || method === 'PUT') {
+        const body = await request.json();
+        const cid = Number(body.company_id || companyId);
+        const pricing = body.pricing || body;
+
+        const firstWeightKg = Number(pricing.first_weight_kg) || 2;
+        const defaultZone = pricing.default_zone || 'C';
+        const volumetricEnabled = pricing.volumetric?.enabled !== false ? 1 : 0;
+        const volumetricDivisor = Number(pricing.volumetric?.divisor) || 5000;
+        const codEnabled = pricing.cod?.enabled ? 1 : 0;
+        const codPercent = Number(pricing.cod?.percent) || 1.5;
+        const codMinimum = Number(pricing.cod?.minimum) || 30;
+        const fragileEnabled = pricing.fragile?.enabled ? 1 : 0;
+        const fragileFee = Number(pricing.fragile?.fee) || 50;
+        const insuranceEnabled = pricing.insurance?.enabled ? 1 : 0;
+        const insuranceThreshold = Number(pricing.insurance?.threshold) || 20000;
+        const insurancePercent = Number(pricing.insurance?.percent) || 0.5;
+        const volumeDiscountsEnabled = pricing.volume_discounts?.enabled !== false ? 1 : 0;
+        const volumeDiscountsTiers = JSON.stringify(pricing.volume_discounts?.tiers || [{ min_shipments: 200, percent: 10 }]);
+        const services = JSON.stringify(pricing.services || [{ id: 1, name: 'Standard', surcharge_percent: 0 }, { id: 2, name: 'Express', surcharge_percent: 30 }]);
+        const taxPercent = Number(pricing.tax_percent) || 13;
+        const pricingJson = JSON.stringify(pricing);
+
+        // 1. Upsert delivery_charge_settings row
+        await db.prepare(`
+          INSERT INTO delivery_charge_settings (
+            company_id, first_weight_kg, default_zone,
+            volumetric_enabled, volumetric_divisor,
+            cod_enabled, cod_percent, cod_minimum,
+            fragile_enabled, fragile_fee,
+            insurance_enabled, insurance_threshold, insurance_percent,
+            volume_discounts_enabled, volume_discounts_tiers,
+            services, tax_percent, pricing_json, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+          ON CONFLICT(company_id) DO UPDATE SET
+            first_weight_kg = excluded.first_weight_kg,
+            default_zone = excluded.default_zone,
+            volumetric_enabled = excluded.volumetric_enabled,
+            volumetric_divisor = excluded.volumetric_divisor,
+            cod_enabled = excluded.cod_enabled,
+            cod_percent = excluded.cod_percent,
+            cod_minimum = excluded.cod_minimum,
+            fragile_enabled = excluded.fragile_enabled,
+            fragile_fee = excluded.fragile_fee,
+            insurance_enabled = excluded.insurance_enabled,
+            insurance_threshold = excluded.insurance_threshold,
+            insurance_percent = excluded.insurance_percent,
+            volume_discounts_enabled = excluded.volume_discounts_enabled,
+            volume_discounts_tiers = excluded.volume_discounts_tiers,
+            services = excluded.services,
+            tax_percent = excluded.tax_percent,
+            pricing_json = excluded.pricing_json,
+            updated_at = datetime('now')
+        `).bind(
+          cid, firstWeightKg, defaultZone,
+          volumetricEnabled, volumetricDivisor,
+          codEnabled, codPercent, codMinimum,
+          fragileEnabled, fragileFee,
+          insuranceEnabled, insuranceThreshold, insurancePercent,
+          volumeDiscountsEnabled, volumeDiscountsTiers,
+          services, taxPercent, pricingJson
+        ).run();
+
+        // 2. Sync shipping_zones table if zones provided
+        const zonesToSave = Array.isArray(pricing.zones) ? pricing.zones : [];
+        if (zonesToSave.length > 0) {
+          // Clear current zones for company and insert new ones to preserve exact order and IDs
+          await db.prepare('DELETE FROM shipping_zones WHERE company_id = ?').bind(cid).run();
+
+          for (let i = 0; i < zonesToSave.length; i++) {
+            const z = zonesToSave[i];
+            const zoneCode = z.id || z.zone_code || String.fromCharCode(65 + i);
+            const isDefault = (zoneCode === defaultZone || z.is_default) ? 1 : 0;
+            await db.prepare(`
+              INSERT INTO shipping_zones (
+                company_id, zone_code, name, color, base_rate, extra_per_kg,
+                suggested_range, places, districts, is_default, sort_order, status, created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', datetime('now'), datetime('now'))
+            `).bind(
+              cid,
+              zoneCode,
+              (z.name || `Zone ${zoneCode}`).trim(),
+              z.color || 'gray',
+              Number(z.base ?? z.base_rate) || 120,
+              Number(z.extra_per_kg) || 60,
+              z.suggested || z.suggested_range || '',
+              z.places || '',
+              JSON.stringify(z.districts || []),
+              isDefault,
+              i + 1
+            ).run();
+          }
+        }
+
+        // 3. Keep 'setting' table's delivery_charges column synchronized for backward compatibility
+        const fullPayload = {
+          base_fee: zonesToSave[0]?.base || 120,
+          per_km_fee: 15,
+          per_kg_fee: zonesToSave[0]?.extra_per_kg || 60,
+          express_multiplier: 1 + (Number(pricing.services?.find((s) => s.name === 'Express')?.surcharge_percent) || 30) / 100,
+          tax_percent: taxPercent,
+          pricing,
+          zones: zonesToSave,
+        };
+
+        try {
+          await db.prepare(`
+            UPDATE setting SET delivery_charges = ?, updated_at = datetime('now') WHERE company_id = ?
+          `).bind(JSON.stringify(fullPayload), cid).run();
+        } catch (e) {}
+
+        return jsonResponse({
+          success: true,
+          company_id: cid,
+          message: 'Delivery charge settings and shipping zones saved successfully to database tables',
+          settings: fullPayload,
+        });
+      }
+    }
+
+    // 5f. Shipping Zones direct CRUD endpoint: /api/shipping-zones
+    if (path === 'shipping-zones' || path.startsWith('shipping-zones/')) {
+      const companyId = Number(url.searchParams.get('company_id') || 1);
+      const idMatch = path.match(/^shipping-zones\/(\d+)$/);
+      const paramId = idMatch ? Number(idMatch[1]) : (url.searchParams.get('id') ? Number(url.searchParams.get('id')) : null);
+
+      // GET: list zones from shipping_zones table
+      if (method === 'GET') {
+        const { results } = await db.prepare('SELECT * FROM shipping_zones WHERE company_id = ? ORDER BY sort_order ASC, id ASC').bind(companyId).all();
+        const formatted = (results || []).map((z) => {
+          let districts = [];
+          try { districts = JSON.parse(z.districts); } catch (e) {}
+          return {
+            id: z.zone_code,
+            db_id: z.id,
+            zone_code: z.zone_code,
+            name: z.name,
+            color: z.color || 'gray',
+            base: Number(z.base_rate),
+            extra_per_kg: Number(z.extra_per_kg),
+            suggested: z.suggested_range || '',
+            places: z.places || '',
+            districts,
+            is_default: z.is_default === 1,
+            sort_order: z.sort_order,
+          };
+        });
+        return jsonResponse(formatted);
+      }
+
+      // POST: add a single zone
+      if (method === 'POST') {
+        const body = await request.json();
+        const cid = Number(body.company_id || companyId);
+        const zoneCode = (body.zone_code || body.id || 'Z').trim().toUpperCase();
+        const name = (body.name || `Zone ${zoneCode}`).trim();
+        const color = body.color || 'gray';
+        const baseRate = Number(body.base ?? body.base_rate) || 120;
+        const extraPerKg = Number(body.extra_per_kg) || 60;
+        const suggested = body.suggested || body.suggested_range || '';
+        const places = body.places || '';
+        const districts = JSON.stringify(body.districts || []);
+        const isDefault = body.is_default ? 1 : 0;
+        const sortOrder = Number(body.sort_order) || 99;
+
+        const res = await db.prepare(`
+          INSERT INTO shipping_zones (
+            company_id, zone_code, name, color, base_rate, extra_per_kg,
+            suggested_range, places, districts, is_default, sort_order, status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', datetime('now'), datetime('now'))
+        `).bind(cid, zoneCode, name, color, baseRate, extraPerKg, suggested, places, districts, isDefault, sortOrder).run();
+
+        const createdId = res.meta?.last_row_id;
+        return jsonResponse({
+          success: true,
+          id: createdId,
+          item: {
+            id: zoneCode,
+            db_id: createdId,
+            zone_code: zoneCode,
+            name,
+            color,
+            base: baseRate,
+            extra_per_kg: extraPerKg,
+            suggested,
+            places,
+            districts: body.districts || [],
+            is_default: isDefault === 1,
+            sort_order: sortOrder,
+          },
+        });
+      }
+
+      // DELETE: delete a single zone
+      if (method === 'DELETE') {
+        const targetId = paramId;
+        if (!targetId) {
+          return jsonResponse({ error: 'Zone id is required' }, 400);
+        }
+        await db.prepare('DELETE FROM shipping_zones WHERE (id = ? OR zone_code = ?) AND company_id = ?').bind(targetId, String(targetId), companyId).run();
+        return jsonResponse({ success: true, message: `Zone ${targetId} deleted successfully` });
+      }
+    }
+
     // 6. Branches endpoint: read and write on D1 table 'branches'
     if (path === 'branches' || path.startsWith('branches/')) {
       const companyId = url.searchParams.get('company_id') || 1;

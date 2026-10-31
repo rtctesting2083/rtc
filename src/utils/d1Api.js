@@ -60,6 +60,71 @@ export const d1Api = {
     }
   },
 
+  // Read delivery charges & shipping zones from dedicated D1 tables 'delivery_charge_settings' & 'shipping_zones'
+  getDeliveryCharges: async (companyId = 1) => {
+    try {
+      const res = await fetch(`/api/delivery-charges?company_id=${companyId}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Save delivery charges & shipping zones to dedicated D1 tables 'delivery_charge_settings' & 'shipping_zones'
+  saveDeliveryCharges: async (companyId = 1, payload = {}) => {
+    try {
+      const res = await fetch(`/api/delivery-charges?company_id=${companyId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: Number(companyId), ...payload }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Read shipping zones list from dedicated D1 table 'shipping_zones'
+  getShippingZones: async (companyId = 1) => {
+    try {
+      const res = await fetch(`/api/shipping-zones?company_id=${companyId}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Add shipping zone to D1 table 'shipping_zones'
+  addShippingZone: async (payload, companyId = 1) => {
+    try {
+      const res = await fetch(`/api/shipping-zones?company_id=${companyId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: Number(companyId), ...payload }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Delete shipping zone from D1 table 'shipping_zones'
+  deleteShippingZone: async (id, companyId = 1) => {
+    try {
+      const res = await fetch(`/api/shipping-zones/${id}?company_id=${companyId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
   // Read order types from dedicated D1 table 'order_types'
   getOrderTypes: async (companyId = 1) => {
     try {

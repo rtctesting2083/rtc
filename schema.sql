@@ -209,7 +209,54 @@ CREATE TABLE IF NOT EXISTS product_categories (
   FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS delivery_charge_settings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id INTEGER NOT NULL UNIQUE DEFAULT 1,
+  first_weight_kg REAL NOT NULL DEFAULT 2,
+  default_zone TEXT NOT NULL DEFAULT 'C',
+  volumetric_enabled INTEGER NOT NULL DEFAULT 1,
+  volumetric_divisor INTEGER NOT NULL DEFAULT 5000,
+  cod_enabled INTEGER NOT NULL DEFAULT 0,
+  cod_percent REAL NOT NULL DEFAULT 1.5,
+  cod_minimum REAL NOT NULL DEFAULT 30,
+  fragile_enabled INTEGER NOT NULL DEFAULT 0,
+  fragile_fee REAL NOT NULL DEFAULT 50,
+  insurance_enabled INTEGER NOT NULL DEFAULT 0,
+  insurance_threshold REAL NOT NULL DEFAULT 20000,
+  insurance_percent REAL NOT NULL DEFAULT 0.5,
+  volume_discounts_enabled INTEGER NOT NULL DEFAULT 1,
+  volume_discounts_tiers TEXT DEFAULT '[{"min_shipments":200,"percent":10}]',
+  services TEXT DEFAULT '[{"id":1,"name":"Standard","surcharge_percent":0},{"id":2,"name":"Express","surcharge_percent":30}]',
+  tax_percent REAL NOT NULL DEFAULT 13,
+  pricing_json TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS shipping_zones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id INTEGER NOT NULL DEFAULT 1,
+  zone_code TEXT NOT NULL,
+  name TEXT NOT NULL,
+  color TEXT DEFAULT 'gray',
+  base_rate REAL NOT NULL DEFAULT 120,
+  extra_per_kg REAL NOT NULL DEFAULT 60,
+  suggested_range TEXT,
+  places TEXT,
+  districts TEXT NOT NULL DEFAULT '[]',
+  is_default INTEGER DEFAULT 0,
+  sort_order INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'active',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+);
+
 -- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_shipping_zones_company ON shipping_zones(company_id);
+CREATE INDEX IF NOT EXISTS idx_shipping_zones_code ON shipping_zones(zone_code);
+CREATE INDEX IF NOT EXISTS idx_delivery_charge_settings_company ON delivery_charge_settings(company_id);
 CREATE INDEX IF NOT EXISTS idx_shipments_tracking ON shipments(tracking_number);
 CREATE INDEX IF NOT EXISTS idx_shipments_company ON shipments(company_id);
 CREATE INDEX IF NOT EXISTS idx_shipments_status ON shipments(status);

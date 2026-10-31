@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useCompany } from '../../../context/CompanyContext';
 import { fmtMoney } from '../../../utils/helpers';
 import './DeliveryChargesSettings.css';
@@ -131,8 +131,22 @@ export function DeliveryChargesSettingsPage() {
 
   // Main state copy for editing
   const [pricing, setPricing] = useState(initialData);
+  const [isSaving, setIsSaving] = useState(false);
   const [saveNote, setSaveNote] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Keep pricing synchronized when remote D1 tables load
+  useEffect(() => {
+    if (deliveryChargeSettings?.pricing) {
+      const def = defaultSuggestedPricing();
+      setPricing({
+        ...def,
+        ...deliveryChargeSettings.pricing,
+        tax_percent: deliveryChargeSettings.tax_percent !== undefined ? deliveryChargeSettings.tax_percent : def.tax_percent,
+        services: deliveryChargeSettings.services && deliveryChargeSettings.services.length ? deliveryChargeSettings.services : def.services,
+      });
+    }
+  }, [deliveryChargeSettings]);
 
   // District picker modal state
   const [activeModalZoneIdx, setActiveModalZoneIdx] = useState(null);
@@ -249,7 +263,7 @@ export function DeliveryChargesSettingsPage() {
   };
 
   // Save changes
-  const handleSave = () => {
+  const handleSave = async () => {
     setErrorMessage('');
     // Validation
     if (!pricing.zones.length) {
@@ -267,6 +281,7 @@ export function DeliveryChargesSettingsPage() {
       }
     }
 
+    setIsSaving(true);
     // Save in format compatible with both D1 backend and frontend
     const payload = {
       base_fee: pricing.zones[0]?.base || 120,
@@ -278,9 +293,15 @@ export function DeliveryChargesSettingsPage() {
       services: pricing.services,
     };
 
-    saveDeliveryCharges(payload);
-    setSaveNote('Saved successfully to system and database.');
-    setTimeout(() => setSaveNote(''), 4000);
+    try {
+      await saveDeliveryCharges(payload);
+      setSaveNote('Saved successfully to database tables delivery_charge_settings and shipping_zones.');
+      setTimeout(() => setSaveNote(''), 4500);
+    } catch (err) {
+      setErrorMessage('Failed to save to database. Please check your connection.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // --------------------------------------------------------------------------
@@ -1085,10 +1106,10 @@ export function DeliveryChargesSettingsPage() {
 
       {/* Bottom Sticky Action Bar */}
       <div className="cs-savebar">
-        <button type="button" className="btn-save-red" onClick={handleSave}>
-          Save changes
+        <button type="button" className="btn-save-red" onClick={handleSave} disabled={isSaving}>
+          {isSaving ? 'Saving...' : 'Save changes'}
         </button>
-        <button type="button" className="btn-reset-light" onClick={handleReset}>
+        <button type="button" className="btn-reset-light" onClick={handleReset} disabled={isSaving}>
           Reset to suggested rates
         </button>
         {saveNote && <span className="cs-note">✓ {saveNote}</span>}

@@ -131,6 +131,23 @@ export function CompanyProvider({ children }) {
         console.warn('Could not fetch D1 product_categories:', err);
       });
 
+      // 2e. Hydrate dedicated delivery charges & shipping zones from Cloudflare remote D1 tables 'delivery_charge_settings' and 'shipping_zones'
+      d1Api.getDeliveryCharges(companyId).then((remoteDeliveryCharges) => {
+        if (remoteDeliveryCharges && !remoteDeliveryCharges.error) {
+          setData((prev) => {
+            if (!prev) return prev;
+            const updated = {
+              ...prev,
+              deliveryChargeSettings: remoteDeliveryCharges,
+            };
+            saveCompanyState(companyId, updated);
+            return updated;
+          });
+        }
+      }).catch((err) => {
+        console.warn('Could not fetch D1 delivery_charges:', err);
+      });
+
       // 3. Hydrate live branches from Cloudflare remote D1 table 'branches'
       d1Api.getBranches(companyId).then((remoteBranches) => {
         if (Array.isArray(remoteBranches) && remoteBranches.length > 0) {
@@ -1081,12 +1098,19 @@ export function CompanyProvider({ children }) {
   };
 
   // Delivery Charges & Shipment Statuses Settings
-  const saveDeliveryCharges = (settings) => {
+  const saveDeliveryCharges = async (settings) => {
     updateData((prev) => ({
       ...prev,
       deliveryChargeSettings: settings,
     }));
     syncSettingToD1({ delivery_charges: settings });
+    try {
+      const res = await d1Api.saveDeliveryCharges(companyId, settings);
+      return res;
+    } catch (err) {
+      console.warn('Failed to save delivery charges to dedicated D1 table:', err);
+      return null;
+    }
   };
 
   const saveShipmentStatuses = (settings) => {
