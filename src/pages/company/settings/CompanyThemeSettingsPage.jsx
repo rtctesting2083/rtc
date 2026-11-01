@@ -61,8 +61,57 @@ export function CompanyThemeSettingsPage() {
           />
         </div>
 
-        {/* Right: Info & Live Brand Guidelines Card */}
+        {/* Right: Info & Live Brand Guidelines Card & D1 Database Status */}
         <div>
+          {/* Cloudflare D1 Database Table Info */}
+          <div
+            style={{
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '16px',
+              padding: '24px',
+              boxShadow: '0 2px 10px rgba(0, 0, 0, 0.02)',
+              marginBottom: '24px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>⚡</span> Cloudflare D1 Database Table
+              </h3>
+              <span
+                style={{
+                  background: '#dcfce7',
+                  color: '#15803d',
+                  fontSize: '11.5px',
+                  fontWeight: 700,
+                  padding: '3px 10px',
+                  borderRadius: '9999px',
+                }}
+              >
+                ● Connected
+              </span>
+            </div>
+
+            <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '13px' }}>
+                <span style={{ color: '#64748b', fontWeight: 600 }}>D1 Table:</span>
+                <code style={{ color: '#0f172a', fontWeight: 700, background: '#e2e8f0', padding: '2px 6px', borderRadius: '4px' }}>system_theme</code>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '13px' }}>
+                <span style={{ color: '#64748b', fontWeight: 600 }}>Database Binding:</span>
+                <code style={{ color: '#0f172a', fontWeight: 700 }}>rtc (my-db)</code>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                <span style={{ color: '#64748b', fontWeight: 600 }}>Scope:</span>
+                <span style={{ color: '#16a34a', fontWeight: 600 }}>Whole System Theme Color</span>
+              </div>
+            </div>
+
+            <p style={{ margin: 0, fontSize: '12.5px', color: '#64748b', lineHeight: 1.6 }}>
+              Any changes made here are saved directly to the Cloudflare D1 <code>system_theme</code> table, ensuring all users, branches, and merchants load the updated theme across their sessions.
+            </p>
+          </div>
+
           <div
             style={{
               background: '#ffffff',
@@ -87,7 +136,7 @@ export function CompanyThemeSettingsPage() {
                 <strong>Logo Color Extraction:</strong> Use the <em>"Take colour from logo"</em> button to automatically sample the dominant saturated color from your uploaded graphic.
               </li>
               <li>
-                <strong>Persistent Cloud Storage:</strong> All logo graphics and theme colour codes are safely saved to the Cloudflare D1 database.
+                <strong>Persistent Cloud Storage:</strong> All logo graphics and theme colour codes are safely saved to the Cloudflare D1 <code>system_theme</code> table.
               </li>
             </ul>
           </div>

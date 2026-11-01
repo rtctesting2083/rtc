@@ -150,9 +150,12 @@ export function CompanyThemeCard({ company, onSave, onClose }) {
         await onSave({
           logo_url: logoPreview,
           theme_color: themeColor || DEFAULT_RTC_RED,
+          preset_name: PRESET_THEME_COLORS.find(
+            (p) => p.hex.toLowerCase() === (themeColor || '').toLowerCase()
+          )?.name || 'Custom',
         });
       }
-      setSavedMessage('Theme settings saved successfully!');
+      setSavedMessage('✓ Saved to Cloudflare D1 table: system_theme!');
       setTimeout(() => setSavedMessage(''), 3000);
       if (onClose) {
         setTimeout(() => onClose(), 800);

@@ -91,6 +91,24 @@ export async function onRequest(context) {
         await db.prepare("ALTER TABLE companies ADD COLUMN theme_color TEXT DEFAULT '#dc2626'").run();
       } catch (e) {}
 
+      // Ensure system_theme table exists
+      await db.prepare(`
+        CREATE TABLE IF NOT EXISTS system_theme (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          company_id INTEGER NOT NULL DEFAULT 1,
+          theme_color TEXT NOT NULL DEFAULT '#dc2626',
+          theme_color_dark TEXT DEFAULT '#b91c1c',
+          theme_color_light TEXT DEFAULT '#dc262618',
+          logo_url TEXT,
+          logo_extracted_color TEXT,
+          preset_name TEXT DEFAULT 'Crimson Red',
+          is_active INTEGER DEFAULT 1,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(company_id)
+        )
+      `).run().catch(() => {});
+
       const fields = [];
       const vals = [];
       if (body.logo_url !== undefined) { fields.push('logo_url = ?'); vals.push(body.logo_url); }
@@ -99,8 +117,134 @@ export async function onRequest(context) {
         vals.push(compId);
         await db.prepare(`UPDATE companies SET ${fields.join(', ')} WHERE id = ?`).bind(...vals).run();
       }
+
+      // Also upsert to system_theme table
+      const themeColor = body.theme_color || '#dc2626';
+      await db.prepare(`
+        INSERT INTO system_theme (
+          company_id, theme_color, theme_color_dark, theme_color_light,
+          logo_url, logo_extracted_color, preset_name, is_active,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+        ON CONFLICT(company_id) DO UPDATE SET
+          theme_color = excluded.theme_color,
+          theme_color_dark = excluded.theme_color_dark,
+          theme_color_light = excluded.theme_color_light,
+          logo_url = COALESCE(excluded.logo_url, system_theme.logo_url),
+          logo_extracted_color = COALESCE(excluded.logo_extracted_color, system_theme.logo_extracted_color),
+          preset_name = COALESCE(excluded.preset_name, system_theme.preset_name),
+          updated_at = datetime('now')
+      `).bind(
+        compId,
+        themeColor,
+        body.theme_color_dark || '#b91c1c',
+        body.theme_color_light || `${themeColor}18`,
+        body.logo_url || null,
+        body.logo_extracted_color || null,
+        body.preset_name || 'Custom'
+      ).run().catch(() => {});
+
       const updated = await db.prepare('SELECT * FROM companies WHERE id = ?').bind(compId).first();
-      return jsonResponse({ success: true, company: updated });
+      const updatedTheme = await db.prepare('SELECT * FROM system_theme WHERE company_id = ?').bind(compId).first().catch(() => null);
+      return jsonResponse({ success: true, company: updated, theme: updatedTheme });
+    }
+
+    // 2d. Dedicated System Theme Endpoint on D1 Table 'system_theme': /api/system-theme
+    if (path === 'system-theme' || path.startsWith('system-theme/')) {
+      // Ensure system_theme table exists
+      await db.prepare(`
+        CREATE TABLE IF NOT EXISTS system_theme (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          company_id INTEGER NOT NULL DEFAULT 1,
+          theme_color TEXT NOT NULL DEFAULT '#dc2626',
+          theme_color_dark TEXT DEFAULT '#b91c1c',
+          theme_color_light TEXT DEFAULT '#dc262618',
+          logo_url TEXT,
+          logo_extracted_color TEXT,
+          preset_name TEXT DEFAULT 'Crimson Red',
+          is_active INTEGER DEFAULT 1,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(company_id)
+        )
+      `).run().catch(() => {});
+
+      const companyId = Number(url.searchParams.get('company_id') || 1);
+
+      // GET: Read theme from system_theme table
+      if (method === 'GET') {
+        let themeRow = await db.prepare('SELECT * FROM system_theme WHERE company_id = ?').bind(companyId).first().catch(() => null);
+        if (!themeRow) {
+          // If no row exists yet, seed one using company settings or default RTC Red
+          const comp = await db.prepare('SELECT * FROM companies WHERE id = ?').bind(companyId).first().catch(() => null);
+          const defaultColor = comp?.theme_color || '#dc2626';
+          const defaultLogo = comp?.logo_url || null;
+          await db.prepare(`
+            INSERT OR IGNORE INTO system_theme (
+              company_id, theme_color, theme_color_dark, theme_color_light,
+              logo_url, preset_name, is_active, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, 'Crimson Red', 1, datetime('now'), datetime('now'))
+          `).bind(companyId, defaultColor, '#b91c1c', defaultColor + '18', defaultLogo).run().catch(() => {});
+
+          themeRow = await db.prepare('SELECT * FROM system_theme WHERE company_id = ?').bind(companyId).first().catch(() => null);
+        }
+
+        return jsonResponse({
+          success: true,
+          table: 'system_theme',
+          theme: themeRow || {
+            company_id: companyId,
+            theme_color: '#dc2626',
+            theme_color_dark: '#b91c1c',
+            theme_color_light: '#dc262618',
+            preset_name: 'Crimson Red',
+            is_active: 1,
+          },
+        });
+      }
+
+      // POST or PUT: Update or insert theme in system_theme table
+      if (method === 'POST' || method === 'PUT') {
+        const body = await request.json();
+        const cid = Number(body.company_id || companyId);
+        const color = body.theme_color || '#dc2626';
+        const dark = body.theme_color_dark || '#b91c1c';
+        const light = body.theme_color_light || `${color}18`;
+        const logo = body.logo_url !== undefined ? body.logo_url : null;
+        const extracted = body.logo_extracted_color || null;
+        const preset = body.preset_name || 'Custom';
+
+        await db.prepare(`
+          INSERT INTO system_theme (
+            company_id, theme_color, theme_color_dark, theme_color_light,
+            logo_url, logo_extracted_color, preset_name, is_active,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+          ON CONFLICT(company_id) DO UPDATE SET
+            theme_color = excluded.theme_color,
+            theme_color_dark = excluded.theme_color_dark,
+            theme_color_light = excluded.theme_color_light,
+            logo_url = COALESCE(excluded.logo_url, system_theme.logo_url),
+            logo_extracted_color = COALESCE(excluded.logo_extracted_color, system_theme.logo_extracted_color),
+            preset_name = COALESCE(excluded.preset_name, system_theme.preset_name),
+            updated_at = datetime('now')
+        `).bind(cid, color, dark, light, logo, extracted, preset).run();
+
+        // Also update companies table for unified synchronization
+        try {
+          await db.prepare('UPDATE companies SET theme_color = ?, logo_url = COALESCE(?, logo_url) WHERE id = ?')
+            .bind(color, logo, cid)
+            .run();
+        } catch (e) {}
+
+        const updated = await db.prepare('SELECT * FROM system_theme WHERE company_id = ?').bind(cid).first();
+        return jsonResponse({
+          success: true,
+          table: 'system_theme',
+          message: 'Whole system theme color saved in Cloudflare D1 database table system_theme',
+          theme: updated,
+        });
+      }
     }
 
     // 3. Company Data Bundle endpoint: /api/company/:id
@@ -143,6 +287,7 @@ export async function onRequest(context) {
         settingsRes,
         settlementsRes,
         companyRes,
+        systemThemeRes,
       ] = await Promise.all([
         db.prepare('SELECT * FROM branches WHERE company_id = ?').bind(companyId).all(),
         db.prepare('SELECT * FROM riders WHERE company_id = ?').bind(companyId).all(),
@@ -152,6 +297,7 @@ export async function onRequest(context) {
         db.prepare('SELECT * FROM company_settings WHERE company_id = ?').bind(companyId).first(),
         db.prepare('SELECT * FROM cod_settlements WHERE company_id = ? ORDER BY id DESC').bind(companyId).all().catch(() => ({ results: [] })),
         db.prepare('SELECT * FROM companies WHERE id = ?').bind(companyId).first().catch(() => null),
+        db.prepare('SELECT * FROM system_theme WHERE company_id = ?').bind(companyId).first().catch(() => null),
       ]);
 
       const formatParsed = (row, jsonFields) => {
@@ -184,6 +330,7 @@ export async function onRequest(context) {
           'users_json',
         ]) : null,
         company: companyRes || null,
+        system_theme: systemThemeRes || null,
       });
     }
 

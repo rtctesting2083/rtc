@@ -40,14 +40,37 @@ export function CompanyProvider({ children }) {
   const company = findCompany(companyId) || { id: 1, name: 'R.T.C Courier Pvt. Ltd.', slug: 'rtc', theme_color: '#dc2626' };
 
   const [data, setData] = useState(() => loadCompanyState(companyId));
+  const [d1Theme, setD1Theme] = useState(null);
 
   // Dynamically inject CSS variables across portals
   useEffect(() => {
-    const color = company?.theme_color || '#dc2626';
+    const color = d1Theme?.theme_color || company?.theme_color || '#dc2626';
     applyGlobalThemeColor(color);
-  }, [company?.theme_color]);
+  }, [d1Theme?.theme_color, company?.theme_color]);
 
-  const updateCompanyTheme = useCallback(async ({ theme_color, logo_url }) => {
+  // Fetch live system theme directly from Cloudflare D1 table 'system_theme'
+  useEffect(() => {
+    if (companyId) {
+      d1Api.getSystemTheme(companyId).then((res) => {
+        if (res && res.theme) {
+          setD1Theme(res.theme);
+          if (res.theme.theme_color) {
+            applyGlobalThemeColor(res.theme.theme_color);
+            if (updateCompany) {
+              updateCompany(companyId, {
+                theme_color: res.theme.theme_color,
+                logo_url: res.theme.logo_url,
+              });
+            }
+          }
+        }
+      }).catch((err) => {
+        console.warn('Could not fetch D1 system_theme:', err);
+      });
+    }
+  }, [companyId, updateCompany]);
+
+  const updateCompanyTheme = useCallback(async ({ theme_color, logo_url, preset_name, logo_extracted_color }) => {
     if (!companyId) return null;
     const updates = {};
     if (theme_color !== undefined) {
@@ -55,11 +78,19 @@ export function CompanyProvider({ children }) {
       applyGlobalThemeColor(theme_color);
     }
     if (logo_url !== undefined) updates.logo_url = logo_url;
+    if (preset_name !== undefined) updates.preset_name = preset_name;
+    if (logo_extracted_color !== undefined) updates.logo_extracted_color = logo_extracted_color;
 
     if (updateCompany) {
       updateCompany(companyId, updates);
     }
-    return await d1Api.updateCompanyTheme(companyId, updates);
+
+    // Persist directly to Cloudflare D1 table 'system_theme'
+    const res = await d1Api.saveSystemTheme(companyId, updates);
+    if (res && res.theme) {
+      setD1Theme(res.theme);
+    }
+    return res;
   }, [companyId, updateCompany]);
 
   // Sync partial or full settings directly to Cloudflare D1 table 'setting'
@@ -1969,8 +2000,9 @@ export function CompanyProvider({ children }) {
         updateVendorOrder,
         deleteVendorOrder,
         resetCompanyData,
-        themeColor: company?.theme_color || '#dc2626',
-        logoUrl: company?.logo_url || null,
+        themeColor: d1Theme?.theme_color || company?.theme_color || '#dc2626',
+        logoUrl: d1Theme?.logo_url !== undefined ? d1Theme.logo_url : (company?.logo_url || null),
+        d1Theme,
         updateCompanyTheme,
       }}
     >

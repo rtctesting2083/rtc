@@ -14,6 +14,23 @@ CREATE TABLE IF NOT EXISTS companies (
   created_at TEXT NOT NULL
 );
 
+-- Dedicated System Theme Table for Entire System (Cloudflare D1)
+CREATE TABLE IF NOT EXISTS system_theme (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id INTEGER NOT NULL DEFAULT 1,
+  theme_color TEXT NOT NULL DEFAULT '#dc2626',
+  theme_color_dark TEXT DEFAULT '#b91c1c',
+  theme_color_light TEXT DEFAULT '#dc262618',
+  logo_url TEXT,
+  logo_extracted_color TEXT,
+  preset_name TEXT DEFAULT 'Crimson Red',
+  is_active INTEGER DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(company_id),
+  FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS branches (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   company_id INTEGER NOT NULL,

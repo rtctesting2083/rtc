@@ -34,6 +34,32 @@ export const d1Api = {
     }
   },
 
+  // Read system theme from dedicated Cloudflare D1 table 'system_theme'
+  getSystemTheme: async (companyId = 1) => {
+    try {
+      const res = await fetch(`/api/system-theme?company_id=${companyId}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Save whole system theme to dedicated Cloudflare D1 table 'system_theme'
+  saveSystemTheme: async (companyId = 1, themePayload = {}) => {
+    try {
+      const res = await fetch(`/api/system-theme?company_id=${companyId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: Number(companyId), ...themePayload }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
   // Update company theme and logo in D1
   updateCompanyTheme: async (companyId = 1, { theme_color, logo_url }) => {
     try {
