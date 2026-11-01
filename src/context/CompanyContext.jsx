@@ -16,6 +16,22 @@ import {
 
 const CompanyContext = createContext(null);
 
+export function applyGlobalThemeColor(color) {
+  if (!color || typeof color !== 'string') color = '#dc2626';
+  const root = document.documentElement;
+  root.style.setProperty('--theme-color', color);
+  root.style.setProperty('--admin-red', color);
+  root.style.setProperty('--vendor-red', color);
+  root.style.setProperty('--accent', color);
+  root.style.setProperty('--theme-color-light', `${color}18`);
+  root.style.setProperty('--admin-red-light', `${color}18`);
+  root.style.setProperty('--vendor-red-light', `${color}18`);
+  root.style.setProperty('--theme-color-tint', `${color}0c`);
+  root.style.setProperty('--theme-color-border', `${color}38`);
+  root.style.setProperty('--theme-color-shadow', `${color}25`);
+  root.style.setProperty('--admin-red-gradient', `linear-gradient(135deg, ${color} 0%, ${color} 70%, #1e1b4b 100%)`);
+}
+
 export function CompanyProvider({ children }) {
   const { session } = useAuth();
   const { findCompany, updateCompany } = usePlatform();
@@ -28,17 +44,16 @@ export function CompanyProvider({ children }) {
   // Dynamically inject CSS variables across portals
   useEffect(() => {
     const color = company?.theme_color || '#dc2626';
-    document.documentElement.style.setProperty('--admin-red', color);
-    document.documentElement.style.setProperty('--accent', color);
-    document.documentElement.style.setProperty('--vendor-red', color);
-    document.documentElement.style.setProperty('--admin-red-light', `${color}18`);
-    document.documentElement.style.setProperty('--vendor-red-light', `${color}18`);
+    applyGlobalThemeColor(color);
   }, [company?.theme_color]);
 
   const updateCompanyTheme = useCallback(async ({ theme_color, logo_url }) => {
     if (!companyId) return null;
     const updates = {};
-    if (theme_color !== undefined) updates.theme_color = theme_color;
+    if (theme_color !== undefined) {
+      updates.theme_color = theme_color;
+      applyGlobalThemeColor(theme_color);
+    }
     if (logo_url !== undefined) updates.logo_url = logo_url;
 
     if (updateCompany) {

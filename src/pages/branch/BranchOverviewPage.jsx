@@ -126,7 +126,7 @@ export function BranchOverviewPage() {
       <div className="admin-metrics-grid">
         <div className="admin-metric-card mint">
           <div className="admin-metric-top">
-            <span className="admin-metric-icon" style={{ color: '#dc2626' }}>📦</span>
+            <span className="admin-metric-icon" style={{ color: 'var(--theme-color, #dc2626)' }}>📦</span>
           </div>
           <div>
             <div className="admin-metric-value">{branchShipments.length}</div>
@@ -340,7 +340,7 @@ export function BranchOverviewPage() {
                           Awaiting destination receipt
                         </span>
                       ) : s.status === 'failed' ? (
-                        <span style={{ color: '#dc2626', fontWeight: 600, fontSize: '11px' }}>
+                        <span style={{ color: 'var(--theme-color, #dc2626)', fontWeight: 600, fontSize: '11px' }}>
                           Delivery failed
                         </span>
                       ) : s.status === 'pending' ? (

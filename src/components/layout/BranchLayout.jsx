@@ -52,7 +52,7 @@ export function BranchLayout() {
   };
 
   if (!currentBranch) {
-    return <div className="p-4" style={{ color: '#dc2626', fontWeight: 600 }}>Branch not found. Please log in again.</div>;
+    return <div className="p-4" style={{ color: 'var(--theme-color, #dc2626)', fontWeight: 600 }}>Branch not found. Please log in again.</div>;
   }
 
   const label = staffUser ? `${staffUser.name} (${staffRole?.name || 'Staff'})` : currentBranch.name;
@@ -137,7 +137,7 @@ export function BranchLayout() {
                 type="button"
                 className="admin-sidebar-btn"
                 onClick={handleBackToAdmin}
-                style={{ color: '#dc2626' }}
+                style={{ color: 'var(--theme-color, #dc2626)' }}
               >
                 Back to Admin
               </button>

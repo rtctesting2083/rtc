@@ -49,7 +49,7 @@ export function CompanyLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   if (!company) {
-    return <div className="p-4" style={{ color: '#dc2626', fontWeight: 600 }}>Loading company...</div>;
+    return <div className="p-4" style={{ color: 'var(--theme-color, #dc2626)', fontWeight: 600 }}>Loading company...</div>;
   }
 
   const currentUser = session?.userId ? findCompanyUser(session.userId) : null;
@@ -229,7 +229,7 @@ export function CompanyLayout() {
                 type="button"
                 className="admin-sidebar-btn"
                 onClick={handleResetData}
-                style={{ color: '#dc2626' }}
+                style={{ color: 'var(--theme-color, #dc2626)' }}
               >
                 Reset Demo
               </button>

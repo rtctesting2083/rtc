@@ -33,9 +33,9 @@ export function RiderLayout() {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
-      <header className="admin-topbar" style={{ background: '#dc2626', color: '#ffffff' }}>
+      <header className="admin-topbar" style={{ background: 'var(--theme-color, #dc2626)', color: '#ffffff' }}>
         <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div className="brand-badge" style={{ background: '#ffffff', color: '#dc2626', fontWeight: 800 }}>
+          <div className="brand-badge" style={{ background: '#ffffff', color: 'var(--theme-color, #dc2626)', fontWeight: 800 }}>
             {initialsFor(company?.name || 'RD')}
           </div>
           <div className="brand-word" style={{ color: '#ffffff' }}>
@@ -98,7 +98,7 @@ export function RiderLayout() {
               onClick={handleLogout}
               style={{
                 background: '#ffffff',
-                color: '#dc2626',
+                color: 'var(--theme-color, #dc2626)',
                 border: 'none',
                 borderRadius: '6px',
                 padding: '6px 12px',

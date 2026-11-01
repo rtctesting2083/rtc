@@ -8,8 +8,33 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;1,9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script type="module" crossorigin src="/assets/index-DHqg4XXo.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-r_mIcqrF.css">
+    <script>
+      (function() {
+        try {
+          var raw = localStorage.getItem('antigravity_platform_v1');
+          var color = '#dc2626';
+          if (raw) {
+            var data = JSON.parse(raw);
+            if (data && data.companies && data.companies[0] && data.companies[0].theme_color) {
+              color = data.companies[0].theme_color;
+            }
+          }
+          var r = document.documentElement;
+          r.style.setProperty('--theme-color', color);
+          r.style.setProperty('--admin-red', color);
+          r.style.setProperty('--vendor-red', color);
+          r.style.setProperty('--accent', color);
+          r.style.setProperty('--theme-color-light', color + '18');
+          r.style.setProperty('--admin-red-light', color + '18');
+          r.style.setProperty('--vendor-red-light', color + '18');
+          r.style.setProperty('--theme-color-tint', color + '0c');
+          r.style.setProperty('--theme-color-border', color + '38');
+          r.style.setProperty('--theme-color-shadow', color + '25');
+        } catch(e) {}
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-Dz30J0T1.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DF4_CFG_.css">
   </head>
   <body>
     <div id="root"></div>

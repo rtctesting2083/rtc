@@ -4,10 +4,10 @@
    ========================================================================== */
 
 :root {
-  --admin-red: #dc2626;
-  --admin-red-dark: #b91c1c;
-  --admin-red-light: #fef2f2;
-  --admin-red-gradient: linear-gradient(135deg, #e11d48 0%, #dc2626 50%, #b91c1c 100%);
+  --admin-red: var(--theme-color, #dc2626);
+  --admin-red-dark: var(--theme-color-hover, #b91c1c);
+  --admin-red-light: var(--theme-color-light, #fef2f2);
+  --admin-red-gradient: linear-gradient(135deg, var(--theme-color, #dc2626) 0%, var(--theme-color, #dc2626) 60%, #1e1b4b 100%);
   --admin-bg: #fbf8f8;
   --admin-card-border: #f1e7e4;
   --admin-card-shadow: 0 2px 8px rgba(30, 20, 20, 0.04);
@@ -512,7 +512,7 @@
 .admin-metric-sub.green { color: #059669; }
 .admin-metric-sub.amber { color: #d97706; }
 .admin-metric-sub.blue { color: #0284c7; }
-.admin-metric-sub.red { color: #dc2626; }
+.admin-metric-sub.red { color: var(--admin-red, #dc2626); }
 .admin-metric-sub.gray { color: #6b7280; }
 
 /* ---------- Today's Overview & Calendar Row ---------- */

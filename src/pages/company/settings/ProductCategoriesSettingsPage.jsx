@@ -101,7 +101,7 @@ export function ProductCategoriesSettingsPage() {
             display: 'inline-flex',
             alignItems: 'center',
             gap: '8px',
-            backgroundColor: '#dc2626',
+            backgroundColor: 'var(--theme-color, #dc2626)',
             color: '#ffffff',
             border: 'none',
             borderRadius: '10px',
@@ -113,7 +113,7 @@ export function ProductCategoriesSettingsPage() {
             transition: 'background-color 0.15s ease',
           }}
           onMouseOver={(e) => (e.currentTarget.style.backgroundColor = '#b91c1c')}
-          onMouseOut={(e) => (e.currentTarget.style.backgroundColor = '#dc2626')}
+          onMouseOut={(e) => (e.currentTarget.style.backgroundColor = 'var(--theme-color, #dc2626)')}
         >
           <Plus size={16} />
           Add Category
@@ -155,7 +155,7 @@ export function ProductCategoriesSettingsPage() {
               height: '42px',
               borderRadius: '10px',
               background: '#fef2f2',
-              color: '#dc2626',
+              color: 'var(--theme-color, #dc2626)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -344,7 +344,7 @@ export function ProductCategoriesSettingsPage() {
               type="button"
               onClick={() => setStatusFilter(st)}
               style={{
-                background: statusFilter === st ? '#dc2626' : '#f3f4f6',
+                background: statusFilter === st ? 'var(--theme-color, #dc2626)' : '#f3f4f6',
                 color: statusFilter === st ? '#ffffff' : '#374151',
                 border: 'none',
                 borderRadius: '6px',
@@ -421,7 +421,7 @@ export function ProductCategoriesSettingsPage() {
                           alignItems: 'center',
                           gap: '4px',
                           background: '#fef2f2',
-                          color: '#dc2626',
+                          color: 'var(--theme-color, #dc2626)',
                           border: '1px solid #fee2e2',
                           borderRadius: '6px',
                           padding: '3px 8px',
@@ -534,7 +534,7 @@ export function ProductCategoriesSettingsPage() {
                             gap: '4px',
                             padding: '6px 12px',
                             backgroundColor: '#fef2f2',
-                            color: '#dc2626',
+                            color: 'var(--theme-color, #dc2626)',
                             border: '1px solid #fee2e2',
                             borderRadius: '6px',
                             fontSize: '12px',
@@ -543,12 +543,12 @@ export function ProductCategoriesSettingsPage() {
                             transition: 'all 0.15s ease',
                           }}
                           onMouseOver={(e) => {
-                            e.currentTarget.style.backgroundColor = '#dc2626';
+                            e.currentTarget.style.backgroundColor = 'var(--theme-color, #dc2626)';
                             e.currentTarget.style.color = '#ffffff';
                           }}
                           onMouseOut={(e) => {
                             e.currentTarget.style.backgroundColor = '#fef2f2';
-                            e.currentTarget.style.color = '#dc2626';
+                            e.currentTarget.style.color = 'var(--theme-color, #dc2626)';
                           }}
                         >
                           <Trash2 size={13} />
@@ -579,7 +579,7 @@ export function ProductCategoriesSettingsPage() {
                           onClick={handleOpenAdd}
                           style={{
                             marginTop: '8px',
-                            backgroundColor: '#dc2626',
+                            backgroundColor: 'var(--theme-color, #dc2626)',
                             color: '#ffffff',
                             border: 'none',
                             borderRadius: '8px',
@@ -634,7 +634,7 @@ export function ProductCategoriesSettingsPage() {
                   height: '44px',
                   borderRadius: '12px',
                   background: '#fef2f2',
-                  color: '#dc2626',
+                  color: 'var(--theme-color, #dc2626)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -683,7 +683,7 @@ export function ProductCategoriesSettingsPage() {
                   padding: '9px 18px',
                   borderRadius: '8px',
                   border: 'none',
-                  backgroundColor: '#dc2626',
+                  backgroundColor: 'var(--theme-color, #dc2626)',
                   color: '#ffffff',
                   fontSize: '13px',
                   fontWeight: 600,
@@ -733,7 +733,7 @@ function ProductCategoryFormModal({ mode = 'add', initialData = {}, onSave, onCl
           style={{
             padding: '10px 14px',
             backgroundColor: '#fef2f2',
-            color: '#dc2626',
+            color: 'var(--theme-color, #dc2626)',
             border: '1px solid #fee2e2',
             borderRadius: '8px',
             fontSize: '13px',
@@ -872,7 +872,7 @@ function ProductCategoryFormModal({ mode = 'add', initialData = {}, onSave, onCl
             padding: '9px 20px',
             borderRadius: '8px',
             border: 'none',
-            backgroundColor: '#dc2626',
+            backgroundColor: 'var(--theme-color, #dc2626)',
             color: '#ffffff',
             fontSize: '13px',
             fontWeight: 600,

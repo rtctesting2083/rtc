@@ -189,7 +189,7 @@ export function SettlementDetailReportModal({ settlement, onClose }) {
                     <td style={{ textAlign: 'right', fontWeight: 600, color: '#16a34a' }}>
                       {fmtMoney(cod)}
                     </td>
-                    <td style={{ textAlign: 'right', color: '#dc2626' }}>
+                    <td style={{ textAlign: 'right', color: 'var(--theme-color, #dc2626)' }}>
                       - {fmtMoney(fee)}
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>
@@ -203,7 +203,7 @@ export function SettlementDetailReportModal({ settlement, onClose }) {
               <tr>
                 <th colSpan="5" style={{ textAlign: 'right' }}>TOTAL SETTLEMENT SUMMARY:</th>
                 <th style={{ textAlign: 'right', color: '#16a34a' }}>{fmtMoney(settlement.total_cod)}</th>
-                <th style={{ textAlign: 'right', color: '#dc2626' }}>- {fmtMoney(settlement.delivery_charges_deducted)}</th>
+                <th style={{ textAlign: 'right', color: 'var(--theme-color, #dc2626)' }}>- {fmtMoney(settlement.delivery_charges_deducted)}</th>
                 <th style={{ textAlign: 'right', fontSize: '14px', color: '#003366' }}>{fmtMoney(settlement.net_payable)}</th>
               </tr>
             </tfoot>

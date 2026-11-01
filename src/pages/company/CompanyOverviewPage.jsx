@@ -240,7 +240,7 @@ export function CompanyOverviewPage() {
         {/* Total Shipments */}
         <div className="admin-metric-card mint">
           <div className="admin-metric-top">
-            <span className="admin-metric-icon" style={{ color: '#dc2626' }}>📦</span>
+            <span className="admin-metric-icon" style={{ color: 'var(--theme-color, #dc2626)' }}>📦</span>
           </div>
           <div>
             <div className="admin-metric-value">{totalShipments}</div>
@@ -474,7 +474,7 @@ export function CompanyOverviewPage() {
                   <g key={m}>
                     {isOct && (
                       <>
-                        <rect x={x} y="22" width="6" height="58" fill="#dc2626" rx="2" />
+                        <rect x={x} y="22" width="6" height="58" fill="var(--theme-color, #dc2626)" rx="2" />
                         <rect x={x + 7} y="44" width="6" height="36" fill="#fca5a5" rx="2" />
                       </>
                     )}

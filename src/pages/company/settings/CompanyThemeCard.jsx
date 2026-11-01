@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import defaultLogo from '../../../assets/logo-transparent.png';
+import { applyGlobalThemeColor } from '../../../context/CompanyContext';
 import './CompanyThemeSettings.css';
 
 export const PRESET_THEME_COLORS = [
@@ -59,6 +60,13 @@ export function CompanyThemeCard({ company, onSave, onClose }) {
     }
   };
 
+  const updateLiveThemeColor = (color) => {
+    setThemeColor(color);
+    if (color && typeof color === 'string' && color.startsWith('#') && (color.length === 4 || color.length === 7)) {
+      applyGlobalThemeColor(color);
+    }
+  };
+
   // Extract Vibrant Color from Logo using HTML Canvas
   const handleExtractColorFromLogo = () => {
     const currentSrc = logoPreview || defaultLogo;
@@ -103,25 +111,25 @@ export function CompanyThemeCard({ company, onSave, onClose }) {
         }
 
         if (bestColor) {
-          setThemeColor(bestColor);
+          updateLiveThemeColor(bestColor);
         } else {
           // Default to RTC Crimson Red if no saturated pixel found
-          setThemeColor('#dc143c');
+          updateLiveThemeColor('#dc143c');
         }
       } catch (err) {
         console.warn('Could not extract color from logo canvas:', err);
-        setThemeColor(DEFAULT_RTC_RED);
+        updateLiveThemeColor(DEFAULT_RTC_RED);
       }
     };
 
     img.onerror = () => {
-      setThemeColor(DEFAULT_RTC_RED);
+      updateLiveThemeColor(DEFAULT_RTC_RED);
     };
   };
 
   // Reset to default RTC Red
   const handleResetToDefault = () => {
-    setThemeColor(DEFAULT_RTC_RED);
+    updateLiveThemeColor(DEFAULT_RTC_RED);
   };
 
   // Validate Hex Input
@@ -130,7 +138,7 @@ export function CompanyThemeCard({ company, onSave, onClose }) {
     if (!val.startsWith('#') && val.length > 0) {
       val = `#${val}`;
     }
-    setThemeColor(val);
+    updateLiveThemeColor(val);
   };
 
   // Save changes
@@ -218,7 +226,7 @@ export function CompanyThemeCard({ company, onSave, onClose }) {
           <input
             type="color"
             value={activeColor.startsWith('#') && activeColor.length === 7 ? activeColor : DEFAULT_RTC_RED}
-            onChange={(e) => setThemeColor(e.target.value)}
+            onChange={(e) => updateLiveThemeColor(e.target.value)}
             className="theme-color-hidden-picker"
           />
         </div>
@@ -266,7 +274,7 @@ export function CompanyThemeCard({ company, onSave, onClose }) {
                 '--swatch-color': preset.hex,
               }}
               title={preset.name}
-              onClick={() => setThemeColor(preset.hex)}
+              onClick={() => updateLiveThemeColor(preset.hex)}
             />
           );
         })}

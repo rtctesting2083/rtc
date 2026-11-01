@@ -184,7 +184,7 @@ export function CustomerDashboardPage() {
                 alert('Your ticket has been submitted. RTC Support ticket #TK-8492 created.');
                 closeModal();
               }}
-              style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: '#dc2626', color: '#fff', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}
+              style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: 'var(--theme-color, #dc2626)', color: '#fff', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}
             >
               Submit Ticket
             </button>
@@ -201,7 +201,7 @@ export function CustomerDashboardPage() {
       <div style={{ padding: '8px' }}>
         <div style={{ background: '#fef2f2', border: '1px solid #fecaca', padding: '12px', borderRadius: '8px', marginBottom: '16px' }}>
           <div style={{ fontSize: '12px', color: '#991b1b', fontWeight: 600 }}>AVAILABLE FOR SETTLEMENT</div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: '#dc2626', marginTop: '2px' }}>
+          <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--theme-color, #dc2626)', marginTop: '2px' }}>
             Rs. 32,550.00
           </div>
           <div style={{ fontSize: '11.5px', color: '#b91c1c', marginTop: '4px' }}>
@@ -236,7 +236,7 @@ export function CustomerDashboardPage() {
               alert('Settlement request submitted successfully. You will receive an SMS confirmation.');
               closeModal();
             }}
-            style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: '#dc2626', color: '#fff', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}
+            style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: 'var(--theme-color, #dc2626)', color: '#fff', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}
           >
             Request Payout
           </button>
@@ -315,7 +315,7 @@ export function CustomerDashboardPage() {
                 alert('Pickup scheduled! Rider will contact you before arriving.');
                 closeModal();
               }}
-              style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: '#dc2626', color: '#fff', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}
+              style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: 'var(--theme-color, #dc2626)', color: '#fff', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}
             >
               Confirm Pickup
             </button>
@@ -353,7 +353,7 @@ export function CustomerDashboardPage() {
           <button
             type="button"
             onClick={() => alert('Sample template downloaded (RTC_Bulk_Order_Template.csv)')}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: '#dc2626', fontSize: '12.5px', cursor: 'pointer', fontWeight: 500 }}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: 'var(--theme-color, #dc2626)', fontSize: '12.5px', cursor: 'pointer', fontWeight: 500 }}
           >
             <Download size={14} /> Download Sample Template
           </button>
@@ -363,7 +363,7 @@ export function CustomerDashboardPage() {
               alert('File uploaded successfully. 24 orders queued for booking.');
               closeModal();
             }}
-            style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: '#dc2626', color: '#fff', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}
+            style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: 'var(--theme-color, #dc2626)', color: '#fff', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}
           >
             Import Orders
           </button>

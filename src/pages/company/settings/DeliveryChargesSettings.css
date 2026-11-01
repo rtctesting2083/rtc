@@ -542,7 +542,7 @@
 .btn-danger-text {
   background: none;
   border: none;
-  color: #dc2626;
+  color: var(--admin-red, #dc2626);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;

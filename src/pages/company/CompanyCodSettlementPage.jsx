@@ -485,7 +485,7 @@ export function CompanyCodSettlementPage({ presetBranchId = null }) {
       >
         <div>
           <h1 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, color: '#0f172a' }}>
-            <span style={{ color: '#dc2626' }}>💰</span> Vendor COD Settlement & Delivery Charges Deduction
+            <span style={{ color: 'var(--theme-color, #dc2626)' }}>💰</span> Vendor COD Settlement & Delivery Charges Deduction
           </h1>
           <div className="muted" style={{ fontSize: '13px', marginTop: '3px', color: '#64748b' }}>
             Deduct courier delivery charges directly from merchant COD collections, remit net payouts, and generate detailed statements.
@@ -500,7 +500,7 @@ export function CompanyCodSettlementPage({ presetBranchId = null }) {
             <button
               type="button"
               className="btn-primary"
-              style={{ background: '#dc2626' }}
+              style={{ background: 'var(--theme-color, #dc2626)' }}
               onClick={() => {
                 const selected = shipments.filter((s) => selectedIds.includes(s.id));
                 handleOpenArbitrarySettleModal(selected);
@@ -545,11 +545,11 @@ export function CompanyCodSettlementPage({ presetBranchId = null }) {
           </div>
         </div>
 
-        <div className="panel" style={{ padding: '14px 18px', borderLeft: '4px solid #dc2626', background: '#fff' }}>
-          <div className="muted" style={{ fontSize: '11.5px', fontWeight: 700, textTransform: 'uppercase', color: '#dc2626' }}>
+        <div className="panel" style={{ padding: '14px 18px', borderLeft: '4px solid var(--theme-color, #dc2626)', background: '#fff' }}>
+          <div className="muted" style={{ fontSize: '11.5px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--theme-color, #dc2626)' }}>
             Delivery Fees to Deduct
           </div>
-          <div style={{ fontSize: '22px', fontWeight: 800, marginTop: '4px', color: '#dc2626', fontFamily: 'monospace' }}>
+          <div style={{ fontSize: '22px', fontWeight: 800, marginTop: '4px', color: 'var(--theme-color, #dc2626)', fontFamily: 'monospace' }}>
             - {fmtMoney(stats.pendingDeliveryFees)}
           </div>
           <div className="muted" style={{ fontSize: '11px', marginTop: '2px' }}>
@@ -602,8 +602,8 @@ export function CompanyCodSettlementPage({ presetBranchId = null }) {
             fontSize: '13.5px',
             fontWeight: 700,
             cursor: 'pointer',
-            borderBottom: activeTab === 'vendors' ? '3px solid #dc2626' : '3px solid transparent',
-            color: activeTab === 'vendors' ? '#dc2626' : '#64748b',
+            borderBottom: activeTab === 'vendors' ? '3px solid var(--theme-color, #dc2626)' : '3px solid transparent',
+            color: activeTab === 'vendors' ? 'var(--theme-color, #dc2626)' : '#64748b',
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
@@ -623,8 +623,8 @@ export function CompanyCodSettlementPage({ presetBranchId = null }) {
             fontSize: '13.5px',
             fontWeight: 700,
             cursor: 'pointer',
-            borderBottom: activeTab === 'statements' ? '3px solid #dc2626' : '3px solid transparent',
-            color: activeTab === 'statements' ? '#dc2626' : '#64748b',
+            borderBottom: activeTab === 'statements' ? '3px solid var(--theme-color, #dc2626)' : '3px solid transparent',
+            color: activeTab === 'statements' ? 'var(--theme-color, #dc2626)' : '#64748b',
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
@@ -644,8 +644,8 @@ export function CompanyCodSettlementPage({ presetBranchId = null }) {
             fontSize: '13.5px',
             fontWeight: 700,
             cursor: 'pointer',
-            borderBottom: activeTab === 'all' ? '3px solid #dc2626' : '3px solid transparent',
-            color: activeTab === 'all' ? '#dc2626' : '#64748b',
+            borderBottom: activeTab === 'all' ? '3px solid var(--theme-color, #dc2626)' : '3px solid transparent',
+            color: activeTab === 'all' ? 'var(--theme-color, #dc2626)' : '#64748b',
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
@@ -665,8 +665,8 @@ export function CompanyCodSettlementPage({ presetBranchId = null }) {
             fontSize: '13.5px',
             fontWeight: 700,
             cursor: 'pointer',
-            borderBottom: activeTab === 'walk_in' ? '3px solid #dc2626' : '3px solid transparent',
-            color: activeTab === 'walk_in' ? '#dc2626' : '#64748b',
+            borderBottom: activeTab === 'walk_in' ? '3px solid var(--theme-color, #dc2626)' : '3px solid transparent',
+            color: activeTab === 'walk_in' ? 'var(--theme-color, #dc2626)' : '#64748b',
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
@@ -686,8 +686,8 @@ export function CompanyCodSettlementPage({ presetBranchId = null }) {
             fontSize: '13.5px',
             fontWeight: 700,
             cursor: 'pointer',
-            borderBottom: activeTab === 'riders' ? '3px solid #dc2626' : '3px solid transparent',
-            color: activeTab === 'riders' ? '#dc2626' : '#64748b',
+            borderBottom: activeTab === 'riders' ? '3px solid var(--theme-color, #dc2626)' : '3px solid transparent',
+            color: activeTab === 'riders' ? 'var(--theme-color, #dc2626)' : '#64748b',
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
@@ -861,12 +861,12 @@ export function CompanyCodSettlementPage({ presetBranchId = null }) {
                       {fmtMoney(v.pendingGrossCod)}
                     </td>
 
-                    <td style={{ textAlign: 'right', fontWeight: 600, color: '#dc2626', fontSize: '13px' }}>
+                    <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--theme-color, #dc2626)', fontSize: '13px' }}>
                       {v.pendingDeliveryFees > 0 ? `- ${fmtMoney(v.pendingDeliveryFees)}` : 'Rs. 0'}
                     </td>
 
                     <td style={{ textAlign: 'right', fontSize: '13.5px' }}>
-                      <b style={{ color: hasPending ? '#dc2626' : '#64748b' }}>
+                      <b style={{ color: hasPending ? 'var(--theme-color, #dc2626)' : '#64748b' }}>
                         {fmtMoney(v.pendingNetPayable)}
                       </b>
                     </td>
@@ -887,7 +887,7 @@ export function CompanyCodSettlementPage({ presetBranchId = null }) {
                             type="button"
                             className="btn-primary"
                             style={{
-                              background: '#dc2626',
+                              background: 'var(--theme-color, #dc2626)',
                               fontSize: '11.5px',
                               padding: '5px 12px',
                               display: 'inline-flex',
@@ -1002,7 +1002,7 @@ export function CompanyCodSettlementPage({ presetBranchId = null }) {
                 const bank = st.bank_details || {};
                 return (
                   <tr key={st.id || st.settlement_number}>
-                    <td className="mono" style={{ fontWeight: 700, color: '#dc2626' }}>
+                    <td className="mono" style={{ fontWeight: 700, color: 'var(--theme-color, #dc2626)' }}>
                       {st.settlement_number}
                     </td>
 
@@ -1038,7 +1038,7 @@ export function CompanyCodSettlementPage({ presetBranchId = null }) {
                       {fmtMoney(st.total_cod)}
                     </td>
 
-                    <td style={{ textAlign: 'right', color: '#dc2626', fontWeight: 600 }}>
+                    <td style={{ textAlign: 'right', color: 'var(--theme-color, #dc2626)', fontWeight: 600 }}>
                       - {fmtMoney(st.delivery_charges_deducted)}
                     </td>
 
@@ -1185,7 +1185,7 @@ export function CompanyCodSettlementPage({ presetBranchId = null }) {
                       {fmtMoney(s.cod_amount)}
                     </td>
 
-                    <td style={{ textAlign: 'right', color: '#dc2626', fontWeight: 600 }}>
+                    <td style={{ textAlign: 'right', color: 'var(--theme-color, #dc2626)', fontWeight: 600 }}>
                       - {fmtMoney(s.delivery_fee)}
                     </td>
 
@@ -1205,7 +1205,7 @@ export function CompanyCodSettlementPage({ presetBranchId = null }) {
                             </div>
                           )}
                           {s.cod_settlement_ref && (
-                            <div className="mono" style={{ fontSize: '10px', color: '#dc2626' }}>
+                            <div className="mono" style={{ fontSize: '10px', color: 'var(--theme-color, #dc2626)' }}>
                               Ref: {s.cod_settlement_ref}
                             </div>
                           )}
@@ -1224,7 +1224,7 @@ export function CompanyCodSettlementPage({ presetBranchId = null }) {
                             type="button"
                             className="btn-primary"
                             style={{
-                              background: '#dc2626',
+                              background: 'var(--theme-color, #dc2626)',
                               fontSize: '11.5px',
                               padding: '4px 10px',
                             }}
@@ -1332,7 +1332,7 @@ export function CompanyCodSettlementPage({ presetBranchId = null }) {
                     </td>
                     <td style={{ textAlign: 'right' }}>{fmtMoney(rc.settledCod)}</td>
                     <td style={{ textAlign: 'right' }}>
-                      <b style={{ color: pendingCash > 0 ? '#dc2626' : '#16a34a' }}>
+                      <b style={{ color: pendingCash > 0 ? 'var(--theme-color, #dc2626)' : '#16a34a' }}>
                         {fmtMoney(pendingCash)}
                       </b>
                     </td>
@@ -1342,7 +1342,7 @@ export function CompanyCodSettlementPage({ presetBranchId = null }) {
                           type="button"
                           className="btn-primary"
                           style={{
-                            background: '#dc2626',
+                            background: 'var(--theme-color, #dc2626)',
                             fontSize: '11.5px',
                             padding: '4px 10px',
                           }}
@@ -1502,8 +1502,8 @@ function SettleVendorCodModal({ vendorAgg, presetBranchId, onDone }) {
         </div>
         {deductDeliveryFee && (
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-            <span style={{ color: '#dc2626', fontWeight: 600 }}>Courier Delivery Fees Deducted:</span>
-            <b style={{ color: '#dc2626' }}>- {fmtMoney(totalFees)}</b>
+            <span style={{ color: 'var(--theme-color, #dc2626)', fontWeight: 600 }}>Courier Delivery Fees Deducted:</span>
+            <b style={{ color: 'var(--theme-color, #dc2626)' }}>- {fmtMoney(totalFees)}</b>
           </div>
         )}
         <div
@@ -1516,7 +1516,7 @@ function SettleVendorCodModal({ vendorAgg, presetBranchId, onDone }) {
           }}
         >
           <b style={{ color: '#0f172a' }}>Net Disbursed Payout to Vendor:</b>
-          <b style={{ color: '#dc2626', fontSize: '17px', fontFamily: 'monospace' }}>
+          <b style={{ color: 'var(--theme-color, #dc2626)', fontSize: '17px', fontFamily: 'monospace' }}>
             {fmtMoney(netPayable)}
           </b>
         </div>
@@ -1635,7 +1635,7 @@ function SettleVendorCodModal({ vendorAgg, presetBranchId, onDone }) {
                     <td style={{ padding: '6px 8px', textAlign: 'right', color: '#059669', fontWeight: 600 }}>
                       {fmtMoney(cod)}
                     </td>
-                    <td style={{ padding: '6px 8px', textAlign: 'right', color: '#dc2626' }}>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--theme-color, #dc2626)' }}>
                       - {fmtMoney(fee)}
                     </td>
                     <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>
@@ -1657,7 +1657,7 @@ function SettleVendorCodModal({ vendorAgg, presetBranchId, onDone }) {
         <button
           type="submit"
           className="btn-primary"
-          style={{ background: '#dc2626', fontWeight: 700 }}
+          style={{ background: 'var(--theme-color, #dc2626)', fontWeight: 700 }}
           disabled={isSubmitting || selectedShipments.length === 0}
         >
           {isSubmitting ? 'Processing...' : `Confirm & Generate Statement (${fmtMoney(netPayable)})`}
@@ -1719,7 +1719,7 @@ function SettleGeneralCodModal({ shipments = [], onDone = null }) {
         {deductFee && (
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
             <span className="muted">Delivery Fees Deducted:</span>
-            <span style={{ color: '#dc2626' }}>- {fmtMoney(totalFees)}</span>
+            <span style={{ color: 'var(--theme-color, #dc2626)' }}>- {fmtMoney(totalFees)}</span>
           </div>
         )}
         <div
@@ -1732,7 +1732,7 @@ function SettleGeneralCodModal({ shipments = [], onDone = null }) {
           }}
         >
           <b>Net Disbursed Amount:</b>
-          <b style={{ color: '#dc2626' }}>{fmtMoney(netPayable)}</b>
+          <b style={{ color: 'var(--theme-color, #dc2626)' }}>{fmtMoney(netPayable)}</b>
         </div>
       </div>
 
@@ -1785,7 +1785,7 @@ function SettleGeneralCodModal({ shipments = [], onDone = null }) {
         <button type="button" className="btn-secondary" onClick={closeModal}>
           Cancel
         </button>
-        <button type="submit" className="btn-primary" style={{ background: '#dc2626' }}>
+        <button type="submit" className="btn-primary" style={{ background: 'var(--theme-color, #dc2626)' }}>
           Confirm Settlement ({fmtMoney(netPayable)})
         </button>
       </div>

@@ -573,7 +573,7 @@ export function CustomerOrdersPage() {
               alert('Comment added successfully.');
               closeModal();
             }}
-            style={{ padding: '7px 16px', borderRadius: '6px', border: 'none', background: '#dc2626', color: '#fff', fontWeight: 600, fontSize: '12.5px', cursor: 'pointer' }}
+            style={{ padding: '7px 16px', borderRadius: '6px', border: 'none', background: 'var(--theme-color, #dc2626)', color: '#fff', fontWeight: 600, fontSize: '12.5px', cursor: 'pointer' }}
           >
             Post Comment
           </button>

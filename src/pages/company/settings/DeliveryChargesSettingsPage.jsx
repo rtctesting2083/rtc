@@ -670,7 +670,7 @@ export function DeliveryChargesSettingsPage() {
             to="/company/delivery-service-types"
             style={{
               fontSize: '12.5px',
-              color: '#dc2626',
+              color: 'var(--theme-color, #dc2626)',
               fontWeight: 600,
               textDecoration: 'none',
               display: 'inline-flex',

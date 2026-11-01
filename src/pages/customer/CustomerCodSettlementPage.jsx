@@ -294,7 +294,7 @@ export function CustomerCodSettlementPage() {
                     <td style={{ textAlign: 'right', fontWeight: 600, color: '#16a34a' }}>
                       {fmtMoney(st.total_cod)}
                     </td>
-                    <td style={{ textAlign: 'right', color: '#dc2626', fontWeight: 500 }}>
+                    <td style={{ textAlign: 'right', color: 'var(--theme-color, #dc2626)', fontWeight: 500 }}>
                       - {fmtMoney(st.delivery_charges_deducted)}
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '13.5px', color: '#0f172a' }}>
@@ -374,7 +374,7 @@ export function CustomerCodSettlementPage() {
                       <td style={{ textAlign: 'right', fontWeight: 600, color: '#16a34a' }}>
                         {fmtMoney(cod)}
                       </td>
-                      <td style={{ textAlign: 'right', color: '#dc2626' }}>
+                      <td style={{ textAlign: 'right', color: 'var(--theme-color, #dc2626)' }}>
                         - {fmtMoney(fee)}
                       </td>
                       <td style={{ textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>
@@ -401,7 +401,7 @@ export function CustomerCodSettlementPage() {
                 <tr>
                   <th colSpan="4" style={{ textAlign: 'right' }}>ESTIMATED TOTALS:</th>
                   <th style={{ textAlign: 'right', color: '#16a34a' }}>{fmtMoney(pendingCodAmount)}</th>
-                  <th style={{ textAlign: 'right', color: '#dc2626' }}>- {fmtMoney(pendingDeliveryFees)}</th>
+                  <th style={{ textAlign: 'right', color: 'var(--theme-color, #dc2626)' }}>- {fmtMoney(pendingDeliveryFees)}</th>
                   <th style={{ textAlign: 'right', fontSize: '14px', color: '#003366' }}>{fmtMoney(pendingNetPayout)}</th>
                   <th></th>
                 </tr>
