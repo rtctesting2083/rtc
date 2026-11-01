@@ -335,46 +335,35 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
               <h2 className="create-order-card-title">Create New Order</h2>
 
               <div className="create-order-form-body">
-                {/* 1. Sender Branch */}
+                {/* 1. Sender Branch (Searchable Combobox) */}
                 <div className="create-order-row">
                   <label className="create-order-label">
                     Sender Branch <span className="req">*</span>
                   </label>
                   <div className="create-order-input-wrap">
-                    <select
-                      className="create-order-select"
+                    <SearchableBranchCombobox
                       value={senderBranchId}
-                      onChange={(e) => setSenderBranchId(e.target.value)}
+                      onChange={setSenderBranchId}
+                      branches={vendorBranches}
+                      placeholder="Search sender branch or district..."
                       required
-                    >
-                      {vendorBranches.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.name} ({b.district || b.address?.district || 'Hub'})
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </div>
                 </div>
 
-                {/* 2. Destination Branch */}
+                {/* 2. Destination Branch (Searchable Combobox) */}
                 <div className="create-order-row">
                   <label className="create-order-label">
                     Destination Branch <span className="req">*</span>
                   </label>
                   <div className="create-order-input-wrap">
-                    <select
-                      className="create-order-select"
+                    <SearchableBranchCombobox
                       value={destinationBranchId}
-                      onChange={(e) => setDestinationBranchId(e.target.value)}
+                      onChange={setDestinationBranchId}
+                      branches={vendorBranches}
+                      placeholder="Select Destinatin Branch..."
                       required
-                    >
-                      <option value="">Select Destinatin Branch...</option>
-                      {vendorBranches.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.name} ({b.district || b.address?.district || 'Hub'})
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </div>
                 </div>
 
@@ -761,6 +750,167 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
             </div>
           </div>
         </form>
+      )}
+    </div>
+  );
+}
+
+// ── Searchable Branch Combobox Component with Instant Search ──
+function SearchableBranchCombobox({
+  value,
+  onChange,
+  branches = [],
+  placeholder = 'Select Branch...',
+  required = false,
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const wrapperRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const selectedBranch = useMemo(
+    () => branches.find((b) => String(b.id) === String(value)),
+    [branches, value]
+  );
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
+        setIsOpen(false);
+        setSearchTerm('');
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredBranches = useMemo(() => {
+    if (!searchTerm.trim()) return branches;
+    const q = searchTerm.toLowerCase().trim();
+    return branches.filter((b) => {
+      const name = (b.name || '').toLowerCase();
+      const district = (b.district || b.address?.district || '').toLowerCase();
+      const municipality = (b.municipality || b.address?.municipality || '').toLowerCase();
+      const province = (b.province || b.address?.province || '').toLowerCase();
+      const code = (b.code || '').toLowerCase();
+      return (
+        name.includes(q) ||
+        district.includes(q) ||
+        municipality.includes(q) ||
+        province.includes(q) ||
+        code.includes(q)
+      );
+    });
+  }, [branches, searchTerm]);
+
+  return (
+    <div ref={wrapperRef} className="branch-combobox-wrapper">
+      <div
+        className={`branch-combobox-trigger ${isOpen ? 'open' : ''} ${!selectedBranch && !searchTerm ? 'empty' : ''}`}
+        onClick={() => {
+          setIsOpen(true);
+          setTimeout(() => inputRef.current?.focus(), 50);
+        }}
+      >
+        <span className="branch-combobox-pin">📍</span>
+
+        {isOpen ? (
+          <input
+            ref={inputRef}
+            type="text"
+            className="branch-combobox-input"
+            placeholder="Type branch name, district, or hub..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setIsOpen(false);
+                setSearchTerm('');
+              } else if (e.key === 'Enter' && filteredBranches.length > 0) {
+                e.preventDefault();
+                onChange(String(filteredBranches[0].id));
+                setIsOpen(false);
+                setSearchTerm('');
+              }
+            }}
+          />
+        ) : (
+          <span className="branch-combobox-selected-text">
+            {selectedBranch ? (
+              <>
+                <b className="branch-name-bold">{selectedBranch.name}</b>
+                <span className="branch-dist-sub">
+                  {' '}
+                  ({selectedBranch.district || selectedBranch.address?.district || 'Hub'})
+                </span>
+              </>
+            ) : (
+              <span className="branch-placeholder">{placeholder}</span>
+            )}
+          </span>
+        )}
+
+        <div className="branch-combobox-actions">
+          {selectedBranch && !isOpen && (
+            <button
+              type="button"
+              className="branch-clear-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange('');
+                setSearchTerm('');
+              }}
+              title="Clear selection"
+            >
+              ✕
+            </button>
+          )}
+          <span className="branch-combobox-chevron">▾</span>
+        </div>
+      </div>
+
+      {/* Dropdown Menu */}
+      {isOpen && (
+        <div className="branch-combobox-menu">
+          <div className="branch-combobox-header-hint">
+            <span>{filteredBranches.length} branch{filteredBranches.length === 1 ? '' : 'es'} found</span>
+            {searchTerm && <span className="branch-filter-badge">Filtering: "{searchTerm}"</span>}
+          </div>
+
+          <div className="branch-combobox-list">
+            {filteredBranches.length > 0 ? (
+              filteredBranches.map((b) => {
+                const isSelected = String(b.id) === String(value);
+                const dist = b.district || b.address?.district || '';
+                const prov = b.province || b.address?.province || '';
+                return (
+                  <div
+                    key={b.id}
+                    className={`branch-combobox-option ${isSelected ? 'selected' : ''}`}
+                    onClick={() => {
+                      onChange(String(b.id));
+                      setIsOpen(false);
+                      setSearchTerm('');
+                    }}
+                  >
+                    <div className="option-main-row">
+                      <span className="option-name">{b.name}</span>
+                      {b.code && <span className="option-code-badge">{b.code}</span>}
+                    </div>
+                    <div className="option-sub-loc">
+                      📍 {dist ? `${dist}, ` : ''}{prov || 'Nepal'}
+                      {b.address?.municipality ? ` · ${b.address.municipality}` : ''}
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="branch-combobox-no-results">
+                No hub found matching "{searchTerm}". Try another city or district.
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

@@ -54,35 +54,77 @@ export function CustomerDashboardPage() {
     [shipments, currentCustomer?.id],
   );
 
-  /* ── Compute dynamic metrics, falling back to realistic reference numbers ── */
-  const totalOrders = myShipments.length > 0 ? myShipments.length : 182;
-  const delivered = myShipments.length > 0
-    ? myShipments.filter((s) => s.status === 'delivered').length
-    : 166;
-  const inProcess = myShipments.length > 0
-    ? myShipments.filter((s) => ['pending', 'assigned', 'picked_up', 'in_transit', 'out_for_delivery'].includes(s.status)).length
-    : 14;
-  const rtoCount = myShipments.length > 0
-    ? myShipments.filter((s) => ['failed', 'returned'].includes(s.status)).length
-    : 0;
-  const followUpReturn = 2;
+  const myInvoices = useMemo(
+    () => (invoices || []).filter((inv) => Number(inv.customer_id) === Number(currentCustomer?.id)),
+    [invoices, currentCustomer?.id],
+  );
+
+  /* ── Compute 100% REAL dynamic metrics from database ── */
+  const totalOrders = myShipments.filter((s) => s.status !== 'cancelled').length;
+  const delivered = myShipments.filter((s) => s.status === 'delivered').length;
+  const inProcess = myShipments.filter((s) =>
+    ['pending', 'assigned', 'picked_up', 'in_transit', 'out_for_delivery', 'at_destination_hub'].includes(s.status)
+  ).length;
+  const rtoCount = myShipments.filter((s) =>
+    ['failed', 'returned', 'rto'].includes(s.status)
+  ).length;
+  const followUpReturn = myShipments.filter((s) =>
+    ['failed', 'returned', 'follow_up'].includes(s.status)
+  ).length;
 
   // Today metrics
   const todayOrders = myShipments.filter((s) => isToday(s.created_at)).length;
   const todayDelivered = myShipments.filter((s) => s.status === 'delivered' && isToday(s.delivered_at)).length;
+  const todayCancelled = myShipments.filter((s) => s.status === 'cancelled' && isToday(s.created_at)).length;
+  const todayRto = myShipments.filter((s) => ['failed', 'returned', 'rto'].includes(s.status) && isToday(s.delivered_at || s.created_at)).length;
 
-  // Values
-  const totalCODCollected = myShipments.length > 0
-    ? myShipments.filter((s) => s.status === 'delivered').reduce((sum, s) => sum + (Number(s.cod_amount) || 0), 0) || 211595
-    : 211595;
-  const totalSettledCOD = 150600;
-  const totalDeliveryCharge = 29665;
-  const codBalanceNet = 32550;
+  // Real comment count across orders
+  const commentCount = myShipments.reduce((sum, s) => {
+    let count = 0;
+    if (s.last_comment && s.last_comment !== '-') count += 1;
+    if (s.notes) count += 1;
+    if (Array.isArray(s.tracking_events)) count += s.tracking_events.length;
+    return sum + count;
+  }, 0);
 
-  const totalOrderValue = 235735;
-  const deliveredValue = 211595;
-  const returnedValue = 0;
-  const pendingValue = 24140;
+  // Real Values from Database
+  const totalCODCollected = myShipments
+    .filter((s) => s.status === 'delivered')
+    .reduce((sum, s) => sum + (Number(s.cod_amount) || 0), 0);
+
+  const totalDeliveryCharge = myShipments
+    .reduce((sum, s) => sum + (Number(s.delivery_fee) || 0), 0);
+
+  const totalSettledCOD = myInvoices
+    .filter((inv) => inv.status === 'paid')
+    .reduce((sum, inv) => sum + (Number(inv.total_amount) || 0), 0);
+
+  const codBalanceNet = Math.max(0, totalCODCollected - totalSettledCOD - totalDeliveryCharge);
+
+  // Last settled invoice
+  const lastSettledInvoice = myInvoices
+    .filter((inv) => inv.status === 'paid')
+    .sort((a, b) => new Date(b.paid_at || b.created_at) - new Date(a.paid_at || a.created_at))[0];
+
+  const totalOrderValue = myShipments
+    .reduce((sum, s) => sum + (Number(s.cod_amount) || Number(s.item_value) || 0), 0);
+
+  const deliveredValue = myShipments
+    .filter((s) => s.status === 'delivered')
+    .reduce((sum, s) => sum + (Number(s.cod_amount) || Number(s.item_value) || 0), 0);
+
+  const returnedValue = myShipments
+    .filter((s) => ['failed', 'returned', 'rto'].includes(s.status))
+    .reduce((sum, s) => sum + (Number(s.cod_amount) || Number(s.item_value) || 0), 0);
+
+  const pendingValue = Math.max(0, totalOrderValue - deliveredValue - returnedValue);
+
+  // Process Status counts from database
+  const sentForDeliveryCount = myShipments.filter((s) => s.status === 'out_for_delivery').length;
+  const returnProcessCount = myShipments.filter((s) => ['returned', 'failed', 'rto'].includes(s.status)).length;
+  const redirectedCount = myShipments.filter((s) => s.status === 'redirected').length;
+  const readyForPickupCount = myShipments.filter((s) => ['pending', 'assigned'].includes(s.status)).length;
+  const unreadCommentCount = myShipments.filter((s) => s.unread_comments || (s.last_comment && s.last_comment !== '-')).length;
 
   // Donut percentage
   const totalProcessed = delivered + rtoCount;
@@ -331,16 +373,28 @@ export function CustomerDashboardPage() {
     );
   };
 
-  /* ── 7-Day Trend Bar Chart Data ────────────────────────── */
-  const trendDays = [
-    { date: '2026-10-25', created: 0, delivered: 0, pickup: 0, returned: 0 },
-    { date: '2026-10-26', created: 10, delivered: 0, pickup: 10, returned: 0 },
-    { date: '2026-10-27', created: 16, delivered: 4, pickup: 16, returned: 0 },
-    { date: '2026-10-28', created: 13, delivered: 9, pickup: 13, returned: 0 },
-    { date: '2026-10-29', created: 12, delivered: 17, pickup: 12, returned: 0 },
-    { date: '2026-10-30', created: 4, delivered: 7, pickup: 3, returned: 0 },
-    { date: '2026-10-31', created: 0, delivered: 8, pickup: 0, returned: 0 },
-  ];
+  /* ── 7-Day Trend Bar Chart Data (Computed Dynamically from Database) ── */
+  const trendDays = useMemo(() => {
+    const days = [];
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 86400000);
+      const dateStr = d.toISOString().slice(0, 10);
+      const dayShipments = myShipments.filter((s) => (s.created_at || '').slice(0, 10) === dateStr);
+      const dayDelivered = myShipments.filter((s) => s.status === 'delivered' && (s.delivered_at || s.created_at || '').slice(0, 10) === dateStr);
+      const dayReturned = myShipments.filter((s) => ['failed', 'returned', 'rto'].includes(s.status) && (s.delivered_at || s.created_at || '').slice(0, 10) === dateStr);
+      const dayPickup = dayShipments.filter((s) => ['assigned', 'picked_up', 'in_transit'].includes(s.status));
+
+      days.push({
+        date: dateStr,
+        created: dayShipments.length,
+        delivered: dayDelivered.length,
+        pickup: dayPickup.length,
+        returned: dayReturned.length,
+      });
+    }
+    return days;
+  }, [myShipments]);
 
   return (
     <div className="vendor-dashboard-content">
@@ -447,23 +501,23 @@ export function CustomerDashboardPage() {
             <div className="panel-list">
               <div className="panel-list-row">
                 <span className="panel-list-key">Orders</span>
-                <span className="panel-list-value">{todayOrders || 0}</span>
+                <span className="panel-list-value">{todayOrders}</span>
               </div>
               <div className="panel-list-row">
                 <span className="panel-list-key">Delivered</span>
-                <span className="panel-list-value">{todayDelivered || 8}</span>
+                <span className="panel-list-value">{todayDelivered}</span>
               </div>
               <div className="panel-list-row">
                 <span className="panel-list-key">Comment</span>
-                <span className="panel-list-value">29</span>
+                <span className="panel-list-value">{commentCount}</span>
               </div>
               <div className="panel-list-row">
                 <span className="panel-list-key">Cancelled Orders</span>
-                <span className="panel-list-value">0</span>
+                <span className="panel-list-value">{todayCancelled}</span>
               </div>
               <div className="panel-list-row">
                 <span className="panel-list-key">RTO (Delivered to Client)</span>
-                <span className="panel-list-value">0</span>
+                <span className="panel-list-value">{todayRto}</span>
               </div>
             </div>
           </div>
@@ -477,19 +531,19 @@ export function CustomerDashboardPage() {
             <div className="panel-list">
               <div className="panel-list-row">
                 <span className="panel-list-key">Total Order Value</span>
-                <span className="panel-list-value">Rs. 235,735.00</span>
+                <span className="panel-list-value">{fmtMoney(totalOrderValue)}</span>
               </div>
               <div className="panel-list-row">
                 <span className="panel-list-key">Delivered Value</span>
-                <span className="panel-list-value">Rs. 211,595.00</span>
+                <span className="panel-list-value">{fmtMoney(deliveredValue)}</span>
               </div>
               <div className="panel-list-row">
                 <span className="panel-list-key">Returned Value</span>
-                <span className="panel-list-value">Rs. 0.00</span>
+                <span className="panel-list-value">{fmtMoney(returnedValue)}</span>
               </div>
               <div className="panel-list-row">
                 <span className="panel-list-key">Pending Value</span>
-                <span className="panel-list-value">Rs. 24,140.00</span>
+                <span className="panel-list-value">{fmtMoney(pendingValue)}</span>
               </div>
             </div>
           </div>
@@ -502,23 +556,23 @@ export function CustomerDashboardPage() {
             <div className="panel-list">
               <div className="panel-list-row">
                 <span className="panel-list-key">Sent for Delivery</span>
-                <span className="panel-list-value">0</span>
+                <span className="panel-list-value">{sentForDeliveryCount}</span>
               </div>
               <div className="panel-list-row">
                 <span className="panel-list-key">Return Process</span>
-                <span className="panel-list-value">1</span>
+                <span className="panel-list-value">{returnProcessCount}</span>
               </div>
               <div className="panel-list-row">
                 <span className="panel-list-key">Redirected</span>
-                <span className="panel-list-value">0</span>
+                <span className="panel-list-value">{redirectedCount}</span>
               </div>
               <div className="panel-list-row">
                 <span className="panel-list-key">Ready for Pickup</span>
-                <span className="panel-list-value">3</span>
+                <span className="panel-list-value">{readyForPickupCount}</span>
               </div>
               <div className="panel-list-row">
                 <span className="panel-list-key">Unread Comment</span>
-                <span className="panel-list-value">146</span>
+                <span className="panel-list-value">{unreadCommentCount}</span>
               </div>
             </div>
           </div>
@@ -647,7 +701,7 @@ export function CustomerDashboardPage() {
                   {trendDays.map((item, idx) => {
                     const groupX = 40 + idx * 68;
                     const barW = 8;
-                    const maxVal = 18;
+                    const maxVal = Math.max(5, ...trendDays.map((d) => Math.max(d.created, d.delivered, d.pickup, d.returned)));
                     const hCreated = (item.created / maxVal) * 150;
                     const hDelivered = (item.delivered / maxVal) * 150;
                     const hPickup = (item.pickup / maxVal) * 150;
@@ -730,19 +784,19 @@ export function CustomerDashboardPage() {
                 {/* 1. Total COD Collected */}
                 <div className="cod-card-box blue-tint">
                   <div className="cod-card-title">TOTAL COD COLLECTED</div>
-                  <div className="cod-card-value">Rs. 211,595.00</div>
+                  <div className="cod-card-value">{fmtMoney(totalCODCollected)}</div>
                 </div>
 
                 {/* 2. Total Settled COD */}
                 <div className="cod-card-box green-tint">
                   <div className="cod-card-title">TOTAL SETTLED COD</div>
-                  <div className="cod-card-value">Rs. 150,600.00</div>
+                  <div className="cod-card-value">{fmtMoney(totalSettledCOD)}</div>
                 </div>
 
                 {/* 3. Total Delivery Charge */}
                 <div className="cod-card-box yellow-tint">
                   <div className="cod-card-title">TOTAL DELIVERY CHARGE</div>
-                  <div className="cod-card-value">Rs. 29,665.00</div>
+                  <div className="cod-card-value">{fmtMoney(totalDeliveryCharge)}</div>
                 </div>
 
                 {/* 4. COD Balance (Net) */}
@@ -750,9 +804,13 @@ export function CustomerDashboardPage() {
                   <div className="cod-balance-split">
                     <div>
                       <div className="cod-card-title">COD BALANCE ( NET )</div>
-                      <div className="cod-balance-amount">Rs. 32,550.00</div>
-                      <div className="cod-card-sub">Last Settled: Rs. 57,710.00</div>
-                      <div className="cod-card-sub">Last Settled Date: 30 Oct 2026</div>
+                      <div className="cod-balance-amount">{fmtMoney(codBalanceNet)}</div>
+                      <div className="cod-card-sub">
+                        Last Settled: {lastSettledInvoice ? fmtMoney(lastSettledInvoice.total_amount) : 'Rs. 0.00'}
+                      </div>
+                      <div className="cod-card-sub">
+                        Last Settled Date: {lastSettledInvoice ? fmtDate(lastSettledInvoice.paid_at || lastSettledInvoice.created_at) : '—'}
+                      </div>
                     </div>
                     <div>
                       <button

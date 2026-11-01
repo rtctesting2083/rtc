@@ -309,14 +309,16 @@ export function CustomerLayout() {
                       onClick={closeMobileMenu}
                       className={({ isActive }) => `vendor-sub-item ${isActive ? 'active' : ''}`}
                     >
-                      My Order List
+                      <span className="vendor-sub-icon"><Package size={14} strokeWidth={2} /></span>
+                      <span>My Order List</span>
                     </NavLink>
                     <NavLink
                       to="/customer/orders/create"
                       onClick={closeMobileMenu}
                       className={({ isActive }) => `vendor-sub-item ${isActive ? 'active' : ''}`}
                     >
-                      + Create Order
+                      <span className="vendor-sub-icon"><PlusCircle size={14} strokeWidth={2} /></span>
+                      <span>+ Create Order</span>
                     </NavLink>
                   </div>
                 )}
@@ -362,14 +364,16 @@ export function CustomerLayout() {
                       onClick={closeMobileMenu}
                       className={({ isActive }) => `vendor-sub-item ${isActive ? 'active' : ''}`}
                     >
-                      Invoices
+                      <span className="vendor-sub-icon"><FileText size={14} strokeWidth={2} /></span>
+                      <span>Invoices</span>
                     </NavLink>
                     <NavLink
                       to="/customer/placeholder/COD Settlement"
                       onClick={closeMobileMenu}
                       className={({ isActive }) => `vendor-sub-item ${isActive ? 'active' : ''}`}
                     >
-                      COD Settlement
+                      <span className="vendor-sub-icon"><Receipt size={14} strokeWidth={2} /></span>
+                      <span>COD Settlement</span>
                     </NavLink>
                   </div>
                 )}
@@ -395,7 +399,8 @@ export function CustomerLayout() {
                       onClick={closeMobileMenu}
                       className={({ isActive }) => `vendor-sub-item ${isActive ? 'active' : ''}`}
                     >
-                      Manage Staffs
+                      <span className="vendor-sub-icon"><UserCheck size={14} strokeWidth={2} /></span>
+                      <span>Manage Staffs</span>
                     </NavLink>
                   </div>
                 )}
@@ -441,7 +446,8 @@ export function CustomerLayout() {
                       onClick={closeMobileMenu}
                       className={({ isActive }) => `vendor-sub-item ${isActive ? 'active' : ''}`}
                     >
-                      Shipment Report
+                      <span className="vendor-sub-icon"><BarChart3 size={14} strokeWidth={2} /></span>
+                      <span>Shipment Report</span>
                     </NavLink>
                   </div>
                 )}
