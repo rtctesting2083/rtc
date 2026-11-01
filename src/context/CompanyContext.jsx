@@ -18,12 +18,34 @@ const CompanyContext = createContext(null);
 
 export function CompanyProvider({ children }) {
   const { session } = useAuth();
-  const { findCompany } = usePlatform();
+  const { findCompany, updateCompany } = usePlatform();
 
   const companyId = Number(session?.companyId || 1);
-  const company = findCompany(companyId) || { id: 1, name: 'R.T.C Courier Pvt. Ltd.', slug: 'rtc' };
+  const company = findCompany(companyId) || { id: 1, name: 'R.T.C Courier Pvt. Ltd.', slug: 'rtc', theme_color: '#dc2626' };
 
   const [data, setData] = useState(() => loadCompanyState(companyId));
+
+  // Dynamically inject CSS variables across portals
+  useEffect(() => {
+    const color = company?.theme_color || '#dc2626';
+    document.documentElement.style.setProperty('--admin-red', color);
+    document.documentElement.style.setProperty('--accent', color);
+    document.documentElement.style.setProperty('--vendor-red', color);
+    document.documentElement.style.setProperty('--admin-red-light', `${color}18`);
+    document.documentElement.style.setProperty('--vendor-red-light', `${color}18`);
+  }, [company?.theme_color]);
+
+  const updateCompanyTheme = useCallback(async ({ theme_color, logo_url }) => {
+    if (!companyId) return null;
+    const updates = {};
+    if (theme_color !== undefined) updates.theme_color = theme_color;
+    if (logo_url !== undefined) updates.logo_url = logo_url;
+
+    if (updateCompany) {
+      updateCompany(companyId, updates);
+    }
+    return await d1Api.updateCompanyTheme(companyId, updates);
+  }, [companyId, updateCompany]);
 
   // Sync partial or full settings directly to Cloudflare D1 table 'setting'
   const syncSettingToD1 = useCallback((partial) => {
@@ -1932,6 +1954,9 @@ export function CompanyProvider({ children }) {
         updateVendorOrder,
         deleteVendorOrder,
         resetCompanyData,
+        themeColor: company?.theme_color || '#dc2626',
+        logoUrl: company?.logo_url || null,
+        updateCompanyTheme,
       }}
     >
       {children}

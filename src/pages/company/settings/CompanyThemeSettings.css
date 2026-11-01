@@ -1,0 +1,455 @@
+/* ==========================================================================
+   Company Logo & Theme Settings Styles
+   Matches Reference Screenshot:
+   - Square logo box with Upload/Remove buttons & descriptive guidelines
+   - THEME COLOUR with hex input, color swatch, extract from logo, reset to default
+   - 10 circular preset swatches with active selection ring
+   - Live interactive Company portal mockup
+   - Responsive and clean Datatable view
+   ========================================================================== */
+
+.theme-settings-container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 20px 48px;
+}
+
+.theme-settings-header {
+  margin-bottom: 24px;
+}
+
+.theme-settings-header h1 {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 6px;
+  font-family: inherit;
+}
+
+.theme-settings-header p {
+  color: #64748b;
+  font-size: 14px;
+  margin: 0;
+}
+
+/* Card / Modal Inner Panel */
+.theme-card-panel {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  padding: 32px;
+  max-width: 580px;
+}
+
+/* Top Logo Box */
+.theme-logo-preview-box {
+  width: 140px;
+  height: 140px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  margin-bottom: 16px;
+  position: relative;
+  overflow: hidden;
+}
+
+.theme-logo-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.theme-logo-placeholder {
+  font-size: 32px;
+  font-weight: 800;
+  color: #94a3b8;
+  letter-spacing: 1px;
+}
+
+.theme-logo-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.theme-btn-outline {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  border-radius: 9999px;
+  padding: 7px 18px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.theme-btn-outline:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #1e293b;
+}
+
+.theme-btn-remove {
+  background: #ffffff;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  border-radius: 9999px;
+  padding: 7px 18px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.theme-btn-remove:hover {
+  background: #fef2f2;
+  border-color: #f87171;
+}
+
+.theme-guide-text {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #64748b;
+  margin: 0 0 28px 0;
+  max-width: 500px;
+}
+
+/* THEME COLOUR Section */
+.theme-section-title {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: #1e293b;
+  text-transform: uppercase;
+  margin: 0 0 6px;
+}
+
+.theme-section-desc {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #64748b;
+  margin: 0 0 16px;
+}
+
+.theme-inputs-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.theme-color-swatch-box {
+  width: 44px;
+  height: 38px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.theme-color-hidden-picker {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+.theme-hex-input {
+  width: 110px;
+  height: 38px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0 12px;
+  font-family: monospace, inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  background: #ffffff;
+}
+
+.theme-hex-input:focus {
+  outline: 2px solid #dc2626;
+  border-color: transparent;
+}
+
+/* Palette Preset Circles */
+.theme-palette-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+}
+
+.theme-circle-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  position: relative;
+}
+
+.theme-circle-swatch:hover {
+  transform: scale(1.12);
+}
+
+.theme-circle-swatch.active {
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px var(--swatch-color, #dc2626);
+  transform: scale(1.08);
+}
+
+/* Company Portal Live Mockup Frame */
+.theme-mockup-frame {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04);
+  margin-bottom: 28px;
+}
+
+.theme-mockup-topbar {
+  padding: 10px 16px;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  transition: background 0.25s ease;
+}
+
+.theme-mockup-topbar-dot {
+  width: 8px;
+  height: 8px;
+  background: #ffffff;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.theme-mockup-body {
+  background: #f8fafc;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 16px;
+  min-height: 150px;
+}
+
+.theme-mockup-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.theme-mockup-nav-item {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 6px;
+  color: #64748b;
+  cursor: default;
+  transition: all 0.2s ease;
+}
+
+.theme-mockup-nav-item.active {
+  font-weight: 700;
+}
+
+.theme-mockup-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.theme-mockup-content h4 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  font-weight: 800;
+  font-family: inherit;
+  transition: color 0.25s ease;
+}
+
+.theme-mockup-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.theme-mockup-btn-primary {
+  padding: 6px 14px;
+  color: #ffffff;
+  border-radius: 9999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  border: none;
+  cursor: default;
+  transition: background 0.25s ease;
+}
+
+.theme-mockup-btn-secondary {
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  border: none;
+  cursor: default;
+  transition: background 0.25s ease, color 0.25s ease;
+}
+
+.theme-mockup-skeleton-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.theme-mockup-bar {
+  height: 8px;
+  border-radius: 4px;
+  transition: background 0.25s ease;
+}
+
+.theme-save-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.theme-save-btn {
+  background: var(--admin-red, #dc2626);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.theme-save-btn:hover {
+  opacity: 0.9;
+}
+
+.theme-save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Datatable Section */
+.theme-datatable-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+  margin-top: 32px;
+}
+
+.theme-datatable-header {
+  padding: 18px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.theme-datatable-header h3 {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0;
+  color: #1e293b;
+}
+
+.theme-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.theme-table th {
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 12px 20px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.theme-table td {
+  padding: 14px 20px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 13.5px;
+  color: #334155;
+  vertical-align: middle;
+}
+
+.theme-table tr:hover td {
+  background: #fcfdfe;
+}
+
+.theme-table-logo-thumb {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.theme-table-logo-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.theme-table-swatch-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  font-family: monospace;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.theme-table-swatch-circle {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+

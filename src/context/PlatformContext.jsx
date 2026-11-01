@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { loadPlatform, savePlatform, seedCompanyState, companyDataKey } from '../utils/storage';
 import { slugify } from '../utils/helpers';
+import { d1Api } from '../utils/d1Api';
 
 const PlatformContext = createContext(null);
 
@@ -11,7 +12,44 @@ export function PlatformProvider({ children }) {
     savePlatform(platform);
   }, [platform]);
 
-  const addCompany = ({ name, slug, password }) => {
+  // Sync with D1 remote database
+  useEffect(() => {
+    d1Api.getCompanies().then((remoteCompanies) => {
+      if (Array.isArray(remoteCompanies) && remoteCompanies.length > 0) {
+        setPlatform((prev) => {
+          const updatedCompanies = prev.companies.map((local) => {
+            const match = remoteCompanies.find((r) => Number(r.id) === Number(local.id));
+            if (!match) return local;
+            return {
+              ...local,
+              name: match.name || local.name,
+              slug: match.slug || local.slug,
+              status: match.status || local.status,
+              logo_url: match.logo_url !== undefined ? match.logo_url : local.logo_url,
+              theme_color: match.theme_color || local.theme_color || '#dc2626',
+            };
+          });
+
+          // Add any new remote companies not present locally
+          remoteCompanies.forEach((rc) => {
+            if (!updatedCompanies.some((c) => Number(c.id) === Number(rc.id))) {
+              updatedCompanies.push({
+                ...rc,
+                theme_color: rc.theme_color || '#dc2626',
+              });
+            }
+          });
+
+          return {
+            ...prev,
+            companies: updatedCompanies,
+          };
+        });
+      }
+    }).catch(() => {});
+  }, []);
+
+  const addCompany = ({ name, slug, password, logo_url, theme_color }) => {
     const cleanSlug = slugify(slug || name);
     if (platform.companies.some((c) => c.slug === cleanSlug)) {
       throw new Error('That slug is already taken — choose another.');
@@ -23,6 +61,8 @@ export function PlatformProvider({ children }) {
       slug: cleanSlug,
       password,
       status: 'active',
+      logo_url: logo_url || null,
+      theme_color: theme_color || '#dc2626',
       created_at: new Date().toISOString(),
     };
 
@@ -33,6 +73,10 @@ export function PlatformProvider({ children }) {
 
     // Seed default state for this company in localStorage
     localStorage.setItem(companyDataKey(newId), JSON.stringify(seedCompanyState(newId)));
+
+    // Sync to D1
+    d1Api.updateCompany(newId, newCompany).catch(() => {});
+
     return newCompany;
   };
 
@@ -41,6 +85,12 @@ export function PlatformProvider({ children }) {
       ...prev,
       companies: prev.companies.map((c) => (c.id === Number(id) ? { ...c, ...updates } : c)),
     }));
+
+    // Sync to D1 remote database
+    d1Api.updateCompany(id, updates).catch(() => {});
+    if (updates.theme_color !== undefined || updates.logo_url !== undefined) {
+      d1Api.updateCompanyTheme(id, updates).catch(() => {});
+    }
   };
 
   const resetCompanyPassword = (id, newPassword) => {

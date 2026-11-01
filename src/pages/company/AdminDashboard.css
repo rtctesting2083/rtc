@@ -30,7 +30,7 @@
 
 /* ---------- Top Red Bar ---------- */
 .admin-topbar {
-  background: #dc2626 !important;
+  background: var(--admin-red, #dc2626) !important;
   height: 52px;
   display: flex;
   align-items: center;

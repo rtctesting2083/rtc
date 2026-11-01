@@ -30,6 +30,13 @@ export async function onRequest(context) {
 
     // 2. Platform / Companies endpoint
     if (path === 'platform/companies') {
+      try {
+        await db.prepare('ALTER TABLE companies ADD COLUMN logo_url TEXT').run();
+      } catch (e) {}
+      try {
+        await db.prepare("ALTER TABLE companies ADD COLUMN theme_color TEXT DEFAULT '#dc2626'").run();
+      } catch (e) {}
+
       if (method === 'GET') {
         const { results } = await db.prepare('SELECT * FROM companies ORDER BY id ASC').all();
         return jsonResponse(results);
@@ -37,11 +44,63 @@ export async function onRequest(context) {
       if (method === 'POST') {
         const body = await request.json();
         const res = await db
-          .prepare('INSERT INTO companies (name, slug, password, status, created_at) VALUES (?, ?, ?, ?, datetime("now"))')
-          .bind(body.name, body.slug, body.password, body.status || 'active')
+          .prepare('INSERT INTO companies (name, slug, password, status, logo_url, theme_color, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime("now"))')
+          .bind(
+            body.name,
+            body.slug,
+            body.password,
+            body.status || 'active',
+            body.logo_url || null,
+            body.theme_color || '#dc2626'
+          )
           .run();
         return jsonResponse({ success: true, id: res.meta.last_row_id });
       }
+    }
+
+    // 2b. Platform / Company update endpoint: /api/platform/companies/:id
+    const platformCompMatch = path.match(/^platform\/companies\/(\d+)$/);
+    if (platformCompMatch && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
+      const compId = Number(platformCompMatch[1]);
+      const body = await request.json();
+      const fields = [];
+      const vals = [];
+      if (body.name !== undefined) { fields.push('name = ?'); vals.push(body.name); }
+      if (body.slug !== undefined) { fields.push('slug = ?'); vals.push(body.slug); }
+      if (body.password !== undefined) { fields.push('password = ?'); vals.push(body.password); }
+      if (body.status !== undefined) { fields.push('status = ?'); vals.push(body.status); }
+      if (body.logo_url !== undefined) { fields.push('logo_url = ?'); vals.push(body.logo_url); }
+      if (body.theme_color !== undefined) { fields.push('theme_color = ?'); vals.push(body.theme_color); }
+      if (fields.length > 0) {
+        vals.push(compId);
+        await db.prepare(`UPDATE companies SET ${fields.join(', ')} WHERE id = ?`).bind(...vals).run();
+      }
+      const updated = await db.prepare('SELECT * FROM companies WHERE id = ?').bind(compId).first();
+      return jsonResponse({ success: true, company: updated });
+    }
+
+    // 2c. Dedicated Company Theme & Logo endpoint: /api/company/:id/theme
+    const companyThemeMatch = path.match(/^company\/(\d+)\/theme$/);
+    if (companyThemeMatch && (method === 'POST' || method === 'PUT')) {
+      const compId = Number(companyThemeMatch[1]);
+      const body = await request.json();
+      try {
+        await db.prepare('ALTER TABLE companies ADD COLUMN logo_url TEXT').run();
+      } catch (e) {}
+      try {
+        await db.prepare("ALTER TABLE companies ADD COLUMN theme_color TEXT DEFAULT '#dc2626'").run();
+      } catch (e) {}
+
+      const fields = [];
+      const vals = [];
+      if (body.logo_url !== undefined) { fields.push('logo_url = ?'); vals.push(body.logo_url); }
+      if (body.theme_color !== undefined) { fields.push('theme_color = ?'); vals.push(body.theme_color); }
+      if (fields.length > 0) {
+        vals.push(compId);
+        await db.prepare(`UPDATE companies SET ${fields.join(', ')} WHERE id = ?`).bind(...vals).run();
+      }
+      const updated = await db.prepare('SELECT * FROM companies WHERE id = ?').bind(compId).first();
+      return jsonResponse({ success: true, company: updated });
     }
 
     // 3. Company Data Bundle endpoint: /api/company/:id
@@ -83,6 +142,7 @@ export async function onRequest(context) {
         invoicesRes,
         settingsRes,
         settlementsRes,
+        companyRes,
       ] = await Promise.all([
         db.prepare('SELECT * FROM branches WHERE company_id = ?').bind(companyId).all(),
         db.prepare('SELECT * FROM riders WHERE company_id = ?').bind(companyId).all(),
@@ -91,6 +151,7 @@ export async function onRequest(context) {
         db.prepare('SELECT * FROM invoices WHERE company_id = ? ORDER BY id DESC').bind(companyId).all(),
         db.prepare('SELECT * FROM company_settings WHERE company_id = ?').bind(companyId).first(),
         db.prepare('SELECT * FROM cod_settlements WHERE company_id = ? ORDER BY id DESC').bind(companyId).all().catch(() => ({ results: [] })),
+        db.prepare('SELECT * FROM companies WHERE id = ?').bind(companyId).first().catch(() => null),
       ]);
 
       const formatParsed = (row, jsonFields) => {
@@ -122,6 +183,7 @@ export async function onRequest(context) {
           'roles_json',
           'users_json',
         ]) : null,
+        company: companyRes || null,
       });
     }
 

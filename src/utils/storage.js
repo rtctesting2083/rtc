@@ -19,7 +19,7 @@ export function defaultPlatform() {
   return {
     nextCompanyId: 2,
     companies: [
-      { id: 1, name: 'R.T.C Courier Pvt. Ltd.', slug: 'rtc', password: 'rtc123', status: 'active', created_at: t },
+      { id: 1, name: 'R.T.C Courier Pvt. Ltd.', slug: 'rtc', password: 'rtc123', status: 'active', logo_url: null, theme_color: '#dc2626', created_at: t },
     ],
   };
 }

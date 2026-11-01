@@ -28,6 +28,7 @@ import { CompanyBranchesPage } from './pages/company/CompanyBranchesPage';
 import { CompanyBranchReportsPage } from './pages/company/CompanyBranchReportsPage';
 
 // Company Settings
+import { CompanyThemeSettingsPage } from './pages/company/settings/CompanyThemeSettingsPage';
 import { OrderTypesSettingsPage } from './pages/company/settings/OrderTypesSettingsPage';
 import { DeliveryServiceTypesSettingsPage } from './pages/company/settings/DeliveryServiceTypesSettingsPage';
 import { ProductCategoriesSettingsPage } from './pages/company/settings/ProductCategoriesSettingsPage';
@@ -115,6 +116,8 @@ export function App() {
                   <Route path="branch-reports" element={<CompanyBranchReportsPage />} />
 
                   {/* Settings sub-routes */}
+                  <Route path="settings/company" element={<CompanyThemeSettingsPage />} />
+                  <Route path="settings/theme" element={<CompanyThemeSettingsPage />} />
                   <Route path="settings/order-types" element={<OrderTypesSettingsPage />} />
                   <Route path="settings/delivery-service-types" element={<DeliveryServiceTypesSettingsPage />} />
                   <Route path="settings/product-categories" element={<ProductCategoriesSettingsPage />} />

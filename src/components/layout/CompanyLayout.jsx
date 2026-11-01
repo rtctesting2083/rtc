@@ -32,6 +32,7 @@ import {
   Database,
   UserCheck,
   Settings,
+  Palette,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCompany } from '../../context/CompanyContext';
@@ -100,6 +101,7 @@ export function CompanyLayout() {
   ];
 
   const settingsNavItems = [
+    { key: 'company-theme', label: 'Company & Theme', Icon: Palette, path: '/company/settings/company' },
     { key: 'order-types', label: 'Order Type', Icon: Tag, path: '/company/settings/order-types' },
     { key: 'delivery-service-types', label: 'Delivery Service Type', Icon: Zap, path: '/company/settings/delivery-service-types' },
     { key: 'product-categories', label: 'Product/Package Category', Icon: Boxes, path: '/company/settings/product-categories' },
@@ -134,7 +136,12 @@ export function CompanyLayout() {
       <aside className={`admin-sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
         <div>
           <div className="admin-brand-card">
-            <img src={logoImg} alt="RTC Logo" className="admin-brand-logo" />
+            <img
+              src={company.logo_url || logoImg}
+              alt={company.name || 'RTC Logo'}
+              className="admin-brand-logo"
+              style={{ objectFit: 'contain' }}
+            />
             <h3>{company.name}</h3>
             <p>{subtitle}</p>
           </div>

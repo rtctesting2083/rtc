@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS companies (
   slug TEXT UNIQUE NOT NULL,
   password TEXT NOT NULL,
   status TEXT DEFAULT 'active',
+  logo_url TEXT,
+  theme_color TEXT DEFAULT '#dc2626',
   created_at TEXT NOT NULL
 );
 

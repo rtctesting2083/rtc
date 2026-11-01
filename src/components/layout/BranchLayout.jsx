@@ -90,7 +90,12 @@ export function BranchLayout() {
       <aside className={`admin-sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
         <div>
           <div className="admin-brand-card">
-            <img src={logoImg} alt="RTC Logo" className="admin-brand-logo" />
+            <img
+              src={company?.logo_url || logoImg}
+              alt={company?.name || 'RTC Logo'}
+              className="admin-brand-logo"
+              style={{ objectFit: 'contain' }}
+            />
             <h3>{company?.name || 'R.T.C Courier'}</h3>
             <p>{currentBranch.name}</p>
           </div>

@@ -126,7 +126,12 @@ export function CustomerLayout() {
             <Menu size={20} />
           </button>
           <div className="vendor-brand-badge" onClick={() => navigate('/customer/dashboard')} title="RTC Courier Dashboard">
-            <img src={logoImg} alt="RTC Real Time Courier" className="vendor-brand-logo-img" />
+            <img
+              src={company?.logo_url || logoImg}
+              alt={company?.name || 'RTC Real Time Courier'}
+              className="vendor-brand-logo-img"
+              style={{ objectFit: 'contain' }}
+            />
           </div>
         </div>
 

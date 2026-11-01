@@ -34,6 +34,36 @@ export const d1Api = {
     }
   },
 
+  // Update company theme and logo in D1
+  updateCompanyTheme: async (companyId = 1, { theme_color, logo_url }) => {
+    try {
+      const res = await fetch(`/api/company/${companyId}/theme`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme_color, logo_url }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Update company in platform endpoint
+  updateCompany: async (companyId, payload) => {
+    try {
+      const res = await fetch(`/api/platform/companies/${companyId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
   // COD Settlements: Read settlements from D1 table 'cod_settlements'
   getSettlements: async (companyId = 1, params = {}) => {
     try {
