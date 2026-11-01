@@ -75,7 +75,7 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
   const [vendorRefId, setVendorRefId] = useState('');
   const [orderType, setOrderType] = useState(() => orderTypes[0]?.name || 'Delivery Order');
   const [serviceType, setServiceType] = useState(() => deliveryServiceTypes[0]?.name || 'Door to Door Delivery');
-  const [weightKg, setWeightKg] = useState('0.00');
+  const [weightKg, setWeightKg] = useState('1.00');
   const [codAmount, setCodAmount] = useState('');
   const [promoCode, setPromoCode] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState(0);
@@ -145,24 +145,61 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
     });
   }, [vendorBranches, areaSearchQuery]);
 
-  const destBranch = destinationBranchId ? findBranch(destinationBranchId) : null;
-  const senderBranch = senderBranchId ? findBranch(senderBranchId) : null;
+  const destBranch = useMemo(() => {
+    if (!destinationBranchId) return null;
+    return (
+      (branches || []).find((b) => String(b.id) === String(destinationBranchId)) ||
+      (findBranch ? findBranch(destinationBranchId) : null)
+    );
+  }, [branches, destinationBranchId, findBranch]);
 
-  // Real-time Pricing Calculations
+  const senderBranch = useMemo(() => {
+    if (!senderBranchId) return null;
+    return (
+      (branches || []).find((b) => String(b.id) === String(senderBranchId)) ||
+      (findBranch ? findBranch(senderBranchId) : null)
+    );
+  }, [branches, senderBranchId, findBranch]);
+
+  // Standard Delivery Service Types supported in RTC Courier system
+  const availableServiceTypes = useMemo(() => {
+    const defaultList = [
+      'Door to Door Delivery',
+      'Branch to Door Delivery',
+      'Door to Branch Delivery',
+      'Branch to Branch Delivery',
+      'Standard',
+      'Express',
+      'Same Day',
+    ];
+    if (deliveryServiceTypes && deliveryServiceTypes.length > 0) {
+      const names = deliveryServiceTypes.map((st) => st.name);
+      return Array.from(new Set([...defaultList, ...names]));
+    }
+    return defaultList;
+  }, [deliveryServiceTypes]);
+
+  // Real-time Pricing Calculations on basis of Service Type, Weight, and Destination
   const weight = parseFloat(weightKg) || 0;
   const destinationText = destBranch
-    ? `${destBranch.name} ${destBranch.address?.district || ''}`
+    ? `${destBranch.name} ${destBranch.district || destBranch.address?.district || ''} ${destBranch.municipality || destBranch.address?.municipality || ''}`
     : deliveryAddress;
+  const originText = senderBranch
+    ? `${senderBranch.name} ${senderBranch.district || senderBranch.address?.district || ''}`
+    : '';
 
   const isFragileItem = /fragile|glass/i.test(productCategory || '');
+  const currentSettings = typeof chargeSettings === 'function' ? chargeSettings() : (chargeSettings || null);
+
   const feeCalc = calculateDeliveryCharge({
     destination: destinationText,
+    origin: originText,
     weightKg: weight,
     serviceType,
     codAmount: parseFloat(codAmount) || 0,
     declaredValue: parseFloat(itemValue) || 0,
     isFragile: isFragileItem,
-    settings: chargeSettings ? chargeSettings() : null,
+    settings: currentSettings,
   });
 
   const rawFee = feeCalc ? feeCalc.deliveryFee : 0;
@@ -495,21 +532,11 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
                       onChange={(e) => setServiceType(e.target.value)}
                       required
                     >
-                      {deliveryServiceTypes.length > 0 ? (
-                        deliveryServiceTypes.map((st) => (
-                          <option key={st.id} value={st.name}>
-                            {st.name}
-                          </option>
-                        ))
-                      ) : (
-                        <>
-                          <option value="Door to Door Delivery">Door to Door Delivery</option>
-                          <option value="Branch to Door Delivery">Branch to Door Delivery</option>
-                          <option value="Door to Branch Delivery">Door to Branch Delivery</option>
-                          <option value="Standard">Standard</option>
-                          <option value="Express">Express</option>
-                        </>
-                      )}
+                      {availableServiceTypes.map((stName) => (
+                        <option key={stName} value={stName}>
+                          {stName}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -728,11 +755,33 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
                   <span className="summary-data-val">{weight > 0 ? `${weight} KG` : '0 KG'}</span>
                 </div>
                 <div className="summary-data-row">
+                  <span className="summary-data-label">Service Type</span>
+                  <span className="summary-data-val" style={{ fontSize: '11.5px', fontWeight: 600, color: '#1e3a8a' }}>
+                    {serviceType}
+                  </span>
+                </div>
+                {destBranch && (
+                  <div className="summary-data-row">
+                    <span className="summary-data-label">Destination Hub</span>
+                    <span className="summary-data-val" style={{ fontSize: '11.5px', fontWeight: 600 }}>
+                      {destBranch.name}
+                    </span>
+                  </div>
+                )}
+                <div className="summary-data-row">
                   <span className="summary-data-label">Service Charge</span>
-                  <span className="summary-data-val">
+                  <span className="summary-data-val" style={{ fontWeight: 700, color: '#0f172a' }}>
                     NPR {serviceCharge.toFixed(2)}
                   </span>
                 </div>
+                {appliedDiscount > 0 && (
+                  <div className="summary-data-row">
+                    <span className="summary-data-label">Promo Discount</span>
+                    <span className="summary-data-val" style={{ color: '#16a34a', fontWeight: 600 }}>
+                      - NPR {discountAmount.toFixed(2)}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="summary-divider-line" />

@@ -1,4 +1,4 @@
-import { CURRENCY } from './constants';
+import { CURRENCY } from './constants.js';
 
 export function pad(n, size = 2) {
   return n.toString().padStart(size, '0');
@@ -60,11 +60,40 @@ export function fmtDate(d) {
   }
 }
 
-export function detectShippingZone(branchNameOrAddress, settings) {
+export function detectShippingZone(branchNameOrAddress, settings, origin = '') {
   const str = (branchNameOrAddress || '').toLowerCase();
+  const origStr = (origin || '').toLowerCase();
   const pricing = settings?.pricing || settings || {};
-  const zones = pricing.zones || [];
-  if (!zones.length) return null;
+  const zones = (pricing.zones && pricing.zones.length > 0) ? pricing.zones : [
+    { id: 'A', name: 'Local & Nearby Terai', base: 100, extra_per_kg: 50, districts: ['Rupandehi'] },
+    { id: 'B', name: 'Major Inter-City Hubs', base: 150, extra_per_kg: 70, districts: ['Kathmandu', 'Lalitpur', 'Bhaktapur', 'Kaski', 'Chitwan', 'Banke'] },
+    { id: 'C', name: 'Other Terai & Inner Terai', base: 180, extra_per_kg: 70, districts: ['Dang', 'Kapilvastu', 'Morang', 'Jhapa'] },
+    { id: 'D', name: 'Hill Districts', base: 220, extra_per_kg: 80, districts: ['Gulmi', 'Palpa', 'Arghakhanchi', 'Syangja'] },
+    { id: 'E', name: 'Remote Mountain & High-Hill', base: 350, extra_per_kg: 100, districts: ['Humla', 'Jumla', 'Dolpa'] },
+  ];
+
+  // 0. Check intra-district / local delivery: if origin district matches destination district
+  if (origStr && str) {
+    const districtsList = [
+      'rupandehi', 'kathmandu', 'lalitpur', 'bhaktapur', 'kaski', 'chitwan', 'banke',
+      'dang', 'kapilvastu', 'nawalparasi', 'nawalpur', 'parasi', 'morang', 'sunsari',
+      'jhapa', 'palpa', 'gulmi', 'arghakhanchi', 'syangja', 'baglung', 'kailali'
+    ];
+    for (const d of districtsList) {
+      if (origStr.includes(d) && str.includes(d)) {
+        const zA = zones.find((z) => z.id === 'A' || z.zone_code === 'A' || /local/i.test(z.name || ''));
+        if (zA) return {
+          id: zA.id || zA.zone_code,
+          name: zA.name,
+          color: zA.color || 'green',
+          base: Number(zA.base ?? zA.base_rate) || 100,
+          extra_per_kg: Number(zA.extra_per_kg ?? zA.extra_kg_rate) || 50,
+          districts: zA.districts || [],
+          is_default: Boolean(zA.is_default),
+        };
+      }
+    }
+  }
 
   // 1. Direct match on district name inside zone.districts
   for (const z of zones) {
@@ -106,15 +135,15 @@ export function detectShippingZone(branchNameOrAddress, settings) {
     if (zE) return zE;
   }
 
-  // 3. Fallback to default designated zone (e.g. Zone C)
-  const defaultZoneId = pricing.default_zone || 'C';
-  const defaultZ = zones.find((z) => z.id === defaultZoneId || z.zone_code === defaultZoneId || z.is_default) || zones[0];
+  // 3. Fallback to default designated zone (e.g. Zone B or C)
+  const defaultZoneId = pricing.default_zone || 'B';
+  const defaultZ = zones.find((z) => z.id === defaultZoneId || z.zone_code === defaultZoneId || z.is_default) || zones[1] || zones[0];
   return defaultZ ? {
     id: defaultZ.id || defaultZ.zone_code,
     name: defaultZ.name,
     color: defaultZ.color || 'gray',
-    base: Number(defaultZ.base ?? defaultZ.base_rate) || 120,
-    extra_per_kg: Number(defaultZ.extra_per_kg ?? defaultZ.extra_kg_rate) || 60,
+    base: Number(defaultZ.base ?? defaultZ.base_rate) || 150,
+    extra_per_kg: Number(defaultZ.extra_per_kg ?? defaultZ.extra_kg_rate) || 70,
     districts: defaultZ.districts || [],
     is_default: Boolean(defaultZ.is_default),
   } : null;
@@ -131,11 +160,12 @@ export function calcVolumetricWeight(lengthCm, widthCm, heightCm, divisor = 5000
 
 export function calculateDeliveryCharge({
   destination = '',
+  origin = '',
   weightKg = 1,
   lengthCm = 0,
   widthCm = 0,
   heightCm = 0,
-  serviceType = 'Standard',
+  serviceType = 'Door to Door Delivery',
   codAmount = 0,
   declaredValue = 0,
   isFragile = false,
@@ -144,7 +174,41 @@ export function calculateDeliveryCharge({
   settings = {},
 }) {
   const p = settings?.pricing || settings || {};
-  const zones = p.zones || [];
+  const zones = p.zones || [
+    { id: 'A', name: 'Local & Nearby Terai', base: 100, extra_per_kg: 50 },
+    { id: 'B', name: 'Major Inter-City Hubs', base: 150, extra_per_kg: 70 },
+    { id: 'C', name: 'Other Terai & Inner Terai', base: 180, extra_per_kg: 70 },
+    { id: 'D', name: 'Hill Districts', base: 220, extra_per_kg: 80 },
+    { id: 'E', name: 'Remote Mountain & High-Hill', base: 350, extra_per_kg: 100 },
+  ];
+
+  const inputWeight = Number(weightKg);
+  // If weight is not provided or zero, fee is 0
+  if (isNaN(inputWeight) || inputWeight <= 0) {
+    return {
+      matchedZone: null,
+      billableKg: 0,
+      actualKg: 0,
+      volumetricKg: 0,
+      firstKg: 1,
+      extraKg: 0,
+      baseFee: 0,
+      extraWeightFee: 0,
+      speedFee: 0,
+      speedPercent: 0,
+      serviceAdjustment: 0,
+      codFee: 0,
+      fragileFee: 0,
+      insuranceFee: 0,
+      discountAmount: 0,
+      discountPercent: 0,
+      zoneSubtotal: 0,
+      deliveryFee: 0,
+      taxPercent: Number(p.tax_percent !== undefined ? p.tax_percent : 13),
+      taxAmount: 0,
+      totalWithTax: 0,
+    };
+  }
 
   // 1. Matched Zone
   let matchedZone = null;
@@ -152,15 +216,15 @@ export function calculateDeliveryCharge({
     matchedZone = zones.find((z) => z.id === zoneId || z.zone_code === zoneId);
   }
   if (!matchedZone && destination) {
-    matchedZone = detectShippingZone(destination, p);
+    matchedZone = detectShippingZone(destination, p, origin);
   }
   if (!matchedZone) {
-    const defaultZoneId = p.default_zone || 'C';
-    matchedZone = zones.find((z) => z.id === defaultZoneId || z.zone_code === defaultZoneId || z.is_default) || zones[0];
+    const defaultZoneId = p.default_zone || 'B';
+    matchedZone = zones.find((z) => z.id === defaultZoneId || z.zone_code === defaultZoneId || z.is_default) || zones[1] || zones[0];
   }
 
   // 2. Weight & Parcel Size
-  const actualKg = Math.max(0.01, Number(weightKg) || 1);
+  const actualKg = Math.max(0.01, inputWeight);
   const volDiv = p.volumetric?.enabled !== false && Number(p.volumetric?.divisor) > 0 ? Number(p.volumetric.divisor) : 5000;
   const l = Number(lengthCm) || 0;
   const w = Number(widthCm) || 0;
@@ -170,23 +234,54 @@ export function calculateDeliveryCharge({
     : 0;
 
   const billableKg = Math.max(actualKg, volumetricKg);
-  const firstKg = Number(p.first_weight_kg) || 2;
+  // Default first weight covers 1 KG (standard express courier benchmark)
+  const firstKg = Number(p.first_weight_kg) || 1;
   const extraKg = billableKg > firstKg ? Math.ceil(billableKg - firstKg) : 0;
 
-  const baseRate = Number(matchedZone?.base ?? matchedZone?.base_rate) || 120;
-  const extraPerKg = Number(matchedZone?.extra_per_kg ?? matchedZone?.extra_kg_rate) || 60;
+  const baseRate = Number(matchedZone?.base ?? matchedZone?.base_rate) || 150;
+  const extraPerKg = Number(matchedZone?.extra_per_kg ?? matchedZone?.extra_kg_rate) || 70;
   const extraWeightFee = extraKg * extraPerKg;
   const zoneSubtotal = baseRate + extraWeightFee;
 
-  // 3. Delivery Speed
-  const services = p.services || [
-    { id: 1, name: 'Standard', surcharge_percent: 0 },
-    { id: 2, name: 'Express', surcharge_percent: 30 },
-  ];
-  const srv = services.find((s) => s.name?.toLowerCase() === (serviceType || '').toLowerCase()) ||
-    (serviceType && /express|same/i.test(serviceType) ? { surcharge_percent: 30 } : null);
-  const speedPct = srv ? Number(srv.surcharge_percent) || 0 : 0;
-  const speedFee = Math.round(zoneSubtotal * (speedPct / 100));
+  // 3. Service Type Surcharges & Adjustments
+  const sTypeNorm = (serviceType || '').toLowerCase().trim();
+  const services = p.services || [];
+  const matchedService = services.find((s) => s.name?.toLowerCase().trim() === sTypeNorm);
+
+  let speedPercent = 0;
+  let serviceAdjustment = 0;
+
+  if (matchedService && matchedService.surcharge_percent !== undefined) {
+    speedPercent = Number(matchedService.surcharge_percent) || 0;
+    serviceAdjustment = Math.round(zoneSubtotal * (speedPercent / 100));
+  } else {
+    // Dynamic RTC Courier standard service type pricing adjustments
+    if (sTypeNorm.includes('door to door')) {
+      // Premium door-to-door (pickup from vendor door + deliver to receiver door)
+      serviceAdjustment = 30; // +Rs. 30 door delivery & pickup
+      speedPercent = 20;
+    } else if (sTypeNorm.includes('door to branch')) {
+      // Door pickup + counter collection
+      serviceAdjustment = 15; // +Rs. 15 pickup
+      speedPercent = 10;
+    } else if (sTypeNorm.includes('branch to branch') || sTypeNorm.includes('counter to counter')) {
+      // Counter drop-off + counter pickup (economical)
+      serviceAdjustment = -25; // Rs. 25 discount
+      speedPercent = -15;
+    } else if (sTypeNorm.includes('same day')) {
+      speedPercent = 50;
+      serviceAdjustment = Math.round(zoneSubtotal * 0.5);
+    } else if (sTypeNorm.includes('express')) {
+      speedPercent = 30;
+      serviceAdjustment = Math.round(zoneSubtotal * 0.3);
+    } else {
+      // Branch to Door Delivery or Standard Delivery: baseline 0 adjustment
+      serviceAdjustment = 0;
+      speedPercent = 0;
+    }
+  }
+
+  const speedFee = serviceAdjustment;
 
   // 4. Extra Services
   // COD fee
@@ -223,14 +318,13 @@ export function calculateDeliveryCharge({
     const matchedTier = sortedTiers.find((t) => monthCount >= Number(t.min_shipments));
     if (matchedTier && Number(matchedTier.percent) > 0) {
       discountPercent = Number(matchedTier.percent);
-      // Discount applies to delivery charge (zone base + extra weight + speed surcharge), not extra service fees
       discountAmount = Math.round((zoneSubtotal + speedFee) * (discountPercent / 100));
     }
   }
 
   // Final Total Delivery Charge
   const baseDeliveryCharge = Math.max(0, zoneSubtotal + speedFee - discountAmount);
-  const deliveryFee = baseDeliveryCharge + codFee + fragileFee + insuranceFee;
+  const deliveryFee = Math.max(0, baseDeliveryCharge + codFee + fragileFee + insuranceFee);
 
   // 6. Tax
   const taxPct = Number(p.tax_percent !== undefined ? p.tax_percent : 13);
@@ -246,14 +340,15 @@ export function calculateDeliveryCharge({
     baseFee: baseRate,
     extraWeightFee,
     speedFee,
-    speedPercent: speedPct,
+    speedPercent,
+    serviceAdjustment,
     codFee,
     fragileFee,
     insuranceFee,
     discountAmount,
     discountPercent,
     zoneSubtotal,
-    deliveryFee: Math.round(deliveryFee * 100) / 100,
+    deliveryFee,
     taxPercent: taxPct,
     taxAmount,
     totalWithTax: Math.round((deliveryFee + taxAmount) * 100) / 100,
