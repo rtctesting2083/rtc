@@ -165,27 +165,37 @@ export function defaultDeliveryChargeSettings() {
 
 export function defaultOrderTypes() {
   return [
-    { id: 1, name: 'Document' },
-    { id: 2, name: 'Parcel' },
-    { id: 3, name: 'Cash on Delivery (COD)' },
+    { id: 1, name: 'Delivery Order' },
+    { id: 2, name: 'Document' },
+    { id: 3, name: 'Parcel' },
+    { id: 4, name: 'Cash on Delivery (COD)' },
+    { id: 5, name: 'Return Order' },
+    { id: 6, name: 'Exchange Order' },
   ];
 }
 
 export function defaultDeliveryServiceTypes() {
   return [
-    { id: 1, name: 'Standard' },
-    { id: 2, name: 'Express' },
-    { id: 3, name: 'Same Day' },
+    { id: 1, name: 'Door to Door Delivery' },
+    { id: 2, name: 'Branch to Door Delivery' },
+    { id: 3, name: 'Door to Branch Delivery' },
+    { id: 4, name: 'Branch to Branch Delivery' },
+    { id: 5, name: 'Standard' },
+    { id: 6, name: 'Express' },
+    { id: 7, name: 'Same Day' },
   ];
 }
 
 export function defaultProductCategories() {
   return [
-    { id: 1, name: 'Documents' },
+    { id: 1, name: 'Clothing and Apparels' },
     { id: 2, name: 'Electronics' },
-    { id: 3, name: 'Clothing & Textiles' },
-    { id: 4, name: 'Food & Perishables' },
-    { id: 5, name: 'Fragile / Glass' },
+    { id: 3, name: 'Documents' },
+    { id: 4, name: 'Footwear & Shoes' },
+    { id: 5, name: 'Cosmetics & Beauty' },
+    { id: 6, name: 'Food & Perishables' },
+    { id: 7, name: 'Fragile / Glass' },
+    { id: 8, name: 'Others / General Goods' },
   ];
 }
 

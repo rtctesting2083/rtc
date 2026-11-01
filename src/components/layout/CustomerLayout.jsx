@@ -79,7 +79,7 @@ export function CustomerLayout() {
 
   const handleOpenCreateOrder = () => {
     setMobileMenuOpen(false);
-    openModal('Create New Order', <CreateOrderModal currentCustomer={currentCustomer} />, 'xwide');
+    openModal('Create New Order', <CreateOrderModal currentCustomer={currentCustomer} />, 'xxwide', { hideHeader: true });
   };
 
   const closeMobileMenu = () => {
@@ -311,13 +311,13 @@ export function CustomerLayout() {
                     >
                       My Order List
                     </NavLink>
-                    <button
-                      type="button"
-                      className="vendor-sub-item"
-                      onClick={handleOpenCreateOrder}
+                    <NavLink
+                      to="/customer/orders/create"
+                      onClick={closeMobileMenu}
+                      className={({ isActive }) => `vendor-sub-item ${isActive ? 'active' : ''}`}
                     >
                       + Create Order
-                    </button>
+                    </NavLink>
                   </div>
                 )}
               </div>

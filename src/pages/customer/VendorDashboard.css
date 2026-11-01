@@ -2315,3 +2315,558 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+/* ==========================================================================
+   Create New Order Form & Branch Lookup Styles (Matches Reference Screenshot)
+   ========================================================================== */
+.customer-create-order-page-wrapper {
+  padding: 24px;
+  max-width: 1380px;
+  margin: 0 auto;
+}
+
+.create-order-screen-container {
+  position: relative;
+  width: 100%;
+  color: #1e293b;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+.create-order-screen-container.as-modal {
+  padding: 4px 6px;
+}
+
+.create-order-close-btn {
+  position: absolute;
+  top: -6px;
+  right: 0;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  transition: all 0.15s ease;
+}
+
+.create-order-close-btn:hover {
+  background: #fee2e2;
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+
+/* 2-Column Main Layout: Left Form (70%), Right Cards (30%) */
+.create-order-grid-wrapper {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 24px;
+  align-items: start;
+}
+
+/* Left Column Cards */
+.create-order-main-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.create-order-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 22px 26px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.create-order-card-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #e05638; /* Coral / RTC red accent matching screenshot */
+  margin: 0 0 20px 0;
+  letter-spacing: -0.01em;
+}
+
+.create-order-card-title.parcel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.parcel-icon {
+  font-size: 18px;
+}
+
+.create-order-form-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Row with Label on Left, Input on Right */
+.create-order-row {
+  display: grid;
+  grid-template-columns: 210px 1fr;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.create-order-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  padding-top: 9px;
+  line-height: 1.3;
+}
+
+.create-order-label .req {
+  color: #dc2626;
+  margin-left: 2px;
+  font-weight: 700;
+}
+
+.create-order-input-wrap {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.create-order-input,
+.create-order-select,
+.create-order-textarea {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #111827;
+  background-color: #ffffff;
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.create-order-input,
+.create-order-select {
+  height: 38px;
+}
+
+.create-order-input::placeholder,
+.create-order-textarea::placeholder {
+  color: #9ca3af;
+}
+
+.create-order-input:focus,
+.create-order-select:focus,
+.create-order-textarea:focus {
+  outline: none;
+  border-color: #dc2626;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.12);
+}
+
+.create-order-textarea {
+  resize: vertical;
+  min-height: 72px;
+}
+
+.create-order-help-text {
+  font-size: 11px;
+  color: #6b7280;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+/* Promo Code Input Group with Blue Check Button */
+.promo-input-group {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.promo-input {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: none;
+}
+
+.btn-apply-promo-blue {
+  background: #0284c7; /* Vibrant Blue matching screenshot */
+  color: #ffffff;
+  border: 1px solid #0284c7;
+  border-top-right-radius: 6px;
+  border-bottom-right-radius: 6px;
+  height: 38px;
+  width: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+
+.btn-apply-promo-blue:hover {
+  background: #0369a1;
+  border-color: #0369a1;
+}
+
+.promo-msg-line {
+  font-size: 11.5px;
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+.promo-msg-line.success {
+  color: #16a34a;
+}
+
+.promo-msg-line.error {
+  color: #dc2626;
+}
+
+/* Right Column Cards */
+.create-order-side-col {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.create-order-side-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 18px 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+/* Card 1: Branch Lookup */
+.branch-lookup-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.branch-lookup-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #e05638;
+}
+
+.area-search-pill {
+  background: #475569;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.branch-lookup-sub {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 0 0 12px 0;
+  line-height: 1.4;
+}
+
+.branch-lookup-input-wrapper {
+  width: 100%;
+}
+
+.branch-lookup-input {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  color: #111827;
+  height: 38px;
+  box-sizing: border-box;
+}
+
+.branch-lookup-input:focus {
+  outline: none;
+  border-color: #dc2626;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.12);
+}
+
+.branch-lookup-results {
+  margin-top: 10px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fafafa;
+}
+
+.branch-lookup-result-item {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.branch-lookup-result-item:last-child {
+  border-bottom: none;
+}
+
+.branch-lookup-result-item:hover {
+  background: #f1f5f9;
+}
+
+.result-branch-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.result-branch-loc {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.btn-select-hub {
+  margin-top: 6px;
+  background: #e0f2fe;
+  color: #0284c7;
+  border: 1px solid #bae6fd;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.branch-lookup-empty {
+  padding: 12px;
+  font-size: 12px;
+  color: #94a3b8;
+  text-align: center;
+}
+
+/* Card 2: Order Summary #1 */
+.order-summary-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #e05638;
+  margin: 0 0 16px 0;
+}
+
+.summary-data-table {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.summary-data-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.summary-data-label {
+  color: #475569;
+}
+
+.summary-data-val {
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.summary-divider-line {
+  height: 1.5px;
+  background: #fed7aa; /* Light coral divider matching screenshot */
+  margin: 16px 0;
+}
+
+.summary-total-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.summary-total-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.summary-total-val {
+  font-size: 18px;
+  font-weight: 700;
+  color: #e05638; /* Large orange-red total matching screenshot */
+}
+
+.create-order-error-banner {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #b91c1c;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  margin-bottom: 14px;
+}
+
+/* Blue Submit Order Button */
+.btn-submit-order-navy {
+  width: 100%;
+  height: 42px;
+  background: #003366; /* Deep navy blue matching screenshot */
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-submit-order-navy:hover {
+  background: #002244;
+}
+
+/* Success Dialog View */
+.order-created-success-panel {
+  background: #ffffff;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 32px 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.success-icon-badge {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #dcfce7;
+  color: #16a34a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.success-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #15803d;
+  margin: 0 0 6px 0;
+}
+
+.success-subtitle {
+  font-size: 14px;
+  color: #475569;
+  margin: 0 0 16px 0;
+}
+
+.success-subtitle .text-red {
+  color: #dc2626;
+}
+
+.success-summary-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 14px 20px;
+  width: 100%;
+  max-width: 480px;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+  margin-bottom: 22px;
+}
+
+.success-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.btn-print-label-now {
+  background: #dc2626;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-print-label-now:hover {
+  background: #b91c1c;
+}
+
+.btn-create-another {
+  background: #003366;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-create-another:hover {
+  background: #002244;
+}
+
+.btn-view-orders {
+  background: #ffffff;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-view-orders:hover {
+  background: #f8fafc;
+}
+
+/* Responsive Breakpoints */
+@media (max-width: 1080px) {
+  .create-order-grid-wrapper {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .create-order-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .create-order-label {
+    padding-top: 0;
+  }
+  .create-order-card {
+    padding: 16px;
+  }
+  .customer-create-order-page-wrapper {
+    padding: 12px;
+  }
+}

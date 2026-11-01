@@ -51,6 +51,7 @@ import { BranchUserManagementPage } from './pages/branch/BranchUserManagementPag
 // Customer (Vendor)
 import { CustomerDashboardPage } from './pages/customer/CustomerDashboardPage';
 import { CustomerOrdersPage } from './pages/customer/CustomerOrdersPage';
+import { CustomerCreateOrderPage } from './pages/customer/CustomerCreateOrderPage';
 import { CustomerInvoicesPage } from './pages/customer/CustomerInvoicesPage';
 import { CustomerProfilePage } from './pages/customer/CustomerProfilePage';
 import { CustomerAddressBookPage } from './pages/customer/CustomerAddressBookPage';
@@ -157,6 +158,7 @@ export function App() {
                   <Route index element={<Navigate to="dashboard" replace />} />
                   <Route path="dashboard" element={<CustomerDashboardPage />} />
                   <Route path="orders" element={<CustomerOrdersPage />} />
+                  <Route path="orders/create" element={<CustomerCreateOrderPage />} />
                   <Route path="invoices" element={<CustomerInvoicesPage />} />
                   <Route path="profile" element={<CustomerProfilePage />} />
                   <Route path="customers" element={<CustomerAddressBookPage />} />
