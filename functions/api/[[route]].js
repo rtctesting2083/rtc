@@ -48,6 +48,33 @@ export async function onRequest(context) {
     const companyMatch = path.match(/^company\/(\d+)$/);
     if (companyMatch && method === 'GET') {
       const companyId = Number(companyMatch[1]);
+
+      // Ensure cod_settlements table exists
+      await db.prepare(`
+        CREATE TABLE IF NOT EXISTS cod_settlements (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          company_id INTEGER NOT NULL DEFAULT 1,
+          settlement_number TEXT UNIQUE NOT NULL,
+          customer_id INTEGER NOT NULL,
+          branch_id INTEGER,
+          vendor_name TEXT NOT NULL,
+          vendor_phone TEXT,
+          bank_details_json TEXT,
+          total_cod REAL NOT NULL DEFAULT 0,
+          delivery_charges_deducted REAL NOT NULL DEFAULT 0,
+          other_deductions REAL NOT NULL DEFAULT 0,
+          net_payable REAL NOT NULL DEFAULT 0,
+          parcels_count INTEGER NOT NULL DEFAULT 0,
+          shipment_ids_json TEXT,
+          payment_method TEXT DEFAULT 'Bank Transfer',
+          payment_reference TEXT,
+          notes TEXT,
+          status TEXT DEFAULT 'completed',
+          settled_at TEXT NOT NULL,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run().catch(() => {});
+
       const [
         branchesRes,
         ridersRes,
@@ -55,6 +82,7 @@ export async function onRequest(context) {
         shipmentsRes,
         invoicesRes,
         settingsRes,
+        settlementsRes,
       ] = await Promise.all([
         db.prepare('SELECT * FROM branches WHERE company_id = ?').bind(companyId).all(),
         db.prepare('SELECT * FROM riders WHERE company_id = ?').bind(companyId).all(),
@@ -62,6 +90,7 @@ export async function onRequest(context) {
         db.prepare('SELECT * FROM shipments WHERE company_id = ? ORDER BY id DESC').bind(companyId).all(),
         db.prepare('SELECT * FROM invoices WHERE company_id = ? ORDER BY id DESC').bind(companyId).all(),
         db.prepare('SELECT * FROM company_settings WHERE company_id = ?').bind(companyId).first(),
+        db.prepare('SELECT * FROM cod_settlements WHERE company_id = ? ORDER BY id DESC').bind(companyId).all().catch(() => ({ results: [] })),
       ]);
 
       const formatParsed = (row, jsonFields) => {
@@ -82,6 +111,7 @@ export async function onRequest(context) {
         customers: (customersRes.results || []).map((c) => formatParsed(c, ['address_json', 'bank_details_json', 'documents_json', 'staff_roles_json', 'staff_users_json', 'vendor_customers_json'])),
         shipments: (shipmentsRes.results || []).map((s) => formatParsed(s, ['tracking_events_json'])),
         invoices: invoicesRes.results || [],
+        settlements: (settlementsRes?.results || []).map((s) => formatParsed(s, ['bank_details_json', 'shipment_ids_json'])),
         settings: settingsRes ? formatParsed(settingsRes, [
           'delivery_charges_json',
           'shipment_statuses_json',
@@ -240,6 +270,112 @@ export async function onRequest(context) {
           success: true,
           id: vendorId,
           message: 'Vendor verification updated successfully',
+        });
+      }
+    }
+
+    // 4.B COD Settlements endpoint: Manage delivery charge deductions & settlements
+    if (path === 'settlements' || path.startsWith('settlements/')) {
+      const companyId = url.searchParams.get('company_id') || 1;
+
+      // GET /api/settlements
+      if (method === 'GET') {
+        const customerId = url.searchParams.get('customer_id');
+        const branchId = url.searchParams.get('branch_id');
+
+        let query = 'SELECT * FROM cod_settlements WHERE company_id = ?';
+        const params = [Number(companyId)];
+        if (customerId) {
+          query += ' AND customer_id = ?';
+          params.push(Number(customerId));
+        }
+        if (branchId) {
+          query += ' AND branch_id = ?';
+          params.push(Number(branchId));
+        }
+        query += ' ORDER BY id DESC';
+
+        const { results } = await db.prepare(query).bind(...params).all().catch(() => ({ results: [] }));
+        const formatted = (results || []).map((s) => ({
+          ...s,
+          bank_details: s.bank_details_json ? JSON.parse(s.bank_details_json) : {},
+          shipment_ids: s.shipment_ids_json ? JSON.parse(s.shipment_ids_json) : [],
+        }));
+        return jsonResponse(formatted);
+      }
+
+      // POST /api/settlements (Create a settlement & mark shipments settled)
+      if (method === 'POST') {
+        const body = await request.json();
+        const {
+          company_id = companyId,
+          settlement_number,
+          customer_id,
+          branch_id,
+          vendor_name,
+          vendor_phone,
+          bank_details_json = '{}',
+          total_cod = 0,
+          delivery_charges_deducted = 0,
+          other_deductions = 0,
+          net_payable = 0,
+          parcels_count = 0,
+          shipment_ids_json = '[]',
+          payment_method = 'Bank Transfer',
+          payment_reference = '',
+          notes = '',
+          status = 'completed',
+          settled_at = new Date().toISOString(),
+        } = body;
+
+        const insertRes = await db
+          .prepare(`
+            INSERT INTO cod_settlements (
+              company_id, settlement_number, customer_id, branch_id,
+              vendor_name, vendor_phone, bank_details_json, total_cod,
+              delivery_charges_deducted, other_deductions, net_payable,
+              parcels_count, shipment_ids_json, payment_method,
+              payment_reference, notes, status, settled_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `)
+          .bind(
+            Number(company_id), settlement_number, Number(customer_id), branch_id ? Number(branch_id) : null,
+            vendor_name, vendor_phone || '', typeof bank_details_json === 'string' ? bank_details_json : JSON.stringify(bank_details_json),
+            Number(total_cod), Number(delivery_charges_deducted), Number(other_deductions), Number(net_payable),
+            Number(parcels_count), typeof shipment_ids_json === 'string' ? shipment_ids_json : JSON.stringify(shipment_ids_json),
+            payment_method, payment_reference, notes, status, settled_at
+          )
+          .run();
+
+        const settlementId = insertRes.meta.last_row_id;
+
+        // Also mark shipments settled in D1
+        let ids = [];
+        try { ids = JSON.parse(typeof shipment_ids_json === 'string' ? shipment_ids_json : JSON.stringify(shipment_ids_json)); } catch (e) {}
+
+        if (Array.isArray(ids) && ids.length > 0) {
+          for (const sId of ids) {
+            await db
+              .prepare(`
+                UPDATE shipments SET
+                  cod_settled = 1,
+                  cod_settlement_status = 'settled',
+                  cod_settlement_ref = ?,
+                  cod_settled_at = ?,
+                  updated_at = datetime('now')
+                WHERE id = ?
+              `)
+              .bind(settlement_number, settled_at, Number(sId))
+              .run()
+              .catch(() => {});
+          }
+        }
+
+        return jsonResponse({
+          success: true,
+          id: settlementId,
+          settlement_number,
+          message: 'COD settlement processed and saved successfully',
         });
       }
     }

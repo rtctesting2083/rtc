@@ -34,6 +34,33 @@ export const d1Api = {
     }
   },
 
+  // COD Settlements: Read settlements from D1 table 'cod_settlements'
+  getSettlements: async (companyId = 1, params = {}) => {
+    try {
+      const sp = new URLSearchParams({ company_id: String(companyId), ...params });
+      const res = await fetch(`/api/settlements?${sp.toString()}`);
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (e) {
+      return [];
+    }
+  },
+
+  // COD Settlements: Create settlement and deduct delivery charges in D1
+  createSettlement: async (payload = {}) => {
+    try {
+      const res = await fetch('/api/settlements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
   // Read company settings from D1 table 'setting'
   getSettings: async (companyId) => {
     try {

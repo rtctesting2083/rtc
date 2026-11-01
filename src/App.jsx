@@ -53,6 +53,7 @@ import { CustomerDashboardPage } from './pages/customer/CustomerDashboardPage';
 import { CustomerOrdersPage } from './pages/customer/CustomerOrdersPage';
 import { CustomerCreateOrderPage } from './pages/customer/CustomerCreateOrderPage';
 import { CustomerInvoicesPage } from './pages/customer/CustomerInvoicesPage';
+import { CustomerCodSettlementPage } from './pages/customer/CustomerCodSettlementPage';
 import { CustomerProfilePage } from './pages/customer/CustomerProfilePage';
 import { CustomerAddressBookPage } from './pages/customer/CustomerAddressBookPage';
 import { CustomerStaffPage } from './pages/customer/CustomerStaffPage';
@@ -160,6 +161,7 @@ export function App() {
                   <Route path="orders" element={<CustomerOrdersPage />} />
                   <Route path="orders/create" element={<CustomerCreateOrderPage />} />
                   <Route path="invoices" element={<CustomerInvoicesPage />} />
+                  <Route path="cod-settlement" element={<CustomerCodSettlementPage />} />
                   <Route path="profile" element={<CustomerProfilePage />} />
                   <Route path="customers" element={<CustomerAddressBookPage />} />
                   <Route path="staff" element={<CustomerStaffPage />} />

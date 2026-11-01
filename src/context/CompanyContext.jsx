@@ -243,6 +243,23 @@ export function CompanyProvider({ children }) {
       }).catch((err) => {
         console.warn('Could not fetch D1 shipments:', err);
       });
+
+      // 7. Hydrate live COD settlements from Cloudflare remote D1 table 'cod_settlements'
+      d1Api.getSettlements(companyId).then((remoteSettlements) => {
+        if (Array.isArray(remoteSettlements) && remoteSettlements.length > 0) {
+          setData((prev) => {
+            if (!prev) return prev;
+            const updated = {
+              ...prev,
+              settlements: remoteSettlements,
+            };
+            saveCompanyState(companyId, updated);
+            return updated;
+          });
+        }
+      }).catch((err) => {
+        console.warn('Could not fetch D1 settlements:', err);
+      });
     } else {
       setData(null);
     }
@@ -277,6 +294,8 @@ export function CompanyProvider({ children }) {
   const findDeliveryServiceType = (id) => (data?.deliveryServiceTypes || []).find((t) => t.id === Number(id));
   const findProductCategory = (id) => (data?.productCategories || []).find((t) => t.id === Number(id));
   const findCustomStatus = (key) => (data?.customShipmentStatuses || []).find((s) => s.key === key);
+  const findSettlement = (id) => (data?.settlements || []).find((st) => st.id === Number(id) || st.settlement_number === String(id));
+  const findCustomerSettlements = (customerId) => (data?.settlements || []).filter((st) => Number(st.customer_id) === Number(customerId));
 
   const chargeSettings = () => data?.deliveryChargeSettings || defaultDeliveryChargeSettings();
 
@@ -688,9 +707,115 @@ export function CompanyProvider({ children }) {
     }));
   };
 
+  const createCodSettlement = async (payload) => {
+    const {
+      customerId,
+      shipmentIds = [],
+      paymentMethod = 'Bank Transfer',
+      paymentReference = '',
+      notes = '',
+      deductDeliveryFee = true,
+      branchId = null,
+      customSettlementNumber = null,
+    } = payload;
+
+    const vendor = (data?.customers || []).find((c) => Number(c.id) === Number(customerId)) ||
+                   (data?.vendors || []).find((v) => Number(v.id) === Number(customerId));
+
+    const selectedShipments = (data?.shipments || []).filter((s) =>
+      shipmentIds.map(Number).includes(Number(s.id))
+    );
+
+    const totalCod = selectedShipments.reduce((sum, s) => sum + (Number(s.cod_amount) || 0), 0);
+    const totalFees = selectedShipments.reduce((sum, s) => sum + (Number(s.delivery_fee) || 0), 0);
+    const feeDeducted = deductDeliveryFee ? totalFees : 0;
+    const netPayable = Math.max(0, totalCod - feeDeducted);
+
+    const now = new Date().toISOString();
+    const settlementNumber = customSettlementNumber || `SET-${new Date().getFullYear()}${pad(new Date().getMonth() + 1, 2)}-${pad(Math.floor(1000 + Math.random() * 9000), 4)}`;
+
+    let newSettlement = null;
+
+    updateData((prev) => {
+      const newId = (prev.nextId?.settlement || (prev.settlements?.length || 0) + 1);
+      newSettlement = {
+        id: newId,
+        settlement_number: settlementNumber,
+        company_id: Number(companyId || 1),
+        customer_id: Number(customerId),
+        branch_id: branchId ? Number(branchId) : (vendor?.branch_id ? Number(vendor.branch_id) : null),
+        vendor_name: vendor?.name || 'Vendor',
+        vendor_phone: vendor?.phone || '',
+        bank_details: vendor?.bank_details || {},
+        total_cod: totalCod,
+        delivery_charges_deducted: feeDeducted,
+        other_deductions: 0,
+        net_payable: netPayable,
+        parcels_count: selectedShipments.length,
+        shipment_ids: shipmentIds.map(Number),
+        payment_method: paymentMethod,
+        payment_reference: paymentReference || `TXN-${Date.now().toString().slice(-6)}`,
+        notes: notes || 'Delivery charge settlement from COD amount.',
+        status: 'completed',
+        settled_at: now,
+      };
+
+      const updatedShipments = (prev.shipments || []).map((s) => {
+        if (!shipmentIds.map(Number).includes(Number(s.id))) return s;
+        return {
+          ...s,
+          cod_settled: true,
+          cod_settlement_status: 'settled',
+          cod_settlement_id: newId,
+          cod_settlement_ref: settlementNumber,
+          cod_settled_at: now,
+          cod_settlement_method: paymentMethod,
+          cod_settlement_notes: notes,
+        };
+      });
+
+      return {
+        ...prev,
+        nextId: { ...(prev.nextId || {}), settlement: newId + 1 },
+        settlements: [newSettlement, ...(prev.settlements || [])],
+        shipments: updatedShipments,
+      };
+    });
+
+    // Remote sync
+    if (companyId && newSettlement) {
+      d1Api.createSettlement({
+        ...newSettlement,
+        bank_details_json: JSON.stringify(newSettlement.bank_details || {}),
+        shipment_ids_json: JSON.stringify(newSettlement.shipment_ids || []),
+      }).catch((err) => console.warn('D1 settlement sync error:', err));
+    }
+
+    return newSettlement;
+  };
+
   const settleShipmentsCOD = (shipmentIds, settlementData = {}) => {
     const now = new Date().toISOString();
     const ids = (shipmentIds || []).map(Number);
+    const ref = settlementData.reference || `SETTLE-${Date.now().toString().slice(-6)}`;
+    const method = settlementData.method || 'Bank Transfer';
+    const notes = settlementData.notes || '';
+
+    // If all shipments belong to one customer, create a formal settlement statement
+    const targetShipments = (data?.shipments || []).filter((s) => ids.includes(Number(s.id)));
+    const custIds = Array.from(new Set(targetShipments.map((s) => s.customer_id).filter(Boolean)));
+    if (custIds.length === 1) {
+      createCodSettlement({
+        customerId: custIds[0],
+        shipmentIds: ids,
+        paymentMethod: method,
+        paymentReference: ref,
+        notes: notes,
+        deductDeliveryFee: settlementData.deductDeliveryFee !== false,
+      });
+      return;
+    }
+
     updateData((prev) => ({
       ...prev,
       shipments: (prev.shipments || []).map((s) => {
@@ -700,9 +825,9 @@ export function CompanyProvider({ children }) {
           cod_settled: true,
           cod_settlement_status: 'settled',
           cod_settled_at: now,
-          cod_settlement_ref: settlementData.reference || `SETTLE-${Date.now().toString().slice(-6)}`,
-          cod_settlement_method: settlementData.method || 'Bank Transfer',
-          cod_settlement_notes: settlementData.notes || '',
+          cod_settlement_ref: ref,
+          cod_settlement_method: method,
+          cod_settlement_notes: notes,
         };
       }),
     }));
@@ -712,7 +837,7 @@ export function CompanyProvider({ children }) {
           cod_settled: 1,
           cod_settlement_status: 'settled',
           cod_settled_at: now,
-          cod_settlement_ref: settlementData.reference || '',
+          cod_settlement_ref: ref,
         }).catch((err) => console.warn('Failed to sync COD settlement to D1:', err));
       });
     }
@@ -1726,6 +1851,7 @@ export function CompanyProvider({ children }) {
         roles: data?.roles || [],
         users: data?.users || [],
         invoices: data?.invoices || [],
+        settlements: data?.settlements || [],
         orderTypes: data?.orderTypes || [],
         deliveryServiceTypes: data?.deliveryServiceTypes || [],
         productCategories: data?.productCategories || [],
@@ -1744,6 +1870,8 @@ export function CompanyProvider({ children }) {
         findDeliveryServiceType,
         findProductCategory,
         findCustomStatus,
+        findSettlement,
+        findCustomerSettlements,
         chargeSettings,
         shipmentStatusSettingFor,
         shipmentStatusLabel,
@@ -1758,6 +1886,7 @@ export function CompanyProvider({ children }) {
         setCustomStatus,
         generateInvoice,
         payInvoice,
+        createCodSettlement,
         settleShipmentsCOD,
         unsettleShipmentsCOD,
         addCustomer,

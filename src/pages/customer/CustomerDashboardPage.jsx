@@ -816,7 +816,7 @@ export function CustomerDashboardPage() {
                       <button
                         type="button"
                         className="vendor-btn-view-details"
-                        onClick={() => navigate('/customer/invoices')}
+                        onClick={() => navigate('/customer/cod-settlement')}
                       >
                         View Details
                       </button>

@@ -368,7 +368,7 @@ export function CustomerLayout() {
                       <span>Invoices</span>
                     </NavLink>
                     <NavLink
-                      to="/customer/placeholder/COD Settlement"
+                      to="/customer/cod-settlement"
                       onClick={closeMobileMenu}
                       className={({ isActive }) => `vendor-sub-item ${isActive ? 'active' : ''}`}
                     >
