@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { loadPlatform, savePlatform, seedCompanyState, companyDataKey } from '../utils/storage';
 import { slugify } from '../utils/helpers';
 import { d1Api } from '../utils/d1Api';
+import { applyGlobalThemeColor } from './CompanyContext';
 
 const PlatformContext = createContext(null);
 
@@ -12,8 +13,28 @@ export function PlatformProvider({ children }) {
     savePlatform(platform);
   }, [platform]);
 
-  // Sync with D1 remote database
+  // Sync with D1 remote database: Fetch system theme & companies
   useEffect(() => {
+    // 1. Fetch system-wide theme from D1 table 'system_theme'
+    d1Api.getSystemTheme(1).then((res) => {
+      if (res && res.theme && res.theme.theme_color) {
+        applyGlobalThemeColor(res.theme.theme_color);
+        setPlatform((prev) => ({
+          ...prev,
+          companies: prev.companies.map((c) =>
+            Number(c.id) === 1
+              ? {
+                  ...c,
+                  theme_color: res.theme.theme_color,
+                  logo_url: res.theme.logo_url !== undefined ? res.theme.logo_url : c.logo_url,
+                }
+              : c
+          ),
+        }));
+      }
+    }).catch(() => {});
+
+    // 2. Fetch all companies from D1
     d1Api.getCompanies().then((remoteCompanies) => {
       if (Array.isArray(remoteCompanies) && remoteCompanies.length > 0) {
         setPlatform((prev) => {
@@ -49,7 +70,7 @@ export function PlatformProvider({ children }) {
     }).catch(() => {});
   }, []);
 
-  const addCompany = ({ name, slug, password, logo_url, theme_color }) => {
+  const addCompany = useCallback(({ name, slug, password, logo_url, theme_color }) => {
     const cleanSlug = slugify(slug || name);
     if (platform.companies.some((c) => c.slug === cleanSlug)) {
       throw new Error('That slug is already taken — choose another.');
@@ -78,9 +99,9 @@ export function PlatformProvider({ children }) {
     d1Api.updateCompany(newId, newCompany).catch(() => {});
 
     return newCompany;
-  };
+  }, [platform.companies, platform.nextCompanyId]);
 
-  const updateCompany = (id, updates) => {
+  const updateCompany = useCallback((id, updates) => {
     setPlatform((prev) => ({
       ...prev,
       companies: prev.companies.map((c) => (c.id === Number(id) ? { ...c, ...updates } : c)),
@@ -89,34 +110,38 @@ export function PlatformProvider({ children }) {
     // Sync to D1 remote database
     d1Api.updateCompany(id, updates).catch(() => {});
     if (updates.theme_color !== undefined || updates.logo_url !== undefined) {
+      if (updates.theme_color) {
+        applyGlobalThemeColor(updates.theme_color);
+      }
+      d1Api.saveSystemTheme(id, updates).catch(() => {});
       d1Api.updateCompanyTheme(id, updates).catch(() => {});
     }
-  };
+  }, []);
 
-  const resetCompanyPassword = (id, newPassword) => {
+  const resetCompanyPassword = useCallback((id, newPassword) => {
     updateCompany(id, { password: newPassword });
-  };
+  }, [updateCompany]);
 
-  const toggleCompanyStatus = (id) => {
+  const toggleCompanyStatus = useCallback((id) => {
     setPlatform((prev) => ({
       ...prev,
       companies: prev.companies.map((c) =>
         c.id === Number(id) ? { ...c, status: c.status === 'active' ? 'suspended' : 'active' } : c
       ),
     }));
-  };
+  }, []);
 
-  const deleteCompany = (id) => {
+  const deleteCompany = useCallback((id) => {
     setPlatform((prev) => ({
       ...prev,
       companies: prev.companies.filter((c) => c.id !== Number(id)),
     }));
     localStorage.removeItem(companyDataKey(id));
-  };
+  }, []);
 
-  const findCompany = (id) => {
+  const findCompany = useCallback((id) => {
     return platform.companies.find((c) => c.id === Number(id));
-  };
+  }, [platform.companies]);
 
   return (
     <PlatformContext.Provider

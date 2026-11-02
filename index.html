@@ -11,25 +11,70 @@
     <script>
       (function() {
         try {
+          var r = document.documentElement;
+          function setVars(c) {
+            if (!c || typeof c !== 'string') return;
+            r.style.setProperty('--theme-color', c);
+            r.style.setProperty('--admin-red', c);
+            r.style.setProperty('--vendor-red', c);
+            r.style.setProperty('--accent', c);
+            r.style.setProperty('--theme-color-light', c + '18');
+            r.style.setProperty('--admin-red-light', c + '18');
+            r.style.setProperty('--vendor-red-light', c + '18');
+            r.style.setProperty('--theme-color-tint', c + '0c');
+            r.style.setProperty('--theme-color-border', c + '38');
+            r.style.setProperty('--theme-color-shadow', c + '25');
+            r.style.setProperty('--admin-red-gradient', 'linear-gradient(135deg, ' + c + ' 0%, ' + c + ' 70%, #1e1b4b 100%)');
+          }
+
+          // 1. Initial check from localStorage (fast cache for returning users)
           var raw = localStorage.getItem('antigravity_platform_v1');
           var color = '#dc2626';
           if (raw) {
-            var data = JSON.parse(raw);
-            if (data && data.companies && data.companies[0] && data.companies[0].theme_color) {
-              color = data.companies[0].theme_color;
-            }
+            try {
+              var data = JSON.parse(raw);
+              if (data && data.companies && data.companies[0] && data.companies[0].theme_color) {
+                color = data.companies[0].theme_color;
+              }
+            } catch(e) {}
           }
-          var r = document.documentElement;
-          r.style.setProperty('--theme-color', color);
-          r.style.setProperty('--admin-red', color);
-          r.style.setProperty('--vendor-red', color);
-          r.style.setProperty('--accent', color);
-          r.style.setProperty('--theme-color-light', color + '18');
-          r.style.setProperty('--admin-red-light', color + '18');
-          r.style.setProperty('--vendor-red-light', color + '18');
-          r.style.setProperty('--theme-color-tint', color + '0c');
-          r.style.setProperty('--theme-color-border', color + '38');
-          r.style.setProperty('--theme-color-shadow', color + '25');
+          setVars(color);
+
+          // 2. Immediately fetch system-wide theme from Cloudflare D1 database for cross-device sync
+          fetch('/api/system-theme')
+            .then(function(res) { return res.ok ? res.json() : null; })
+            .then(function(data) {
+              if (data && data.theme && data.theme.theme_color) {
+                var newColor = data.theme.theme_color;
+                setVars(newColor);
+                try {
+                  var pRaw = localStorage.getItem('antigravity_platform_v1');
+                  var pData = pRaw ? JSON.parse(pRaw) : null;
+                  if (!pData) {
+                    pData = {
+                      nextCompanyId: 2,
+                      companies: [{
+                        id: 1,
+                        name: 'R.T.C Courier Pvt. Ltd.',
+                        slug: 'rtc',
+                        password: 'rtc123',
+                        status: 'active',
+                        logo_url: data.theme.logo_url || null,
+                        theme_color: newColor,
+                        created_at: new Date().toISOString()
+                      }]
+                    };
+                  } else if (pData.companies && pData.companies[0]) {
+                    pData.companies[0].theme_color = newColor;
+                    if (data.theme.logo_url !== undefined) {
+                      pData.companies[0].logo_url = data.theme.logo_url;
+                    }
+                  }
+                  localStorage.setItem('antigravity_platform_v1', JSON.stringify(pData));
+                } catch(e) {}
+              }
+            })
+            .catch(function() {});
         } catch(e) {}
       })();
     </script>

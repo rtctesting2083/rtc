@@ -3,10 +3,13 @@
 
 export async function onRequest(context) {
   const { request, env, params } = context;
-  const db = env.rtc; // D1 binding configured in wrangler.toml
+  const db = env.rtc || env.DB || env.DATABASE || env['my-db'] || env.d1;
 
   if (!db) {
-    return new Response(JSON.stringify({ error: 'D1 binding rtc not found in environment' }), {
+    return new Response(JSON.stringify({
+      error: 'D1 binding rtc not found in environment',
+      envKeys: Object.keys(env || {})
+    }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -15,6 +18,17 @@ export async function onRequest(context) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/^\/api\/?/, '');
   const method = request.method;
+
+  if (method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      },
+    });
+  }
 
   try {
     // 1. Health check & D1 info
@@ -120,29 +134,34 @@ export async function onRequest(context) {
 
       // Also upsert to system_theme table
       const themeColor = body.theme_color || '#dc2626';
+      const themeDark = body.theme_color_dark || '#b91c1c';
+      const themeLight = body.theme_color_light || `${themeColor}18`;
+      const presetName = body.preset_name || 'Custom';
+      const logoUrl = body.logo_url !== undefined ? body.logo_url : null;
+      const logoExtracted = body.logo_extracted_color !== undefined ? body.logo_extracted_color : null;
+
       await db.prepare(`
-        INSERT INTO system_theme (
-          company_id, theme_color, theme_color_dark, theme_color_light,
-          logo_url, logo_extracted_color, preset_name, is_active,
-          created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
-        ON CONFLICT(company_id) DO UPDATE SET
-          theme_color = excluded.theme_color,
-          theme_color_dark = excluded.theme_color_dark,
-          theme_color_light = excluded.theme_color_light,
-          logo_url = COALESCE(excluded.logo_url, system_theme.logo_url),
-          logo_extracted_color = COALESCE(excluded.logo_extracted_color, system_theme.logo_extracted_color),
-          preset_name = COALESCE(excluded.preset_name, system_theme.preset_name),
+        UPDATE system_theme SET
+          theme_color = ?,
+          theme_color_dark = ?,
+          theme_color_light = ?,
+          preset_name = ?,
+          logo_url = COALESCE(?, logo_url),
+          logo_extracted_color = COALESCE(?, logo_extracted_color),
           updated_at = datetime('now')
-      `).bind(
-        compId,
-        themeColor,
-        body.theme_color_dark || '#b91c1c',
-        body.theme_color_light || `${themeColor}18`,
-        body.logo_url || null,
-        body.logo_extracted_color || null,
-        body.preset_name || 'Custom'
-      ).run().catch(() => {});
+        WHERE company_id = ?
+      `).bind(themeColor, themeDark, themeLight, presetName, logoUrl, logoExtracted, compId).run();
+
+      const existingTheme = await db.prepare('SELECT id FROM system_theme WHERE company_id = ?').bind(compId).first().catch(() => null);
+      if (!existingTheme) {
+        await db.prepare(`
+          INSERT INTO system_theme (
+            company_id, theme_color, theme_color_dark, theme_color_light,
+            logo_url, logo_extracted_color, preset_name, is_active,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+        `).bind(compId, themeColor, themeDark, themeLight, logoUrl, logoExtracted, presetName).run();
+      }
 
       const updated = await db.prepare('SELECT * FROM companies WHERE id = ?').bind(compId).first();
       const updatedTheme = await db.prepare('SELECT * FROM system_theme WHERE company_id = ?').bind(compId).first().catch(() => null);
@@ -215,26 +234,36 @@ export async function onRequest(context) {
         const preset = body.preset_name || 'Custom';
 
         await db.prepare(`
-          INSERT INTO system_theme (
-            company_id, theme_color, theme_color_dark, theme_color_light,
-            logo_url, logo_extracted_color, preset_name, is_active,
-            created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
-          ON CONFLICT(company_id) DO UPDATE SET
-            theme_color = excluded.theme_color,
-            theme_color_dark = excluded.theme_color_dark,
-            theme_color_light = excluded.theme_color_light,
-            logo_url = COALESCE(excluded.logo_url, system_theme.logo_url),
-            logo_extracted_color = COALESCE(excluded.logo_extracted_color, system_theme.logo_extracted_color),
-            preset_name = COALESCE(excluded.preset_name, system_theme.preset_name),
+          UPDATE system_theme SET
+            theme_color = ?,
+            theme_color_dark = ?,
+            theme_color_light = ?,
+            preset_name = ?,
+            logo_url = COALESCE(?, logo_url),
+            logo_extracted_color = COALESCE(?, logo_extracted_color),
             updated_at = datetime('now')
-        `).bind(cid, color, dark, light, logo, extracted, preset).run();
+          WHERE company_id = ?
+        `).bind(color, dark, light, preset, logo, extracted, cid).run();
+
+        const existingTheme = await db.prepare('SELECT id FROM system_theme WHERE company_id = ?').bind(cid).first().catch(() => null);
+        if (!existingTheme) {
+          await db.prepare(`
+            INSERT INTO system_theme (
+              company_id, theme_color, theme_color_dark, theme_color_light,
+              logo_url, logo_extracted_color, preset_name, is_active,
+              created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+          `).bind(cid, color, dark, light, logo, extracted, preset).run();
+        }
 
         // Also update companies table for unified synchronization
         try {
-          await db.prepare('UPDATE companies SET theme_color = ?, logo_url = COALESCE(?, logo_url) WHERE id = ?')
-            .bind(color, logo, cid)
-            .run();
+          await db.prepare(`
+            UPDATE companies SET
+              theme_color = ?,
+              logo_url = COALESCE(?, logo_url)
+            WHERE id = ?
+          `).bind(color, logo, cid).run();
         } catch (e) {}
 
         const updated = await db.prepare('SELECT * FROM system_theme WHERE company_id = ?').bind(cid).first();

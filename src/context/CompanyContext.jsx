@@ -44,8 +44,10 @@ export function CompanyProvider({ children }) {
 
   // Dynamically inject CSS variables across portals
   useEffect(() => {
-    const color = d1Theme?.theme_color || company?.theme_color || '#dc2626';
-    applyGlobalThemeColor(color);
+    const color = d1Theme?.theme_color || company?.theme_color;
+    if (color) {
+      applyGlobalThemeColor(color);
+    }
   }, [d1Theme?.theme_color, company?.theme_color]);
 
   // Fetch live system theme directly from Cloudflare D1 table 'system_theme'
@@ -56,19 +58,13 @@ export function CompanyProvider({ children }) {
           setD1Theme(res.theme);
           if (res.theme.theme_color) {
             applyGlobalThemeColor(res.theme.theme_color);
-            if (updateCompany) {
-              updateCompany(companyId, {
-                theme_color: res.theme.theme_color,
-                logo_url: res.theme.logo_url,
-              });
-            }
           }
         }
       }).catch((err) => {
         console.warn('Could not fetch D1 system_theme:', err);
       });
     }
-  }, [companyId, updateCompany]);
+  }, [companyId]);
 
   const updateCompanyTheme = useCallback(async ({ theme_color, logo_url, preset_name, logo_extracted_color }) => {
     if (!companyId) return null;
