@@ -621,7 +621,7 @@ export function RiderScanReceiveModal({ currentRider, onClose }) {
             type="text"
             value={barcodeInput}
             onChange={(e) => setBarcodeInput(e.target.value)}
-            placeholder="Type tracking # (e.g. TRK-...)"
+            placeholder="Type tracking # (e.g. RTC-20261102-1)"
             style={{
               flex: 1,
               padding: '10px 12px',

@@ -212,6 +212,34 @@ export function CompanyProvider({ children }) {
         console.warn('Could not fetch D1 delivery_charges:', err);
       });
 
+      // 2f. Hydrate staff users from Cloudflare remote D1 table 'company_users'
+      d1Api.getCompanyUsers(companyId).then((remoteUsers) => {
+        if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
+          setData((prev) => {
+            if (!prev) return prev;
+            const updated = {
+              ...prev,
+              users: remoteUsers.map((u) => ({
+                id: Number(u.id),
+                name: u.name,
+                username: u.username,
+                password: u.password,
+                role_id: Number(u.role_id) || 1,
+                role_name: u.role_name || 'Staff',
+                email: u.email || '',
+                phone: u.phone || '',
+                active: u.active !== 0 && u.active !== false,
+                avatar_url: u.avatar_url || '',
+              })),
+            };
+            saveCompanyState(companyId, updated);
+            return updated;
+          });
+        }
+      }).catch((err) => {
+        console.warn('Could not fetch D1 company_users:', err);
+      });
+
       // 3. Hydrate live branches from Cloudflare remote D1 table 'branches'
       d1Api.getBranches(companyId).then((remoteBranches) => {
         if (Array.isArray(remoteBranches) && remoteBranches.length > 0) {
@@ -375,7 +403,6 @@ export function CompanyProvider({ children }) {
 
   // Actions
   const addShipment = (shipmentPayload) => {
-    const trNum = trackingNumber();
     let tempId;
     let newShipmentObj = null;
 
@@ -399,6 +426,11 @@ export function CompanyProvider({ children }) {
         : calcFee(distance, shipmentPayload.priority, prev.deliveryChargeSettings);
 
       const now = new Date().toISOString();
+      const payloadTrk = (shipmentPayload.tracking_number || '').trim();
+      const trNum = payloadTrk && /^RTC-\d{8}-\d+$/i.test(payloadTrk)
+        ? payloadTrk
+        : trackingNumber(prev.shipments || []);
+
       const newShipment = {
         id: newId,
         tracking_number: trNum,
@@ -1371,8 +1403,11 @@ export function CompanyProvider({ children }) {
   };
 
   const addUser = (userPayload) => {
+    let tempId;
     updateData((prev) => {
       const id = prev.nextId.user;
+      tempId = id;
+      const role = (prev.roles || []).find((r) => r.id === Number(userPayload.role_id));
       const nextUsers = [
         ...(prev.users || []),
         {
@@ -1381,6 +1416,9 @@ export function CompanyProvider({ children }) {
           username: userPayload.username,
           password: userPayload.password,
           role_id: Number(userPayload.role_id),
+          role_name: role ? role.name : 'Staff',
+          email: userPayload.email || '',
+          phone: userPayload.phone || '',
           active: true,
         },
       ];
@@ -1391,6 +1429,26 @@ export function CompanyProvider({ children }) {
         users: nextUsers,
       };
     });
+
+    // Persist directly to Cloudflare D1 company_users table
+    d1Api.addCompanyUser({
+      company_id: Number(companyId),
+      name: userPayload.name,
+      username: userPayload.username,
+      password: userPayload.password,
+      role_id: Number(userPayload.role_id),
+      role_name: (data?.roles || []).find((r) => r.id === Number(userPayload.role_id))?.name || 'Staff',
+      email: userPayload.email || '',
+      phone: userPayload.phone || '',
+      active: 1,
+    }).then((res) => {
+      if (res && res.id) {
+        updateData((prev) => ({
+          ...prev,
+          users: (prev.users || []).map((u) => (u.id === tempId ? { ...u, id: res.id } : u)),
+        }));
+      }
+    }).catch((err) => console.warn('Failed to save staff user to D1:', err));
   };
 
   const updateUser = (id, updates) => {
@@ -1402,6 +1460,27 @@ export function CompanyProvider({ children }) {
         users: nextUsers,
       };
     });
+
+    // Persist to Cloudflare D1
+    d1Api.updateCompanyUser(id, updates).catch((err) =>
+      console.warn('Failed to update staff user in D1:', err)
+    );
+  };
+
+  const deleteUser = (id) => {
+    updateData((prev) => {
+      const nextUsers = (prev.users || []).filter((u) => u.id !== Number(id));
+      syncSettingToD1({ users: nextUsers });
+      return {
+        ...prev,
+        users: nextUsers,
+      };
+    });
+
+    // Delete in Cloudflare D1
+    d1Api.deleteCompanyUser(id).catch((err) =>
+      console.warn('Failed to delete staff user in D1:', err)
+    );
   };
 
   // Simple lists: orderTypes, deliveryServiceTypes, productCategories, landmarks
@@ -1976,6 +2055,7 @@ export function CompanyProvider({ children }) {
         deleteRole,
         addUser,
         updateUser,
+        deleteUser,
         addOrderType,
         updateOrderType,
         deleteOrderType,

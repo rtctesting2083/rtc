@@ -31,7 +31,7 @@ export function CompanyTrackPage() {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Enter tracking number (e.g. TRK-...)"
+          placeholder="Enter tracking number (e.g. RTC-20261102-1)"
           required
         />
         <button type="submit" className="btn-primary">

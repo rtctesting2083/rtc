@@ -272,7 +272,7 @@ export function BranchReceivedShipmentsPage() {
               type="text"
               value={quickScanNumber}
               onChange={(e) => setQuickScanNumber(e.target.value)}
-              placeholder="Enter or scan tracking number (TRK-...)"
+              placeholder="Enter or scan tracking number (RTC-20261102-1)"
               style={{ padding: '8px 12px', fontSize: '13px', borderRadius: '8px', flex: 1 }}
             />
             <button type="submit" className="btn-primary" style={{ padding: '8px 16px', whiteSpace: 'nowrap' }}>

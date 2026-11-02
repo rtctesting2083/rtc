@@ -26,6 +26,7 @@ import { CompanyInvoicesPage } from './pages/company/CompanyInvoicesPage';
 import { CompanyTrackPage } from './pages/company/CompanyTrackPage';
 import { CompanyBranchesPage } from './pages/company/CompanyBranchesPage';
 import { CompanyBranchReportsPage } from './pages/company/CompanyBranchReportsPage';
+import { AdminProfilePage } from './pages/company/AdminProfilePage';
 
 // Company Settings
 import { CompanyThemeSettingsPage } from './pages/company/settings/CompanyThemeSettingsPage';
@@ -125,6 +126,8 @@ export function App() {
                   <Route path="settings/delivery-charges" element={<DeliveryChargesSettingsPage />} />
                   <Route path="settings/shipment-statuses" element={<ShipmentStatusesSettingsPage />} />
                   <Route path="settings/users" element={<UserManagementSettingsPage />} />
+                  <Route path="settings/profile" element={<AdminProfilePage />} />
+                  <Route path="profile" element={<AdminProfilePage />} />
                 </Route>
 
                 {/* Branch Routes */}

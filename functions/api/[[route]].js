@@ -31,6 +31,43 @@ export async function onRequest(context) {
   }
 
   try {
+    // Helper to generate next sequential tracking number: RTC-YYYYMMDD-COUNT
+    async function getNextTrackingNumber(dbInstance, companyId) {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      const todayPrefix = `RTC-${y}${m}${d}-`;
+
+      const [shipmentsRes, vendorOrdersRes] = await Promise.all([
+        dbInstance.prepare(
+          "SELECT tracking_number FROM shipments WHERE company_id = ? AND tracking_number LIKE ? ORDER BY id DESC"
+        ).bind(companyId, `${todayPrefix}%`).all().catch(() => ({ results: [] })),
+        dbInstance.prepare(
+          "SELECT tracking_number FROM vendor_order WHERE company_id = ? AND tracking_number LIKE ? ORDER BY id DESC"
+        ).bind(companyId, `${todayPrefix}%`).all().catch(() => ({ results: [] }))
+      ]);
+
+      let maxCount = 0;
+      const combined = [...(shipmentsRes?.results || []), ...(vendorOrdersRes?.results || [])];
+      for (const row of combined) {
+        const num = (row.tracking_number || '').trim();
+        if (num.toUpperCase().startsWith(todayPrefix)) {
+          const countPart = parseInt(num.substring(todayPrefix.length), 10);
+          if (!isNaN(countPart) && countPart > maxCount) {
+            maxCount = countPart;
+          }
+        }
+      }
+
+      return {
+        tracking_number: `${todayPrefix}${maxCount + 1}`,
+        date: `${y}${m}${d}`,
+        count: maxCount + 1,
+        prefix: 'RTC'
+      };
+    }
+
     // 1. Health check & D1 info
     if (path === 'health' || path === '') {
       const result = await db.prepare('SELECT count(*) as count FROM companies').first();
@@ -40,6 +77,13 @@ export async function onRequest(context) {
         binding: 'rtc',
         companyCount: result?.count || 0,
       });
+    }
+
+    // 1b. Next Tracking Number Endpoint: /api/next-tracking-number
+    if (path === 'next-tracking-number' || path === 'shipments/next-tracking-number') {
+      const cid = Number(url.searchParams.get('company_id') || 1);
+      const next = await getNextTrackingNumber(db, cid);
+      return jsonResponse({ success: true, ...next });
     }
 
     // 2. Platform / Companies endpoint
@@ -85,12 +129,192 @@ export async function onRequest(context) {
       if (body.status !== undefined) { fields.push('status = ?'); vals.push(body.status); }
       if (body.logo_url !== undefined) { fields.push('logo_url = ?'); vals.push(body.logo_url); }
       if (body.theme_color !== undefined) { fields.push('theme_color = ?'); vals.push(body.theme_color); }
+      if (body.email !== undefined) { fields.push('email = ?'); vals.push(body.email); }
+      if (body.phone !== undefined) { fields.push('phone = ?'); vals.push(body.phone); }
+      if (body.contact_person !== undefined) { fields.push('contact_person = ?'); vals.push(body.contact_person); }
+      if (body.address !== undefined) { fields.push('address = ?'); vals.push(body.address); }
+      if (body.avatar_url !== undefined) { fields.push('avatar_url = ?'); vals.push(body.avatar_url); }
+      fields.push("updated_at = datetime('now')");
       if (fields.length > 0) {
         vals.push(compId);
         await db.prepare(`UPDATE companies SET ${fields.join(', ')} WHERE id = ?`).bind(...vals).run();
       }
       const updated = await db.prepare('SELECT * FROM companies WHERE id = ?').bind(compId).first();
       return jsonResponse({ success: true, company: updated });
+    }
+
+    // 2b-2. Dedicated Admin Profile Endpoints: /api/admin/profile
+    if (path === 'admin/profile') {
+      const compId = Number(url.searchParams.get('company_id') || 1);
+
+      if (method === 'GET') {
+        let comp = await db.prepare('SELECT * FROM companies WHERE id = ?').bind(compId).first().catch(() => null);
+        if (!comp) {
+          comp = await db.prepare('SELECT * FROM companies ORDER BY id ASC LIMIT 1').first().catch(() => null);
+        }
+        if (!comp) return jsonResponse({ error: 'Company not found' }, 404);
+
+        return jsonResponse({
+          success: true,
+          profile: {
+            id: comp.id,
+            name: comp.name || 'R.T.C Courier Pvt. Ltd.',
+            slug: comp.slug || 'rtc',
+            contact_person: comp.contact_person || 'Jafar Ali',
+            email: comp.email || 'admin@rtccourier.com',
+            phone: comp.phone || '071-532176',
+            address: comp.address || 'Milanchowk, Butwal-8, Rupandehi, Nepal',
+            avatar_url: comp.avatar_url || null,
+            logo_url: comp.logo_url || null,
+            theme_color: comp.theme_color || '#dc2626',
+            status: comp.status || 'active',
+            role: 'Super Administrator',
+            created_at: comp.created_at,
+            updated_at: comp.updated_at || comp.created_at,
+          },
+        });
+      }
+
+      if (method === 'POST' || method === 'PUT') {
+        const body = await request.json();
+        const fields = [];
+        const vals = [];
+        if (body.name !== undefined) { fields.push('name = ?'); vals.push(body.name); }
+        if (body.slug !== undefined) { fields.push('slug = ?'); vals.push(body.slug); }
+        if (body.contact_person !== undefined) { fields.push('contact_person = ?'); vals.push(body.contact_person); }
+        if (body.email !== undefined) { fields.push('email = ?'); vals.push(body.email); }
+        if (body.phone !== undefined) { fields.push('phone = ?'); vals.push(body.phone); }
+        if (body.address !== undefined) { fields.push('address = ?'); vals.push(body.address); }
+        if (body.avatar_url !== undefined) { fields.push('avatar_url = ?'); vals.push(body.avatar_url); }
+        if (body.logo_url !== undefined) { fields.push('logo_url = ?'); vals.push(body.logo_url); }
+        if (body.theme_color !== undefined) { fields.push('theme_color = ?'); vals.push(body.theme_color); }
+        fields.push("updated_at = datetime('now')");
+        vals.push(compId);
+
+        await db.prepare(`UPDATE companies SET ${fields.join(', ')} WHERE id = ?`).bind(...vals).run();
+        const updated = await db.prepare('SELECT * FROM companies WHERE id = ?').bind(compId).first();
+        return jsonResponse({
+          success: true,
+          message: 'Admin profile updated successfully in Cloudflare D1',
+          profile: updated,
+        });
+      }
+    }
+
+    // 2b-3. Dedicated Admin Password Change Endpoint: /api/admin/change-password
+    if (path === 'admin/change-password' && method === 'POST') {
+      const compId = Number(url.searchParams.get('company_id') || 1);
+      const body = await request.json();
+      const currentPw = (body.current_password || '').trim();
+      const newPw = (body.new_password || '').trim();
+
+      if (!newPw || newPw.length < 3) {
+        return jsonResponse({ error: 'New password must be at least 3 characters long.' }, 400);
+      }
+
+      const comp = await db.prepare('SELECT password FROM companies WHERE id = ?').bind(compId).first().catch(() => null);
+      if (currentPw && comp?.password && comp.password !== currentPw) {
+        return jsonResponse({ error: 'Current password does not match.' }, 400);
+      }
+
+      await db.prepare("UPDATE companies SET password = ?, updated_at = datetime('now') WHERE id = ?")
+        .bind(newPw, compId)
+        .run();
+
+      return jsonResponse({
+        success: true,
+        message: 'Admin password updated successfully in Cloudflare D1',
+      });
+    }
+
+    // 2b-4. Dedicated Company Staff Users CRUD on D1: /api/company/users
+    if (path === 'company/users') {
+      const compId = Number(url.searchParams.get('company_id') || 1);
+
+      if (method === 'GET') {
+        const { results } = await db
+          .prepare('SELECT id, company_id, name, username, email, phone, role_id, role_name, avatar_url, active, created_at, updated_at FROM company_users WHERE company_id = ? ORDER BY id ASC')
+          .bind(compId)
+          .all();
+        return jsonResponse(results || []);
+      }
+
+      if (method === 'POST') {
+        const body = await request.json();
+        const res = await db.prepare(`
+          INSERT INTO company_users (
+            company_id, name, username, email, phone, password,
+            role_id, role_name, avatar_url, active, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        `).bind(
+          compId,
+          body.name || 'New Staff',
+          body.username,
+          body.email || null,
+          body.phone || null,
+          body.password || 'rtc123',
+          body.role_id || 1,
+          body.role_name || 'Staff User',
+          body.avatar_url || null,
+          body.active !== undefined ? (body.active ? 1 : 0) : 1
+        ).run();
+
+        const createdUser = await db.prepare('SELECT * FROM company_users WHERE id = ?').bind(res.meta.last_row_id).first();
+        return jsonResponse({ success: true, user: createdUser });
+      }
+    }
+
+    // 2b-5. Dedicated Company Staff User by ID: /api/company/users/:id
+    const userMatch = path.match(/^company\/users\/(\d+)$/);
+    if (userMatch) {
+      const userId = Number(userMatch[1]);
+
+      if (method === 'GET') {
+        const user = await db.prepare('SELECT id, company_id, name, username, email, phone, role_id, role_name, avatar_url, active, created_at, updated_at FROM company_users WHERE id = ?').bind(userId).first();
+        if (!user) return jsonResponse({ error: 'User not found' }, 404);
+        return jsonResponse(user);
+      }
+
+      if (method === 'PUT' || method === 'PATCH' || method === 'POST') {
+        const body = await request.json();
+        const fields = [];
+        const vals = [];
+        if (body.name !== undefined) { fields.push('name = ?'); vals.push(body.name); }
+        if (body.username !== undefined) { fields.push('username = ?'); vals.push(body.username); }
+        if (body.email !== undefined) { fields.push('email = ?'); vals.push(body.email); }
+        if (body.phone !== undefined) { fields.push('phone = ?'); vals.push(body.phone); }
+        if (body.password !== undefined) { fields.push('password = ?'); vals.push(body.password); }
+        if (body.role_id !== undefined) { fields.push('role_id = ?'); vals.push(body.role_id); }
+        if (body.role_name !== undefined) { fields.push('role_name = ?'); vals.push(body.role_name); }
+        if (body.avatar_url !== undefined) { fields.push('avatar_url = ?'); vals.push(body.avatar_url); }
+        if (body.active !== undefined) { fields.push('active = ?'); vals.push(body.active ? 1 : 0); }
+        fields.push("updated_at = datetime('now')");
+        vals.push(userId);
+
+        await db.prepare(`UPDATE company_users SET ${fields.join(', ')} WHERE id = ?`).bind(...vals).run();
+        const updated = await db.prepare('SELECT * FROM company_users WHERE id = ?').bind(userId).first();
+        return jsonResponse({ success: true, user: updated });
+      }
+
+      if (method === 'DELETE') {
+        await db.prepare('DELETE FROM company_users WHERE id = ?').bind(userId).run();
+        return jsonResponse({ success: true, message: 'User deleted from Cloudflare D1' });
+      }
+    }
+
+    // 2b-6. User Password Change Endpoint: /api/company/users/:id/change-password
+    const userPwMatch = path.match(/^company\/users\/(\d+)\/change-password$/);
+    if (userPwMatch && method === 'POST') {
+      const uId = Number(userPwMatch[1]);
+      const body = await request.json();
+      const newPassword = (body.new_password || body.password || '').trim();
+      if (!newPassword || newPassword.length < 3) {
+        return jsonResponse({ error: 'Password must be at least 3 characters long.' }, 400);
+      }
+      await db.prepare("UPDATE company_users SET password = ?, updated_at = datetime('now') WHERE id = ?")
+        .bind(newPassword, uId)
+        .run();
+      return jsonResponse({ success: true, message: 'User password updated successfully in Cloudflare D1' });
     }
 
     // 2c. Dedicated Company Theme & Logo endpoint: /api/company/:id/theme
@@ -1858,7 +2082,22 @@ export async function onRequest(context) {
         if (method === 'POST') {
           const body = await request.json();
           const cid = Number(body.company_id || companyId);
-          const tracking_num = (body.tracking_number || '').trim() || `RTC-${Date.now().toString().slice(-8)}`;
+
+          // Generate or validate tracking number in format: RTC-YYYYMMDD-COUNT
+          let tracking_num = (body.tracking_number || '').trim();
+          if (!tracking_num || !/^RTC-\d{8}-\d+$/i.test(tracking_num)) {
+            const nextInfo = await getNextTrackingNumber(db, cid);
+            tracking_num = nextInfo.tracking_number;
+          } else {
+            // Ensure unique tracking number
+            const exists = await db.prepare(
+              "SELECT id FROM shipments WHERE tracking_number = ? UNION SELECT id FROM vendor_order WHERE tracking_number = ?"
+            ).bind(tracking_num, tracking_num).first().catch(() => null);
+            if (exists) {
+              const nextInfo = await getNextTrackingNumber(db, cid);
+              tracking_num = nextInfo.tracking_number;
+            }
+          }
           const customer_id = body.customer_id ? Number(body.customer_id) : null;
           const client_type = (body.client_type || (customer_id ? 'vendor' : 'walk_in')).trim();
           const branch_id = body.branch_id ? Number(body.branch_id) : null;
@@ -2412,7 +2651,21 @@ export async function onRequest(context) {
           const body = await request.json();
           const cid = Number(body.company_id || companyId || 1);
           const vId = Number(body.vendor_id || body.customer_id || vendorId);
-          const trk = (body.tracking_number || '').trim() || ('VO-' + Date.now() + '-' + Math.floor(Math.random() * 1000));
+
+          // Generate or validate tracking number in format: RTC-YYYYMMDD-COUNT
+          let trk = (body.tracking_number || '').trim();
+          if (!trk || !/^RTC-\d{8}-\d+$/i.test(trk)) {
+            const nextInfo = await getNextTrackingNumber(db, cid);
+            trk = nextInfo.tracking_number;
+          } else {
+            const exists = await db.prepare(
+              "SELECT id FROM shipments WHERE tracking_number = ? UNION SELECT id FROM vendor_order WHERE tracking_number = ?"
+            ).bind(trk, trk).first().catch(() => null);
+            if (exists) {
+              const nextInfo = await getNextTrackingNumber(db, cid);
+              trk = nextInfo.tracking_number;
+            }
+          }
           const vRef = (body.vendor_reference_id || '').trim();
           const bId = body.branch_id ? Number(body.branch_id) : null;
           const destBId = body.destination_branch_id ? Number(body.destination_branch_id) : null;

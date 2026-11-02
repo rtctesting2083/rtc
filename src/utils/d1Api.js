@@ -90,6 +90,115 @@ export const d1Api = {
     }
   },
 
+  // Admin Profile: Fetch admin profile from Cloudflare D1
+  getAdminProfile: async (companyId = 1) => {
+    try {
+      const res = await fetch(`/api/admin/profile?company_id=${companyId}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Admin Profile: Update admin profile in Cloudflare D1
+  updateAdminProfile: async (companyId = 1, profileData = {}) => {
+    try {
+      const res = await fetch(`/api/admin/profile?company_id=${companyId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profileData),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Admin Profile: Change admin password in Cloudflare D1
+  changeAdminPassword: async (companyId = 1, { current_password, new_password }) => {
+    try {
+      const res = await fetch(`/api/admin/change-password?company_id=${companyId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current_password, new_password }),
+      });
+      return await res.json();
+    } catch (e) {
+      return { error: e.message || 'Network error' };
+    }
+  },
+
+  // Company Staff Users: Read all staff from D1 table 'company_users'
+  getCompanyUsers: async (companyId = 1) => {
+    try {
+      const res = await fetch(`/api/company/users?company_id=${companyId}`);
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (e) {
+      return [];
+    }
+  },
+
+  // Company Staff Users: Add staff to D1 table 'company_users'
+  addCompanyUser: async (companyId = 1, userData = {}) => {
+    try {
+      const res = await fetch(`/api/company/users?company_id=${companyId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userData),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Company Staff Users: Update staff in D1 table 'company_users'
+  updateCompanyUser: async (userId, userData = {}) => {
+    try {
+      const res = await fetch(`/api/company/users/${userId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userData),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Company Staff Users: Change user password in D1
+  changeUserPassword: async (userId, newPassword) => {
+    try {
+      const res = await fetch(`/api/company/users/${userId}/change-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_password: newPassword }),
+      });
+      return await res.json();
+    } catch (e) {
+      return { error: e.message || 'Network error' };
+    }
+  },
+
+  // Company Staff Users: Delete staff from D1 table 'company_users'
+  deleteCompanyUser: async (userId) => {
+    try {
+      const res = await fetch(`/api/company/users/${userId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      return Boolean(data.success);
+    } catch (e) {
+      return false;
+    }
+  },
+
   // COD Settlements: Read settlements from D1 table 'cod_settlements'
   getSettlements: async (companyId = 1, params = {}) => {
     try {
@@ -529,6 +638,16 @@ export const d1Api = {
   },
 
   // Read shipments from D1 table 'shipments'
+  getNextTrackingNumber: async (companyId = 1) => {
+    try {
+      const res = await fetch(`/api/next-tracking-number?company_id=${companyId}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
   getShipments: async (companyId = 1, filters = {}) => {
     try {
       let url = `/api/shipments?company_id=${companyId}`;

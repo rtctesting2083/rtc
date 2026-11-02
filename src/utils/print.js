@@ -1,6 +1,6 @@
 import { renderQrSvg } from './qr';
 import { renderBarcodeSvg } from './barcode';
-import { fmtMoney, fmtDate, detectShippingZone } from './helpers';
+import { fmtMoney, fmtDate, detectShippingZone, getTodayADString } from './helpers';
 
 export function printShipmentLabel(shipment, company, customer, originBranch, destBranch, options = {}) {
   const win = window.open('', '_blank', 'width=520,height=750');
@@ -9,7 +9,7 @@ export function printShipmentLabel(shipment, company, customer, originBranch, de
     return;
   }
 
-  const trackingNumber = shipment.tracking_number || `RTC-${shipment.id || Date.now()}`;
+  const trackingNumber = shipment.tracking_number || `RTC-${getTodayADString()}-${shipment.id || 1}`;
   const qrSvg = renderQrSvg(trackingNumber, 4, 1);
   const barcodeSvg = renderBarcodeSvg(trackingNumber, { height: 48, barWidth: 1.8 });
 

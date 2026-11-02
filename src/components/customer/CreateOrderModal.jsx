@@ -6,6 +6,7 @@ import {
   fmtMoney,
   isValidMobile,
   addressSummary,
+  trackingNumber,
 } from '../../utils/helpers';
 import { PROMO_CODES } from '../../utils/constants';
 import { printShipmentLabel } from '../../utils/print';
@@ -24,6 +25,7 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
     addVendorCustomer,
     findBranch,
     company,
+    shipments = [],
   } = useCompany();
 
   const { closeModal } = useModal();
@@ -240,10 +242,8 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
     const senderB = findBranch(senderBranchId);
     const destB = findBranch(destinationBranchId);
 
-    // Generate authentic RTC tracking number prefix: e.g. BTLKTM8305-XXXXXXX
-    const origCode = senderB?.code || (senderB?.name ? senderB.name.slice(0, 3).toUpperCase() : 'BTL');
-    const destCode = destB?.code || (destB?.name ? destB.name.slice(0, 3).toUpperCase() : 'KTM');
-    const customTrk = `${origCode}${destCode}8305-${Math.floor(1000000 + Math.random() * 9000000)}`;
+    // Generate RTC tracking number format: RTC-YYYYMMDD-COUNT
+    const customTrk = trackingNumber(shipments);
 
     const newShipment = {
       tracking_number: customTrk,

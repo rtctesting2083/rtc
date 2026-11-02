@@ -4,7 +4,7 @@ import { useModal } from '../../../context/ModalContext';
 import { PERMISSION_VIEWS, ALL_PERMISSION_KEYS } from '../../../utils/constants';
 
 export function UserManagementSettingsPage() {
-  const { roles, users, findRole, addRole, updateRole, deleteRole, addUser, updateUser } = useCompany();
+  const { roles, users, findRole, addRole, updateRole, deleteRole, addUser, updateUser, deleteUser } = useCompany();
   const { openModal, closeModal } = useModal();
 
   // Roles
@@ -46,6 +46,14 @@ export function UserManagementSettingsPage() {
 
   const handleToggleUserActive = (user) => {
     updateUser(user.id, { active: !user.active });
+  };
+
+  const handleDeleteUser = (user) => {
+    if (window.confirm(`Are you sure you want to delete staff user "${user.name}"? This will remove their login.`)) {
+      if (deleteUser) {
+        deleteUser(user.id);
+      }
+    }
   };
 
   return (
@@ -142,6 +150,9 @@ export function UserManagementSettingsPage() {
                     <button type="button" className="btn-secondary" onClick={() => handleToggleUserActive(u)}>
                       {u.active !== false ? 'Disable' : 'Enable'}
                     </button>
+                    <button type="button" className="btn-danger-text" onClick={() => handleDeleteUser(u)}>
+                      Delete
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -231,6 +242,8 @@ function RoleModal({ initialRole = null, onSave, onClose }) {
 function UserModal({ initialUser = null, roles = [], onSave, onClose }) {
   const [name, setName] = useState(initialUser?.name || '');
   const [username, setUsername] = useState(initialUser?.username || '');
+  const [email, setEmail] = useState(initialUser?.email || '');
+  const [phone, setPhone] = useState(initialUser?.phone || '');
   const [password, setPassword] = useState(initialUser?.password || '');
   const [roleId, setRoleId] = useState(initialUser?.role_id || (roles[0]?.id || ''));
   const [error, setError] = useState('');
@@ -250,6 +263,8 @@ function UserModal({ initialUser = null, roles = [], onSave, onClose }) {
     onSave({
       name: name.trim(),
       username: username.trim().toLowerCase(),
+      email: email.trim(),
+      phone: phone.trim(),
       password,
       role_id: Number(roleId),
     });
@@ -269,6 +284,24 @@ function UserModal({ initialUser = null, roles = [], onSave, onClose }) {
           onChange={(e) => setUsername(e.target.value)}
           placeholder="e.g. sita.sharma"
           required
+        />
+      </label>
+      <label>
+        Email Address
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="e.g. sita@rtccourier.com"
+        />
+      </label>
+      <label>
+        Phone Number
+        <input
+          type="text"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="e.g. 9841000000"
         />
       </label>
       {!initialUser && (

@@ -130,7 +130,7 @@ export function BranchTrackReceivePage() {
           type="text"
           value={trackingNumber}
           onChange={(e) => setTrackingNumber(e.target.value)}
-          placeholder="Scan barcode or enter tracking number (TRK-...)"
+          placeholder="Scan barcode or enter tracking number (RTC-20261102-1)"
         />
         <button type="submit" className="btn-primary">
           Look up

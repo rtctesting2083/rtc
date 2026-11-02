@@ -4,9 +4,36 @@ export function pad(n, size = 2) {
   return n.toString().padStart(size, '0');
 }
 
-export function trackingNumber() {
-  const d = new Date();
-  return `TRK-${d.getFullYear()}${pad(d.getMonth() + 1, 2)}${pad(d.getDate(), 2)}-${pad(Math.floor(Math.random() * 100000), 5)}`;
+export function getTodayADString(date = new Date()) {
+  const d = new Date(date);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}${m}${day}`;
+}
+
+export function trackingNumber(existingList = [], baseDate = new Date()) {
+  // Format: RTC-YYYYMMDD-COUNT
+  // Short form of Real Time Courier - RTC
+  // Current AD Date - YYYYMMDD
+  // Shipment count start from - 1
+  const dateStr = getTodayADString(baseDate);
+  const prefix = `RTC-${dateStr}-`;
+
+  let maxCount = 0;
+  if (Array.isArray(existingList)) {
+    for (const item of existingList) {
+      const trk = (item?.tracking_number || item?.trackingNumber || '').trim();
+      if (trk.toUpperCase().startsWith(prefix)) {
+        const countPart = parseInt(trk.substring(prefix.length), 10);
+        if (!isNaN(countPart) && countPart > maxCount) {
+          maxCount = countPart;
+        }
+      }
+    }
+  }
+
+  return `${prefix}${maxCount + 1}`;
 }
 
 export function invoiceNumber() {

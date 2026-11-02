@@ -155,7 +155,7 @@ export function CustomerDashboardPage() {
             </label>
             <input
               type="text"
-              placeholder="e.g., BTLKTM8305-2529236"
+              placeholder="e.g., RTC-20261102-1"
               style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px' }}
             />
           </div>

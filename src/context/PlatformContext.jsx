@@ -48,6 +48,12 @@ export function PlatformProvider({ children }) {
               status: match.status || local.status,
               logo_url: match.logo_url !== undefined ? match.logo_url : local.logo_url,
               theme_color: match.theme_color || local.theme_color || '#dc2626',
+              email: match.email || local.email,
+              phone: match.phone || local.phone,
+              contact_person: match.contact_person || local.contact_person,
+              address: match.address || local.address,
+              avatar_url: match.avatar_url || local.avatar_url,
+              password: match.password || local.password,
             };
           });
 
