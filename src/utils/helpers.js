@@ -16,16 +16,17 @@ export function trackingNumber(existingList = [], baseDate = new Date()) {
   // Format: RTC-YYYYMMDD-COUNT
   // Short form of Real Time Courier - RTC
   // Current AD Date - YYYYMMDD
-  // Shipment count start from - 1
+  // Shipment count start from - 1 to continue always
+  // Note: Counter (Sequential count) has no relation with Current AD Date, so 1 to continue always
   const dateStr = getTodayADString(baseDate);
-  const prefix = `RTC-${dateStr}-`;
 
   let maxCount = 0;
   if (Array.isArray(existingList)) {
     for (const item of existingList) {
       const trk = (item?.tracking_number || item?.trackingNumber || '').trim();
-      if (trk.toUpperCase().startsWith(prefix)) {
-        const countPart = parseInt(trk.substring(prefix.length), 10);
+      const match = trk.match(/^RTC-\d{8}-(\d+)$/i);
+      if (match) {
+        const countPart = parseInt(match[1], 10);
         if (!isNaN(countPart) && countPart > maxCount) {
           maxCount = countPart;
         }
@@ -33,7 +34,7 @@ export function trackingNumber(existingList = [], baseDate = new Date()) {
     }
   }
 
-  return `${prefix}${maxCount + 1}`;
+  return `RTC-${dateStr}-${maxCount + 1}`;
 }
 
 export function invoiceNumber() {

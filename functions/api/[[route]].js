@@ -32,38 +32,42 @@ export async function onRequest(context) {
 
   try {
     // Helper to generate next sequential tracking number: RTC-YYYYMMDD-COUNT
+    // Note: Counter (Sequential count) has no relation with Current AD Date, so 1 to continue always
     async function getNextTrackingNumber(dbInstance, companyId) {
       const now = new Date();
       const y = now.getFullYear();
       const m = String(now.getMonth() + 1).padStart(2, '0');
       const d = String(now.getDate()).padStart(2, '0');
-      const todayPrefix = `RTC-${y}${m}${d}-`;
+      const todayDateStr = `${y}${m}${d}`;
 
+      // Query all RTC- tracking numbers across all dates to find the highest global sequential counter
       const [shipmentsRes, vendorOrdersRes] = await Promise.all([
         dbInstance.prepare(
-          "SELECT tracking_number FROM shipments WHERE company_id = ? AND tracking_number LIKE ? ORDER BY id DESC"
-        ).bind(companyId, `${todayPrefix}%`).all().catch(() => ({ results: [] })),
+          "SELECT tracking_number FROM shipments WHERE company_id = ? AND tracking_number LIKE 'RTC-%' ORDER BY id DESC"
+        ).bind(companyId).all().catch(() => ({ results: [] })),
         dbInstance.prepare(
-          "SELECT tracking_number FROM vendor_order WHERE company_id = ? AND tracking_number LIKE ? ORDER BY id DESC"
-        ).bind(companyId, `${todayPrefix}%`).all().catch(() => ({ results: [] }))
+          "SELECT tracking_number FROM vendor_order WHERE company_id = ? AND tracking_number LIKE 'RTC-%' ORDER BY id DESC"
+        ).bind(companyId).all().catch(() => ({ results: [] }))
       ]);
 
       let maxCount = 0;
       const combined = [...(shipmentsRes?.results || []), ...(vendorOrdersRes?.results || [])];
       for (const row of combined) {
         const num = (row.tracking_number || '').trim();
-        if (num.toUpperCase().startsWith(todayPrefix)) {
-          const countPart = parseInt(num.substring(todayPrefix.length), 10);
+        const match = num.match(/^RTC-\d{8}-(\d+)$/i);
+        if (match) {
+          const countPart = parseInt(match[1], 10);
           if (!isNaN(countPart) && countPart > maxCount) {
             maxCount = countPart;
           }
         }
       }
 
+      const nextCount = maxCount + 1;
       return {
-        tracking_number: `${todayPrefix}${maxCount + 1}`,
-        date: `${y}${m}${d}`,
-        count: maxCount + 1,
+        tracking_number: `RTC-${todayDateStr}-${nextCount}`,
+        date: todayDateStr,
+        count: nextCount,
         prefix: 'RTC'
       };
     }
