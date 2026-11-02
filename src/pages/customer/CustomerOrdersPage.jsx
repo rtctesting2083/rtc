@@ -18,6 +18,7 @@ import {
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
 import { ShipmentDetailModal } from '../../components/common/ShipmentDetailModal';
+import { OrderCommentsModal } from '../../components/common/OrderCommentsSection';
 import { printShipmentLabel } from '../../utils/print';
 import { fmtMoney, fmtDate } from '../../utils/helpers';
 
@@ -340,53 +341,15 @@ export function CustomerOrdersPage() {
     document.body.removeChild(link);
   };
 
-  // Comment Modal
+  // Comment Modal (Connected to Cloudflare D1 Database)
   const handleOpenCommentModal = (order) => {
     openModal(
-      `Order Comments — ${order.tracking_number}`,
-      <div style={{ padding: '8px' }}>
-        <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '14px' }}>
-          <div style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>{order.receiver_name}</div>
-          <div style={{ fontSize: '12px', color: '#64748b' }}>{order.destination_hub} · Status: {order.status_label}</div>
-          {order.last_comment && order.last_comment !== '-' && (
-            <div style={{ marginTop: '8px', padding: '8px', background: '#fff', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px', color: '#1e293b' }}>
-              <b>Latest Comment:</b> {order.last_comment}
-            </div>
-          )}
-        </div>
-
-        <div>
-          <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '4px' }}>
-            Add Comment / Delivery Note
-          </label>
-          <textarea
-            rows={3}
-            placeholder="Type comment regarding delivery instructions, reschedule, customer call..."
-            style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px', boxSizing: 'border-box' }}
-          />
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '14px' }}>
-          <button
-            type="button"
-            onClick={closeModal}
-            style={{ padding: '7px 14px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff', fontSize: '12.5px', cursor: 'pointer' }}
-          >
-            Close
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              alert('Comment added successfully.');
-              closeModal();
-            }}
-            style={{ padding: '7px 16px', borderRadius: '6px', border: 'none', background: 'var(--theme-color, #dc2626)', color: '#fff', fontWeight: 600, fontSize: '12.5px', cursor: 'pointer' }}
-          >
-            Post Comment
-          </button>
-        </div>
-      </div>,
-      'medium',
+      `Order Comments (D1) — ${order.tracking_number}`,
+      <OrderCommentsModal
+        order={order}
+        onClose={closeModal}
+      />,
+      'wide'
     );
   };
 

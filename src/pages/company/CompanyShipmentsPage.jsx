@@ -3,6 +3,7 @@ import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
 import { StatusPill } from '../../components/common/StatusPill';
 import { ShipmentDetailModal } from '../../components/common/ShipmentDetailModal';
+import { OrderCommentsModal } from '../../components/common/OrderCommentsSection';
 import { NewShipmentModal } from '../../components/company/NewShipmentModal';
 import { AssignRiderModal } from '../../components/company/AssignRiderModal';
 import { ForwardShipmentModal } from '../../components/company/ForwardShipmentModal';
@@ -77,6 +78,14 @@ export function CompanyShipmentsPage() {
 
   const handleOpenDetail = (shipment) => {
     openModal(`Shipment ${shipment.tracking_number}`, <ShipmentDetailModal shipment={shipment} />, 'wide');
+  };
+
+  const handleOpenComments = (shipment) => {
+    openModal(
+      `Order Comments (D1) — ${shipment.tracking_number}`,
+      <OrderCommentsModal order={shipment} onClose={closeModal} />,
+      'wide'
+    );
   };
 
   const handleOpenAssignSingle = (shipment) => {
@@ -387,6 +396,15 @@ export function CompanyShipmentsPage() {
                       onClick={() => handleOpenSetTag(s)}
                     >
                       Tag
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      style={{ fontSize: '11.5px' }}
+                      onClick={() => handleOpenComments(s)}
+                      title="View & Add Order Comments (D1)"
+                    >
+                      💬 Comment
                     </button>
                     <button
                       type="button"

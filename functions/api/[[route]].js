@@ -2041,6 +2041,159 @@ export async function onRequest(context) {
       }
     }
 
+    // 8b. Order Comments endpoint: /api/comments on D1 table 'order_comments'
+    if (path === 'comments' || path === 'order-comments' || path.startsWith('comments/') || path.startsWith('order-comments/') || path.match(/^shipments\/([^/]+)\/comments$/)) {
+      // Ensure order_comments table exists
+      await db.prepare(`
+        CREATE TABLE IF NOT EXISTS order_comments (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          shipment_id INTEGER,
+          tracking_number TEXT NOT NULL,
+          company_id INTEGER DEFAULT 1,
+          author_type TEXT NOT NULL,
+          author_id INTEGER,
+          author_name TEXT NOT NULL,
+          comment TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          created_at_formatted TEXT
+        )
+      `).run().catch(() => {});
+
+      const companyId = url.searchParams.get('company_id') || 1;
+      let trackingNumber = url.searchParams.get('tracking_number');
+      let shipmentId = url.searchParams.get('shipment_id');
+
+      const shipmentCommentsMatch = path.match(/^shipments\/([^/]+)\/comments$/);
+      if (shipmentCommentsMatch) {
+        const param = shipmentCommentsMatch[1];
+        if (/^\d+$/.test(param)) {
+          shipmentId = param;
+        } else {
+          trackingNumber = param;
+        }
+      }
+
+      // Helper to format Date and Time (AM/PM)
+      const formatAMPM = (dateObj = new Date()) => {
+        const d = typeof dateObj === 'string' || typeof dateObj === 'number' ? new Date(dateObj) : dateObj;
+        if (isNaN(d.getTime())) return String(dateObj);
+        const day = String(d.getDate()).padStart(2, '0');
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const month = months[d.getMonth()];
+        const year = d.getFullYear();
+        let hours = d.getHours();
+        const mins = String(d.getMinutes()).padStart(2, '0');
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        hours = hours ? hours : 12;
+        const hrStr = String(hours).padStart(2, '0');
+        return `${day} ${month} ${year}, ${hrStr}:${mins} ${ampm}`;
+      };
+
+      // GET /api/comments
+      if (method === 'GET') {
+        let query = 'SELECT * FROM order_comments WHERE company_id = ?';
+        const params = [Number(companyId)];
+
+        if (trackingNumber) {
+          query += ' AND tracking_number = ?';
+          params.push(trackingNumber.trim());
+        } else if (shipmentId) {
+          query += ' AND shipment_id = ?';
+          params.push(Number(shipmentId));
+        }
+
+        query += ' ORDER BY id ASC';
+
+        const { results } = await db.prepare(query).bind(...params).all().catch(() => ({ results: [] }));
+        const list = (results || []).map((c) => ({
+          ...c,
+          created_at_formatted: c.created_at_formatted || formatAMPM(c.created_at),
+        }));
+
+        return jsonResponse({
+          success: true,
+          count: list.length,
+          comments: list,
+        });
+      }
+
+      // POST /api/comments
+      if (method === 'POST') {
+        const body = await request.json();
+        const cid = Number(body.company_id || companyId);
+        const tNumber = (body.tracking_number || trackingNumber || '').trim();
+        const sId = body.shipment_id ? Number(body.shipment_id) : (shipmentId ? Number(shipmentId) : null);
+        const authorType = (body.author_type || 'admin').toLowerCase(); // 'admin' | 'branch' | 'vendor' | 'rider'
+        const authorName = (body.author_name || 'Staff').trim();
+        const authorId = body.author_id ? Number(body.author_id) : null;
+        const commentText = (body.comment || body.text || '').trim();
+
+        if (!commentText) {
+          return jsonResponse({ error: 'Comment text cannot be empty' }, 400);
+        }
+        if (!tNumber && !sId) {
+          return jsonResponse({ error: 'tracking_number or shipment_id is required' }, 400);
+        }
+
+        // Format Date and Time with AM/PM (e.g. "02 Nov 2026, 03:30 PM")
+        const nowFormatted = body.created_at_formatted || formatAMPM(new Date());
+
+        const insertRes = await db.prepare(`
+          INSERT INTO order_comments (
+            shipment_id, tracking_number, company_id,
+            author_type, author_id, author_name,
+            comment, created_at, created_at_formatted
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
+        `).bind(
+          sId, tNumber, cid,
+          authorType, authorId, authorName,
+          commentText, nowFormatted
+        ).run();
+
+        const insertedId = insertRes.meta?.last_row_id;
+        const createdRow = insertedId
+          ? await db.prepare('SELECT * FROM order_comments WHERE id = ?').bind(insertedId).first().catch(() => null)
+          : null;
+
+        // Also update notes in shipments table if tracking number matches
+        if (tNumber) {
+          try {
+            await db.prepare(`
+              UPDATE shipments SET
+                notes = ?,
+                updated_at = datetime('now')
+              WHERE tracking_number = ?
+            `).bind(commentText, tNumber).run();
+          } catch (e) {}
+
+          try {
+            await db.prepare(`
+              UPDATE vendor_order SET
+                notes = ?
+              WHERE tracking_number = ?
+            `).bind(commentText, tNumber).run();
+          } catch (e) {}
+        }
+
+        return jsonResponse({
+          success: true,
+          message: 'Order comment saved to D1 database successfully',
+          comment: createdRow || {
+            id: insertedId,
+            shipment_id: sId,
+            tracking_number: tNumber,
+            company_id: cid,
+            author_type: authorType,
+            author_id: authorId,
+            author_name: authorName,
+            comment: commentText,
+            created_at_formatted: nowFormatted,
+          },
+        });
+      }
+    }
+
     // 8. Shipments endpoint: read and write on D1 table 'shipments'
     if (path === 'shipments' || path.startsWith('shipments/')) {
         const companyId = url.searchParams.get('company_id') || 1;

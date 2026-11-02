@@ -3,6 +3,7 @@ import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
 import { fmtDate, fmtMoney } from '../../utils/helpers';
 import { printShipmentLabel } from '../../utils/print';
+import { OrderCommentsSection } from './OrderCommentsSection';
 import { Copy, Check, X, MessageSquare, Send, CheckCircle2, ShieldCheck, Camera, PenTool, Printer } from 'lucide-react';
 import '../../pages/customer/VendorDashboard.css';
 
@@ -11,8 +12,6 @@ export function ShipmentDetailModal({ shipment, onClose }) {
   const { closeModal } = useModal();
   const [activeTab, setActiveTab] = useState('details'); // 'details' | 'proof'
   const [copied, setCopied] = useState(false);
-  const [showAddComment, setShowAddComment] = useState(false);
-  const [newCommentText, setNewCommentText] = useState('');
 
   if (!shipment) return null;
 
@@ -99,56 +98,6 @@ export function ShipmentDetailModal({ shipment, onClose }) {
   };
 
   const timelineEvents = getTimelineEvents();
-
-  // Order Comments State
-  const initialComments = [
-    {
-      id: 1,
-      sender: 'RTC Staff',
-      senderInitial: 'U',
-      senderType: 'staff',
-      text: "Dear Sir/Ma'am, Aja hub bata forward vayako chaa receive huda bittikai process hunchaaa",
-      time: '13-Oct-2026 10:16:50',
-    },
-    {
-      id: 2,
-      sender: shipment.sender_name || 'R.T.C. Courier Pvt. Ltd.',
-      senderInitial: 'R',
-      senderType: 'vendor',
-      text:
-        shipment.last_comment && shipment.last_comment !== '-'
-          ? shipment.last_comment
-          : 'Saman kaile samma pugchha hajur customer ley call garnu vako chha',
-      time: '13-Oct-2026 15:36:21',
-    },
-  ];
-
-  const [comments, setComments] = useState(initialComments);
-
-  const handlePostComment = (e) => {
-    e.preventDefault();
-    if (!newCommentText.trim()) return;
-
-    const newComment = {
-      id: Date.now(),
-      sender: shipment.sender_name || 'R.T.C. Courier Pvt. Ltd.',
-      senderInitial: 'R',
-      senderType: 'vendor',
-      text: newCommentText.trim(),
-      time:
-        new Date().toLocaleDateString('en-GB', {
-          day: '2-digit',
-          month: 'short',
-          year: 'numeric',
-        }) +
-        ' ' +
-        new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-    };
-
-    setComments((prev) => [...prev, newComment]);
-    setNewCommentText('');
-    setShowAddComment(false);
-  };
 
   const handlePrint = () => {
     printShipmentLabel(shipment, company, customer, originBranch, destBranch, {
@@ -331,81 +280,15 @@ export function ShipmentDetailModal({ shipment, onClose }) {
             </div>
           </div>
 
-          {/* ════════ COLUMN 3: Order Comments ════════ */}
+          {/* ════════ COLUMN 3: Order Comments (D1 Database) ════════ */}
           <div className="order-detail-col">
             <div className="order-detail-section-block">
-              <div className="order-comments-head-row">
-                <h3 className="order-detail-section-heading" style={{ margin: 0, border: 'none' }}>
-                  Order Comments
-                </h3>
-                <button
-                  type="button"
-                  className="order-add-comment-btn"
-                  onClick={() => setShowAddComment((prev) => !prev)}
-                >
-                  + Comment
-                </button>
-              </div>
-              <div className="order-detail-heading-underline" />
-
-              {/* Add Comment Input Form */}
-              {showAddComment && (
-                <form className="order-comment-form" onSubmit={handlePostComment}>
-                  <textarea
-                    rows={2}
-                    className="order-comment-input"
-                    placeholder="Write a message to RTC staff..."
-                    value={newCommentText}
-                    onChange={(e) => setNewCommentText(e.target.value)}
-                    autoFocus
-                  />
-                  <div className="order-comment-form-actions">
-                    <button
-                      type="button"
-                      className="btn-text-cancel"
-                      onClick={() => setShowAddComment(false)}
-                    >
-                      Cancel
-                    </button>
-                    <button type="submit" className="btn-comment-submit">
-                      Send
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {/* Chat Message Stream */}
-              <div className="order-comments-chat-stream">
-                {comments.map((c) => {
-                  const isStaff = c.senderType === 'staff';
-                  return (
-                    <div
-                      key={c.id}
-                      className={`order-comment-row ${isStaff ? 'staff-row' : 'vendor-row'}`}
-                    >
-                      {!isStaff && (
-                        <div className="comment-avatar vendor-avatar" title={c.sender}>
-                          {c.senderInitial || 'R'}
-                        </div>
-                      )}
-
-                      <div className={`order-comment-bubble ${isStaff ? 'staff-bubble' : 'vendor-bubble'}`}>
-                        <div className="comment-bubble-text">{c.text}</div>
-                        <div className="comment-bubble-meta">
-                          <span className="comment-author">{c.sender}</span>
-                          <span className="comment-time">{c.time}</span>
-                        </div>
-                      </div>
-
-                      {isStaff && (
-                        <div className="comment-avatar staff-avatar" title={c.sender}>
-                          {c.senderInitial || 'U'}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+              <OrderCommentsSection
+                trackingNumber={shipment.tracking_number}
+                shipmentId={shipment.id}
+                order={shipment}
+                compact={true}
+              />
             </div>
           </div>
         </div>

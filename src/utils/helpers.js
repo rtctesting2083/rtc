@@ -88,6 +88,26 @@ export function fmtDate(d) {
   }
 }
 
+export function formatDateTimeAMPM(dateInput = new Date()) {
+  if (!dateInput) return '';
+  const d = typeof dateInput === 'string' || typeof dateInput === 'number' ? new Date(dateInput) : dateInput;
+  if (isNaN(d.getTime())) return String(dateInput);
+
+  const day = String(d.getDate()).padStart(2, '0');
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = monthNames[d.getMonth()];
+  const year = d.getFullYear();
+
+  let hours = d.getHours();
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const formattedHours = String(hours).padStart(2, '0');
+
+  return `${day} ${month} ${year}, ${formattedHours}:${minutes} ${ampm}`;
+}
+
 export function detectShippingZone(branchNameOrAddress, settings, origin = '') {
   const str = (branchNameOrAddress || '').toLowerCase();
   const origStr = (origin || '').toLowerCase();

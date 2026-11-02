@@ -75,6 +75,41 @@ export const d1Api = {
     }
   },
 
+  // ─── Order Comments (D1 Database Table: order_comments) ───────────────────
+  getOrderComments: async (trackingNumber, shipmentId = null, companyId = 1) => {
+    try {
+      const params = new URLSearchParams();
+      if (trackingNumber) params.set('tracking_number', trackingNumber);
+      if (shipmentId) params.set('shipment_id', shipmentId);
+      params.set('company_id', companyId);
+      const res = await fetch(`/api/comments?${params.toString()}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data?.comments) ? data.comments : [];
+    } catch (e) {
+      console.warn('Failed to fetch order comments from D1:', e);
+      return [];
+    }
+  },
+
+  addOrderComment: async (payload) => {
+    try {
+      const res = await fetch('/api/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to post comment');
+      }
+      return await res.json();
+    } catch (e) {
+      console.error('Failed to save order comment to D1:', e);
+      throw e;
+    }
+  },
+
   // Update company in platform endpoint
   updateCompany: async (companyId, payload) => {
     try {

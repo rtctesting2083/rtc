@@ -5,9 +5,11 @@ import { useModal } from '../../context/ModalContext';
 import { StatStrip } from '../../components/common/StatStrip';
 import { StatusPill } from '../../components/common/StatusPill';
 import { ShipmentDetailModal } from '../../components/common/ShipmentDetailModal';
+import { OrderCommentsModal } from '../../components/common/OrderCommentsSection';
 import { ConfirmDutyStatusModal } from '../../components/rider/ConfirmDutyStatusModal';
 import { RiderScanReceiveModal } from '../../components/rider/RiderScanReceiveModal';
-import { fmtMoney, isToday } from '../../utils/helpers';
+import { fmtMoney, isToday, formatDateTimeAMPM } from '../../utils/helpers';
+import { d1Api } from '../../utils/d1Api';
 
 export function RiderDeliveriesPage() {
   const { currentRider } = useOutletContext();
@@ -80,6 +82,14 @@ export function RiderDeliveriesPage() {
 
   const handleOpenDetail = (shipment) => {
     openModal(`Shipment ${shipment.tracking_number}`, <ShipmentDetailModal shipment={shipment} />, 'wide');
+  };
+
+  const handleOpenComments = (shipment) => {
+    openModal(
+      `Order Comments (D1) — ${shipment.tracking_number}`,
+      <OrderCommentsModal order={shipment} onClose={closeModal} />,
+      'wide'
+    );
   };
 
   const handleOpenScanner = () => {
@@ -155,6 +165,18 @@ export function RiderDeliveriesPage() {
         actionName="Delivered"
         onSubmit={(notes) => {
           updateShipmentStatus(shipment.id, 'delivered', notes || 'Package delivered successfully.');
+          if (notes) {
+            d1Api.addOrderComment({
+              shipment_id: shipment.id,
+              tracking_number: shipment.tracking_number,
+              company_id: 1,
+              author_type: 'rider',
+              author_name: currentRider?.name ? `${currentRider.name} (Rider)` : 'Rider',
+              author_id: currentRider?.id || null,
+              comment: `[Delivered] ${notes}`,
+              created_at_formatted: formatDateTimeAMPM(new Date()),
+            }).catch(() => {});
+          }
           closeModal();
         }}
         onClose={closeModal}
@@ -170,6 +192,18 @@ export function RiderDeliveriesPage() {
         isDanger={true}
         onSubmit={(notes) => {
           updateShipmentStatus(shipment.id, 'failed', notes || 'Delivery attempt unsuccessful.');
+          if (notes) {
+            d1Api.addOrderComment({
+              shipment_id: shipment.id,
+              tracking_number: shipment.tracking_number,
+              company_id: 1,
+              author_type: 'rider',
+              author_name: currentRider?.name ? `${currentRider.name} (Rider)` : 'Rider',
+              author_id: currentRider?.id || null,
+              comment: `[Delivery Issue] ${notes}`,
+              created_at_formatted: formatDateTimeAMPM(new Date()),
+            }).catch(() => {});
+          }
           closeModal();
         }}
         onClose={closeModal}
@@ -721,6 +755,15 @@ export function RiderDeliveriesPage() {
                       <button
                         type="button"
                         className="btn-secondary"
+                        onClick={() => handleOpenComments(s)}
+                        title="View & Add Order Comments (D1)"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                      >
+                        💬 Comment
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-secondary"
                         onClick={() => handleOpenDetail(s)}
                       >
                         Details
@@ -897,6 +940,15 @@ export function RiderDeliveriesPage() {
                     </>
                   )}
 
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => handleOpenComments(s)}
+                    style={{ minHeight: '42px', padding: '0 10px', fontSize: '12px' }}
+                    title="View & Add Order Comments (D1)"
+                  >
+                    💬 Comment
+                  </button>
                   <button
                     type="button"
                     className="btn-secondary"
