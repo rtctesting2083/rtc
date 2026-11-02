@@ -16,7 +16,7 @@ export const PRESET_THEME_COLORS = [
   { name: 'Dark Slate', hex: '#334155' },
 ];
 
-export const DEFAULT_RTC_RED = '#dc2626';
+export const DEFAULT_RTC_RED = '#dc143c';
 
 export function CompanyThemeCard({ company, onSave, onClose }) {
   const [logoPreview, setLogoPreview] = useState(company?.logo_url || defaultLogo);
@@ -174,7 +174,15 @@ export function CompanyThemeCard({ company, onSave, onClose }) {
       {/* 1. Logo Box */}
       <div className="theme-logo-preview-box">
         {logoPreview ? (
-          <img src={logoPreview} alt="Company logo preview" className="theme-logo-img" />
+          <img
+            src={logoPreview}
+            alt="Company logo preview"
+            className="theme-logo-img"
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = defaultLogo;
+            }}
+          />
         ) : (
           <div className="theme-logo-placeholder">
             {company?.name ? company.name.substring(0, 3).toUpperCase() : 'RTC'}

@@ -45,12 +45,13 @@ import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
 import { initialsFor } from '../../utils/helpers';
 import { AdminProfileModal } from '../company/AdminProfileModal';
+import { CompanyThemeCard } from '../../pages/company/settings/CompanyThemeCard';
 import logoImg from '../../assets/logo-transparent.png';
 import '../../pages/company/AdminDashboard.css';
 
 export function CompanyLayout() {
   const { session, logout } = useAuth();
-  const { company, findRole, findCompanyUser, resetCompanyData, pendingVerificationsCount = 0 } = useCompany();
+  const { company, updateCompanyTheme, findRole, findCompanyUser, resetCompanyData, pendingVerificationsCount = 0 } = useCompany();
   const { openModal, closeModal } = useModal();
   const navigate = useNavigate();
 
@@ -103,6 +104,20 @@ export function CompanyLayout() {
       'Admin & User Profile (Cloudflare D1)',
       <AdminProfileModal initialTab={initialTab} onClose={closeModal} />,
       'wide'
+    );
+  };
+
+  const handleOpenThemeModal = () => {
+    setProfileDropdownOpen(false);
+    openModal(
+      `Theme & Logo — ${company.name}`,
+      <CompanyThemeCard
+        company={company}
+        onSave={async (updates) => {
+          await updateCompanyTheme(updates);
+        }}
+        onClose={closeModal}
+      />
     );
   };
 
@@ -399,6 +414,15 @@ export function CompanyLayout() {
           </div>
 
           <div className="admin-topbar-right">
+            <button
+              type="button"
+              className="admin-topbar-bell"
+              title="Change Theme & Logo"
+              onClick={handleOpenThemeModal}
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Palette size={16} />
+            </button>
             <button type="button" className="admin-topbar-bell" title="Notifications">
               🔔
               <span className="admin-topbar-badge">1</span>
@@ -594,10 +618,7 @@ export function CompanyLayout() {
 
                     <button
                       type="button"
-                      onClick={() => {
-                        setProfileDropdownOpen(false);
-                        navigate('/company/settings/company');
-                      }}
+                      onClick={handleOpenThemeModal}
                       style={{
                         width: '100%',
                         padding: '10px 16px',
@@ -616,7 +637,7 @@ export function CompanyLayout() {
                       onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                     >
                       <Palette size={16} color="var(--admin-red, #dc2626)" />
-                      <span>Company & Theme</span>
+                      <span>Company Theme & Logo</span>
                     </button>
                   </div>
 

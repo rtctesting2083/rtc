@@ -461,17 +461,31 @@ export async function onRequest(context) {
         const extracted = body.logo_extracted_color || null;
         const preset = body.preset_name || 'Custom';
 
-        await db.prepare(`
-          UPDATE system_theme SET
-            theme_color = ?,
-            theme_color_dark = ?,
-            theme_color_light = ?,
-            preset_name = ?,
-            logo_url = COALESCE(?, logo_url),
-            logo_extracted_color = COALESCE(?, logo_extracted_color),
-            updated_at = datetime('now')
-          WHERE company_id = ?
-        `).bind(color, dark, light, preset, logo, extracted, cid).run();
+        if (body.logo_url === null) {
+          await db.prepare(`
+            UPDATE system_theme SET
+              theme_color = ?,
+              theme_color_dark = ?,
+              theme_color_light = ?,
+              preset_name = ?,
+              logo_url = NULL,
+              logo_extracted_color = COALESCE(?, logo_extracted_color),
+              updated_at = datetime('now')
+            WHERE company_id = ?
+          `).bind(color, dark, light, preset, extracted, cid).run();
+        } else {
+          await db.prepare(`
+            UPDATE system_theme SET
+              theme_color = ?,
+              theme_color_dark = ?,
+              theme_color_light = ?,
+              preset_name = ?,
+              logo_url = COALESCE(?, logo_url),
+              logo_extracted_color = COALESCE(?, logo_extracted_color),
+              updated_at = datetime('now')
+            WHERE company_id = ?
+          `).bind(color, dark, light, preset, logo, extracted, cid).run();
+        }
 
         const existingTheme = await db.prepare('SELECT id FROM system_theme WHERE company_id = ?').bind(cid).first().catch(() => null);
         if (!existingTheme) {
@@ -486,12 +500,21 @@ export async function onRequest(context) {
 
         // Also update companies table for unified synchronization
         try {
-          await db.prepare(`
-            UPDATE companies SET
-              theme_color = ?,
-              logo_url = COALESCE(?, logo_url)
-            WHERE id = ?
-          `).bind(color, logo, cid).run();
+          if (body.logo_url === null) {
+            await db.prepare(`
+              UPDATE companies SET
+                theme_color = ?,
+                logo_url = NULL
+              WHERE id = ?
+            `).bind(color, cid).run();
+          } else {
+            await db.prepare(`
+              UPDATE companies SET
+                theme_color = ?,
+                logo_url = COALESCE(?, logo_url)
+              WHERE id = ?
+            `).bind(color, logo, cid).run();
+          }
         } catch (e) {}
 
         const updated = await db.prepare('SELECT * FROM system_theme WHERE company_id = ?').bind(cid).first();
