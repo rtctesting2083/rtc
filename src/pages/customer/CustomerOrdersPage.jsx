@@ -11,6 +11,9 @@ import {
   Check,
   Search,
   Filter,
+  Plus,
+  Database,
+  Loader2,
 } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
@@ -77,232 +80,30 @@ export function CustomerOrdersPage() {
     }
   }, [currentCustomer?.id, loadVendorOrders]);
 
-  // Reference sample orders strictly matching the user's screenshot
-  const referenceOrders = useMemo(
-    () => [
-      {
-        id: 'ref-1',
-        tracking_number: 'RTC-20261102-1',
-        vendor_reference_id: 'ref-',
-        created_at: '2026-11-02T10:00:00Z',
-        created_display: '2026 Nov 02',
-        status_label: 'Pickup Process',
-        status_date: '2026 Nov 02',
-        status_type: 'pickup-process',
-        receiver_name: 'Krishna Prasad Panthi',
-        receiver_phone: '9841326562',
-        delivery_address: 'Thapathali Chowk Kathmandu',
-        product_description: 'Sender Krishna Prasad Panthi RTC CP Milanchowk btl',
-        order_type: 'Delivery Order',
-        order_type_kind: 'forward',
-        destination_hub: 'Kathmandu Hub',
-        destination_branch_id: 2,
-        cod_amount: 350,
-        delivery_fee: 150,
-        last_comment: '-',
-      },
-      {
-        id: 'ref-2',
-        tracking_number: 'RTC-20261102-2',
-        vendor_reference_id: 'ref-RTCHOD',
-        created_at: '2026-11-02T11:20:00Z',
-        created_display: '2026 Nov 02',
-        status_label: 'At Destination Hub',
-        status_date: '2026 Nov 02',
-        status_type: 'at-destination-hub',
-        receiver_name: 'Pramila Pandey',
-        receiver_phone: '9849161074',
-        delivery_address: 'Lokhanthali Rammandir Bhaktapur',
-        product_description: 'Sender ANI COLLECTION TAMNAGAR',
-        order_type: 'Delivery Order',
-        order_type_kind: 'forward',
-        destination_hub: 'Kathmandu Hub',
-        destination_branch_id: 2,
-        cod_amount: 1500,
-        delivery_fee: 150,
-        last_comment: '-',
-      },
-      {
-        id: 'ref-3',
-        tracking_number: 'RTC-20261102-3',
-        vendor_reference_id: 'ref-RTCHOD',
-        created_at: '2026-11-02T14:15:00Z',
-        created_display: '2026 Nov 02',
-        status_label: 'Delivered',
-        status_date: '2026 Nov 02',
-        status_type: 'delivered',
-        receiver_name: 'Shova Khanal',
-        receiver_phone: '9766467504',
-        delivery_address: 'Jorpati Kathmandu',
-        product_description: 'Sender Prativa Collection Tamnagar',
-        order_type: 'Delivery Order',
-        order_type_kind: 'forward',
-        destination_hub: 'Kathmandu Hub',
-        destination_branch_id: 2,
-        cod_amount: 1880,
-        delivery_fee: 150,
-        last_comment: '-',
-      },
-      {
-        id: 'ref-4',
-        tracking_number: 'RTC-20261102-4',
-        vendor_reference_id: 'ref-RTCHOD',
-        created_at: '2026-11-02T16:00:00Z',
-        created_display: '2026 Nov 02',
-        status_label: 'Delivered',
-        status_date: '2026 Nov 02',
-        status_type: 'delivered',
-        receiver_name: 'Anju Pandey',
-        receiver_phone: '9847570627',
-        delivery_address: 'Basgadhi Murgiya Sainamaina',
-        product_description: 'Sender ANI COLLECTION TAMNAGAR',
-        order_type: 'Delivery Order',
-        order_type_kind: 'forward',
-        destination_hub: 'Sainamaina Hub',
-        destination_branch_id: 3,
-        cod_amount: 2500,
-        delivery_fee: 100,
-        last_comment: '-',
-      },
-      {
-        id: 'ref-5',
-        tracking_number: 'RTC-20261102-5',
-        vendor_reference_id: 'ref-RTCHOD',
-        created_at: '2026-11-02T09:30:00Z',
-        created_display: '2026 Nov 02',
-        status_label: 'Delivered',
-        status_date: '2026 Nov 02',
-        status_type: 'delivered',
-        receiver_name: 'Reema Darlami',
-        receiver_phone: '9808349330',
-        delivery_address: 'Khaireni',
-        product_description: 'Sender ANI COLLECTION TAMNAGAR',
-        order_type: 'Delivery Order',
-        order_type_kind: 'forward',
-        destination_hub: 'Sunuwal Hub',
-        destination_branch_id: 4,
-        cod_amount: 500,
-        delivery_fee: 100,
-        last_comment: '-',
-      },
-      {
-        id: 'ref-6',
-        tracking_number: 'RTC-20261102-6',
-        vendor_reference_id: 'ref-RTCHOD',
-        created_at: '2026-11-02T12:00:00Z',
-        created_display: '2026 Nov 02',
-        status_label: 'At Destination Hub',
-        status_date: '2026 Nov 02',
-        status_type: 'at-destination-hub',
-        receiver_name: 'Surath K C',
-        receiver_phone: '9747742697',
-        delivery_address: 'Kapilshor Mahadev than 10 Banepa',
-        product_description: 'Sender ANI COLLECTION TAMNAGAR',
-        order_type: 'Delivery Order',
-        order_type_kind: 'forward',
-        destination_hub: 'Banepa Hub',
-        destination_branch_id: 5,
-        cod_amount: 0,
-        delivery_fee: 170,
-        last_comment: 'voli banu bayo',
-      },
-      {
-        id: 'ref-7',
-        tracking_number: 'RTC-20261102-7',
-        vendor_reference_id: 'ref-RTCHOD',
-        created_at: '2026-11-02T14:40:00Z',
-        created_display: '2026 Nov 02',
-        status_label: 'Delivered',
-        status_date: '2026 Nov 02',
-        status_type: 'delivered',
-        receiver_name: 'Sunita Thapa',
-        receiver_phone: '98111269210',
-        delivery_address: 'Near Om Shanti Academy School Katahar Chowk Bharatpur 7',
-        product_description: 'Sender ANI COLLECTION TAMNAGAR',
-        order_type: 'Delivery Order',
-        order_type_kind: 'forward',
-        destination_hub: 'Chitwan Hub',
-        destination_branch_id: 6,
-        cod_amount: 7000,
-        delivery_fee: 160,
-        last_comment: '-',
-      },
-      {
-        id: 'ref-8',
-        tracking_number: 'RTC-20261102-8',
-        vendor_reference_id: 'ref-RTCHOD',
-        created_at: '2026-11-02T16:10:00Z',
-        created_display: '2026 Nov 02',
-        status_label: 'Dispatched To Destination Hub',
-        status_date: '2026 Nov 02',
-        status_type: 'dispatched',
-        receiver_name: 'Nirmala Saud',
-        receiver_phone: '9843339863',
-        delivery_address: 'Dipayal Airport Doti',
-        product_description: 'Sender Prativa Collection Tamnagar',
-        order_type: 'Delivery Order',
-        order_type_kind: 'forward',
-        destination_hub: 'Dipayal Hub',
-        destination_branch_id: 7,
-        cod_amount: 1400,
-        delivery_fee: 210,
-        last_comment: '-',
-      },
-      {
-        id: 'ref-9',
-        tracking_number: 'RTC-20261102-9',
-        vendor_reference_id: 'ref-RTCHOD',
-        created_at: '2026-11-02T17:25:00Z',
-        created_display: '2026 Nov 02',
-        status_label: 'Follow Up for Return',
-        status_date: '2026 Nov 02',
-        status_type: 'follow-up-return',
-        receiver_name: 'Nisha Shah',
-        receiver_phone: '9803772758',
-        delivery_address: 'Lokhanthali Kathmandu',
-        product_description: 'Sender Prativa Collection Tamnagar',
-        order_type: 'Return Order',
-        order_type_kind: 'return',
-        destination_hub: 'Kathmandu Hub',
-        destination_branch_id: 2,
-        cod_amount: 360,
-        delivery_fee: 150,
-        last_comment: '-',
-      },
-      {
-        id: 'ref-10',
-        tracking_number: 'RTC-20261102-10',
-        vendor_reference_id: 'ref-RTCHOD',
-        created_at: '2026-11-02T18:00:00Z',
-        created_display: '2026 Nov 02',
-        status_label: 'Delivered',
-        status_date: '2026 Nov 02',
-        status_type: 'delivered',
-        receiver_name: 'Rekha Parajuli Dahal',
-        receiver_phone: '9869636288',
-        delivery_address: 'Hatiya Hetauda',
-        product_description: 'Sender Prativa Collection Tamnagar',
-        order_type: 'Delivery Order',
-        order_type_kind: 'forward',
-        destination_hub: 'Hatiya Hub',
-        destination_branch_id: 8,
-        cod_amount: 1800,
-        delivery_fee: 170,
-        last_comment: 'milayerw delivery garxam',
-      },
-    ],
-    [],
-  );
+  // Manual reload from Cloudflare D1
+  const handleRefreshOrders = async () => {
+    if (currentCustomer?.id && typeof loadVendorOrders === 'function') {
+      setLoading(true);
+      try {
+        await loadVendorOrders(currentCustomer.id);
+      } catch (err) {
+        console.warn('Failed to refresh vendor orders from D1:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
 
-  // Map live shipments for this customer into the same unified format
+  // Map live shipments for this customer into the unified format directly from Cloudflare D1
   const liveCustomerOrders = useMemo(() => {
+    const custId = Number(currentCustomer?.id);
     return (shipments || [])
-      .filter((s) => s && Number(s.customer_id) === Number(currentCustomer?.id))
+      .filter((s) => s && (Number(s.customer_id) === custId || Number(s.vendor_id) === custId))
       .map((s) => {
         const destB = s.destination_branch_id
           ? typeof findBranch === 'function' ? findBranch(s.destination_branch_id) : null
           : null;
-        const destHubName = destB?.name || s.city || 'Kathmandu Hub';
+        const destHubName = destB?.name || s.dest_branch_name || s.city || 'Kathmandu Hub';
 
         let statusLabel = 'Pickup Process';
         let statusType = 'pickup-process';
@@ -312,9 +113,15 @@ export function CustomerOrdersPage() {
         } else if (s.status === 'in_transit' || s.status === 'out_for_delivery') {
           statusLabel = 'At Destination Hub';
           statusType = 'at-destination-hub';
+        } else if (s.status === 'dispatched') {
+          statusLabel = 'Dispatched To Destination Hub';
+          statusType = 'dispatched';
         } else if (s.status === 'returned' || s.status === 'failed') {
           statusLabel = 'Follow Up for Return';
           statusType = 'follow-up-return';
+        } else if (s.status === 'cancelled') {
+          statusLabel = 'Cancelled';
+          statusType = 'cancelled';
         }
 
         const dateStr = s.created_at
@@ -323,12 +130,14 @@ export function CustomerOrdersPage() {
               month: 'short',
               day: 'numeric',
             })
-          : '2026 Oct 31';
+          : '—';
 
         return {
           id: s.id,
           tracking_number: s.tracking_number || `RTC-20261102-${s.id || 1}`,
-          vendor_reference_id: s.vendor_reference_id ? `ref-${s.vendor_reference_id}` : 'ref-',
+          vendor_reference_id: s.vendor_reference_id
+            ? (String(s.vendor_reference_id).startsWith('ref-') ? s.vendor_reference_id : `ref-${s.vendor_reference_id}`)
+            : 'ref-',
           created_at: s.created_at,
           created_display: dateStr,
           status_label: statusLabel,
@@ -336,24 +145,22 @@ export function CustomerOrdersPage() {
           status_type: statusType,
           receiver_name: s.receiver_name || 'Customer',
           receiver_phone: s.receiver_phone || '',
-          delivery_address: s.delivery_address || s.city || 'Kathmandu',
-          product_description: s.item_description || `Sender ${currentCustomer?.name || 'Vendor'}`,
+          delivery_address: s.delivery_address || s.city || '—',
+          product_description: s.package_description || s.item_description || `Sender ${currentCustomer?.name || 'Vendor'}`,
           order_type: s.order_type || 'Delivery Order',
-          order_type_kind: s.order_type === 'Return' ? 'return' : 'forward',
+          order_type_kind: String(s.order_type || '').toLowerCase().includes('return') ? 'return' : 'forward',
           destination_hub: destHubName,
           destination_branch_id: s.destination_branch_id,
           cod_amount: Number(s.cod_amount) || 0,
-          delivery_fee: Number(s.delivery_fee) || 150,
+          delivery_fee: Number(s.delivery_fee) || 0,
           last_comment: s.notes || '-',
           rawShipment: s,
         };
       });
   }, [shipments, currentCustomer, findBranch]);
 
-  // Combined list: live orders on top, followed by reference orders
-  const allOrders = useMemo(() => {
-    return [...liveCustomerOrders, ...referenceOrders];
-  }, [liveCustomerOrders, referenceOrders]);
+  // Pure live orders directly from Cloudflare D1 (Zero static dummy data)
+  const allOrders = liveCustomerOrders;
 
   // Handle Apply filter click
   const handleApplyFilters = () => {
@@ -682,8 +489,68 @@ export function CustomerOrdersPage() {
 
       {/* ── 2. Order List Header Row (Matches Screenshot) ── */}
       <div className="order-list-header-row">
-        <h1 className="order-list-title">Order List</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <h1 className="order-list-title" style={{ margin: 0 }}>Order List</h1>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: '11px',
+              fontWeight: 600,
+              color: '#059669',
+              background: '#ecfdf5',
+              padding: '2px 8px',
+              borderRadius: '12px',
+              border: '1px solid #a7f3d0',
+            }}
+            title="Connected to Cloudflare D1 Database"
+          >
+            <Database size={11} />
+            D1 Database
+          </span>
+          <span style={{ fontSize: '12.5px', color: '#6b7280', fontWeight: 500 }}>
+            ({allOrders.length} {allOrders.length === 1 ? 'Order' : 'Orders'})
+          </span>
+        </div>
+
         <div className="order-list-top-actions">
+          {typeof handleOpenCreateOrder === 'function' && (
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={handleOpenCreateOrder}
+              style={{
+                background: 'var(--theme-color, #dc2626)',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                fontSize: '12.5px',
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                cursor: 'pointer',
+              }}
+            >
+              <Plus size={14} />
+              <span>+ Create Order</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="btn-export"
+            onClick={handleRefreshOrders}
+            disabled={loading}
+            title="Refresh Orders from Cloudflare D1"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+          >
+            <RotateCcw size={14} className={loading ? 'spin' : ''} />
+            <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
+          </button>
+
           <button
             type="button"
             className="btn-print-label"
@@ -848,8 +715,45 @@ export function CustomerOrdersPage() {
 
             {displayOrders.length === 0 && (
               <tr>
-                <td colSpan="10" className="no-orders-cell">
-                  No orders match the selected filters. Click "Clear" to reset filters.
+                <td colSpan="10" className="no-orders-cell" style={{ padding: '36px 20px', textAlign: 'center' }}>
+                  {loading ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', color: '#6b7280' }}>
+                      <Loader2 size={24} className="spin" color="var(--theme-color, #dc2626)" />
+                      <span>Loading orders from Cloudflare D1 Database...</span>
+                    </div>
+                  ) : (
+                    <div>
+                      <div style={{ fontSize: '14px', fontWeight: 600, color: '#374151', marginBottom: '4px' }}>
+                        No orders found
+                      </div>
+                      <div style={{ fontSize: '12.5px', color: '#6b7280', marginBottom: '14px' }}>
+                        No live orders matching your filters in Cloudflare D1.
+                      </div>
+                      {typeof handleOpenCreateOrder === 'function' && (
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          onClick={handleOpenCreateOrder}
+                          style={{
+                            background: 'var(--theme-color, #dc2626)',
+                            color: '#ffffff',
+                            padding: '7px 14px',
+                            borderRadius: '6px',
+                            border: 'none',
+                            fontWeight: 600,
+                            fontSize: '12.5px',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                          }}
+                        >
+                          <Plus size={14} />
+                          + Create New Order
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </td>
               </tr>
             )}

@@ -50,7 +50,13 @@ export function CustomerDashboardPage() {
 
   /* ── Filter to this vendor's shipments ────────────────── */
   const myShipments = useMemo(
-    () => (shipments || []).filter((s) => Number(s.customer_id) === Number(currentCustomer?.id)),
+    () =>
+      (shipments || []).filter(
+        (s) =>
+          s &&
+          (Number(s.customer_id) === Number(currentCustomer?.id) ||
+            Number(s.vendor_id) === Number(currentCustomer?.id))
+      ),
     [shipments, currentCustomer?.id],
   );
 
