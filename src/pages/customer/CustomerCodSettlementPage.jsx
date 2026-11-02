@@ -38,10 +38,18 @@ export function CustomerCodSettlementPage() {
   // Filter vendor's shipments
   const myShipments = useMemo(() => {
     if (!currentCustomer?.id) return [];
-    return (shipments || []).filter(
-      (s) => Number(s.customer_id) === Number(currentCustomer.id)
-    );
-  }, [shipments, currentCustomer?.id]);
+    const custId = Number(currentCustomer.id);
+    const custPhone = String(currentCustomer.phone || '').trim();
+    const custName = String(currentCustomer.name || '').trim().toLowerCase();
+
+    return (shipments || []).filter((s) => {
+      if (!s) return false;
+      if (custId && (Number(s.customer_id) === custId || Number(s.vendor_id) === custId)) return true;
+      if (custPhone && (String(s.sender_phone || '').trim() === custPhone || String(s.customer_phone || '').trim() === custPhone)) return true;
+      if (custName && (String(s.sender_name || '').trim().toLowerCase() === custName || String(s.customer_name || '').trim().toLowerCase() === custName)) return true;
+      return false;
+    });
+  }, [shipments, currentCustomer?.id, currentCustomer?.phone, currentCustomer?.name]);
 
   // Delivered shipments with COD
   const deliveredCodShipments = useMemo(() => {

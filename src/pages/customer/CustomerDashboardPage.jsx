@@ -31,34 +31,45 @@ export function CustomerDashboardPage() {
 
   const [loading, setLoading] = useState(false);
   const [trendMode, setTrendMode] = useState('orders'); // 'orders' or 'value'
+  const fetchedCustIdRef = useRef(null);
 
   /* ── Load vendor orders from D1 ───────────────────────── */
   useEffect(() => {
-    if (!currentCustomer?.id || typeof loadVendorOrders !== 'function') return;
+    const custId = currentCustomer?.id;
+    if (!custId || typeof loadVendorOrders !== 'function') return;
+    if (fetchedCustIdRef.current === custId) return;
+    fetchedCustIdRef.current = custId;
+
+    let isMounted = true;
     setLoading(true);
-    try {
-      const p = loadVendorOrders(currentCustomer.id);
-      if (p && typeof p.finally === 'function') {
-        p.finally(() => setLoading(false));
-      } else {
-        setLoading(false);
-      }
-    } catch {
-      setLoading(false);
-    }
+
+    loadVendorOrders(custId)
+      .catch((err) => {
+        console.warn('Failed to load vendor orders from D1:', err);
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, [currentCustomer?.id, loadVendorOrders]);
 
   /* ── Filter to this vendor's shipments ────────────────── */
-  const myShipments = useMemo(
-    () =>
-      (shipments || []).filter(
-        (s) =>
-          s &&
-          (Number(s.customer_id) === Number(currentCustomer?.id) ||
-            Number(s.vendor_id) === Number(currentCustomer?.id))
-      ),
-    [shipments, currentCustomer?.id],
-  );
+  const myShipments = useMemo(() => {
+    const custId = Number(currentCustomer?.id);
+    const custPhone = String(currentCustomer?.phone || '').trim();
+    const custName = String(currentCustomer?.name || '').trim().toLowerCase();
+
+    return (shipments || []).filter((s) => {
+      if (!s) return false;
+      if (custId && (Number(s.customer_id) === custId || Number(s.vendor_id) === custId)) return true;
+      if (custPhone && (String(s.sender_phone || '').trim() === custPhone || String(s.customer_phone || '').trim() === custPhone)) return true;
+      if (custName && (String(s.sender_name || '').trim().toLowerCase() === custName || String(s.customer_name || '').trim().toLowerCase() === custName)) return true;
+      return false;
+    });
+  }, [shipments, currentCustomer?.id, currentCustomer?.phone, currentCustomer?.name]);
 
   const myInvoices = useMemo(
     () => (invoices || []).filter((inv) => Number(inv.customer_id) === Number(currentCustomer?.id)),

@@ -154,6 +154,31 @@ export function seedCompanyState(companyId) {
         vendorCustomers: [],
         vendorCustomersNextId: 1,
       },
+      {
+        id: 7,
+        vendor_id: '07',
+        name: 'Anee Collection',
+        phone: '9857036839',
+        phone2: '',
+        password: '123',
+        email: 'contact@aneecollection.com',
+        contact_person: 'Anee',
+        address: { province: 'Lumbini', district: 'Rupandehi', municipality: 'Butwal Sub-Metropolitan City', ward: '6', tole: 'Traffic Chowk' },
+        bank_details: { bank_name: 'Global IME Bank', branch_name: 'Butwal', account_holder_name: 'Anee Collection', account_number: '123456789012' },
+        documents: {},
+        branch_id: 1,
+        verified: true,
+        verification_status: 'verified',
+        staffRoles: defaultVendorStaffRoles(),
+        staffUsers: [],
+        staffNextId: { role: 3, user: 1 },
+        vendorCustomers: [
+          { id: 1, name: 'Zahid Ali', phone: '9877712345', alt_phone: '', address: 'Butwal Belbas' },
+          { id: 2, name: 'Nagar paudel', phone: '9800012345', alt_phone: '', address: 'Butwal Golpark' },
+          { id: 3, name: 'Tara Thapa', phone: '9812345678', alt_phone: '', address: 'Traffic Chowk, Butwal' },
+        ],
+        vendorCustomersNextId: 4,
+      },
     ],
     couriers: [
       { id: 1, rider_id: '01', name: 'Ramesh Thapa', phone: '9811111111', email: 'ramesh.thapa@example.com', password: 'ramesh123', vehicle_type: 'bike', status: 'available', active: true, branch_id: 1, address: { province: 'Lumbini', district: 'Rupandehi', municipality: 'Butwal Sub-Metropolitan City', ward: '5', tole: 'Milanchowk' }, photo: null, license_photo: null },
@@ -188,7 +213,156 @@ export function seedCompanyState(companyId) {
     orderTypes: defaultOrderTypes(),
     deliveryServiceTypes: defaultDeliveryServiceTypes(),
     productCategories: defaultProductCategories(),
-    shipments: [],
+    shipments: [
+      {
+        id: 5,
+        company_id: 1,
+        customer_id: 7,
+        vendor_id: 7,
+        tracking_number: 'RTC-HIST-5',
+        vendor_reference_id: 'ref-1001',
+        branch_id: 1,
+        destination_branch_id: 1,
+        sender_name: 'Anee Collection',
+        sender_phone: '9857036839',
+        pickup_address: 'Butwal Traffic Chowk',
+        receiver_name: 'Zahid Ali',
+        receiver_phone: '9877712345',
+        alt_phone: '',
+        delivery_address: 'Butwal Belbas',
+        city: 'Butwal',
+        order_type: 'Delivery Order',
+        service_type: 'Standard',
+        weight_kg: 1.0,
+        package_description: 'Ladies Clothing Set',
+        product_category: 'Clothing & Textiles',
+        item_value: 1200,
+        status: 'delivered',
+        cod_amount: 1200,
+        delivery_fee: 100,
+        notes: 'Delivered successfully with cash collected',
+        created_at: '2026-10-05T10:00:00.000Z',
+        delivered_at: '2026-10-06T15:30:00.000Z',
+      },
+      {
+        id: 7,
+        company_id: 1,
+        customer_id: 7,
+        vendor_id: 7,
+        tracking_number: 'RTC-HIST-7',
+        vendor_reference_id: 'ref-1002',
+        branch_id: 1,
+        destination_branch_id: 1,
+        sender_name: 'Anee Collection',
+        sender_phone: '9857036839',
+        pickup_address: 'Butwal Traffic Chowk',
+        receiver_name: 'Zahid Ali',
+        receiver_phone: '9877712345',
+        alt_phone: '',
+        delivery_address: 'Butwal Belbas',
+        city: 'Butwal',
+        order_type: 'Delivery Order',
+        service_type: 'Standard',
+        weight_kg: 1.5,
+        package_description: 'Designer Kurtis Collection',
+        product_category: 'Clothing & Textiles',
+        item_value: 1800,
+        status: 'delivered',
+        cod_amount: 1800,
+        delivery_fee: 120,
+        notes: 'Delivered and signed by Zahid Ali',
+        created_at: '2026-10-07T12:00:00.000Z',
+        delivered_at: '2026-10-08T16:00:00.000Z',
+      },
+      {
+        id: 10,
+        company_id: 1,
+        customer_id: 7,
+        vendor_id: 7,
+        tracking_number: 'RTC-HIST-10',
+        vendor_reference_id: 'ref-1003',
+        branch_id: 1,
+        destination_branch_id: 1,
+        sender_name: 'Anee Collection',
+        sender_phone: '9857036839',
+        pickup_address: 'Butwal Traffic Chowk',
+        receiver_name: 'Zahid Ali',
+        receiver_phone: '9877712345',
+        alt_phone: '',
+        delivery_address: 'Butwal Belbas',
+        city: 'Butwal',
+        order_type: 'Delivery Order',
+        service_type: 'Standard',
+        weight_kg: 2.0,
+        package_description: 'Winter Shawls & Suits',
+        product_category: 'Clothing & Textiles',
+        item_value: 2500,
+        status: 'delivered',
+        cod_amount: 2500,
+        delivery_fee: 150,
+        notes: 'Payment collected via cash',
+        created_at: '2026-10-27T14:30:00.000Z',
+        delivered_at: '2026-10-28T11:20:00.000Z',
+      },
+      {
+        id: 11,
+        company_id: 1,
+        customer_id: 7,
+        vendor_id: 7,
+        tracking_number: 'RTC-HIST-11',
+        vendor_reference_id: 'ref-1004',
+        branch_id: 1,
+        destination_branch_id: 1,
+        sender_name: 'Anee Collection',
+        sender_phone: '9857036839',
+        pickup_address: 'Butwal Traffic Chowk',
+        receiver_name: 'Nagar paudel',
+        receiver_phone: '9800012345',
+        alt_phone: '',
+        delivery_address: 'Butwal Golpark',
+        city: 'Butwal',
+        order_type: 'Delivery Order',
+        service_type: 'Express',
+        weight_kg: 1.0,
+        package_description: 'Party Wear Saree',
+        product_category: 'Clothing & Textiles',
+        item_value: 3200,
+        status: 'in_transit',
+        cod_amount: 3200,
+        delivery_fee: 150,
+        notes: 'Arrived at Destination Hub Butwal',
+        created_at: '2026-10-31T09:15:00.000Z',
+      },
+      {
+        id: 12,
+        company_id: 1,
+        customer_id: 7,
+        vendor_id: 7,
+        tracking_number: 'RTC-20261102-1',
+        vendor_reference_id: 'ref-1005',
+        branch_id: 1,
+        destination_branch_id: 1,
+        sender_name: 'Anee Collection',
+        sender_phone: '9857036839',
+        pickup_address: 'Butwal Traffic Chowk',
+        receiver_name: 'Tara Thapa',
+        receiver_phone: '9812345678',
+        alt_phone: '',
+        delivery_address: 'Traffic Chowk, Butwal',
+        city: 'Butwal',
+        order_type: 'Delivery Order',
+        service_type: 'Standard',
+        weight_kg: 1.0,
+        package_description: 'Printed Georgette Dress',
+        product_category: 'Clothing & Textiles',
+        item_value: 1500,
+        status: 'pending',
+        cod_amount: 1500,
+        delivery_fee: 100,
+        notes: 'Ready for rider pickup',
+        created_at: '2026-11-02T08:00:00.000Z',
+      },
+    ],
     invoices: [],
   };
 }
@@ -227,7 +401,33 @@ export function loadCompanyState(companyId) {
   const key = companyDataKey(companyId);
   try {
     const raw = localStorage.getItem(key);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Ensure seed customers & shipments exist if missing
+      const freshSeed = seedCompanyState(companyId);
+      let needsSave = false;
+      if (freshSeed?.customers) {
+        freshSeed.customers.forEach((c) => {
+          if (!(parsed.customers || []).some((existing) => Number(existing.id) === Number(c.id))) {
+            parsed.customers = [...(parsed.customers || []), c];
+            needsSave = true;
+          }
+        });
+      }
+      if (freshSeed?.shipments && freshSeed.shipments.length > 0) {
+        const existingTrackings = new Set((parsed.shipments || []).map((s) => s.tracking_number));
+        freshSeed.shipments.forEach((s) => {
+          if (!existingTrackings.has(s.tracking_number)) {
+            parsed.shipments = [...(parsed.shipments || []), s];
+            needsSave = true;
+          }
+        });
+      }
+      if (needsSave) {
+        localStorage.setItem(key, JSON.stringify(parsed));
+      }
+      return parsed;
+    }
   } catch (e) {
     console.error(e);
   }

@@ -694,7 +694,10 @@ export const d1Api = {
 
       const res = await fetch(url);
       if (!res.ok) return null;
-      return await res.json();
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) return null;
+      const data = await res.json();
+      return Array.isArray(data) ? data : null;
     } catch (e) {
       return null;
     }
@@ -942,7 +945,10 @@ export const d1Api = {
       if (filters.tracking_number) params.append('tracking_number', filters.tracking_number);
       const res = await fetch(`/api/vendor-orders?${params.toString()}`);
       if (!res.ok) return [];
-      return await res.json();
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
     } catch (e) {
       console.warn('Failed to fetch vendor orders from D1:', e);
       return [];

@@ -1860,11 +1860,11 @@ export function CompanyProvider({ children }) {
     }
   };
 
-  const loadVendorCustomers = async (customerId) => {
+  const loadVendorCustomers = useCallback(async (customerId) => {
     if (!companyId || !customerId) return [];
     try {
       const list = await d1Api.getVendorCustomers(customerId, companyId);
-      if (Array.isArray(list)) {
+      if (Array.isArray(list) && list.length > 0) {
         updateData((prev) => ({
           ...prev,
           customers: (prev.customers || []).map((c) => {
@@ -1881,9 +1881,9 @@ export function CompanyProvider({ children }) {
       console.warn('Failed to fetch vendor customers from D1:', err);
     }
     return [];
-  };
+  }, [companyId]);
 
-  const loadVendorOrders = async (vendorId) => {
+  const loadVendorOrders = useCallback(async (vendorId) => {
     if (!companyId || !vendorId) return [];
     try {
       const [vendorOrders, customerShipments] = await Promise.all([
@@ -1893,35 +1893,56 @@ export function CompanyProvider({ children }) {
 
       const mergedMap = new Map();
       (customerShipments || []).forEach((s) => {
-        if (s && s.tracking_number) mergedMap.set(s.tracking_number, { ...s, customer_id: Number(vendorId) });
+        if (s && (s.tracking_number || s.id)) {
+          const key = s.tracking_number || `id_${s.id}`;
+          mergedMap.set(key, { ...s, customer_id: Number(vendorId), vendor_id: Number(vendorId) });
+        }
       });
       (vendorOrders || []).forEach((o) => {
-        if (o && o.tracking_number) {
-          if (!mergedMap.has(o.tracking_number)) {
-            mergedMap.set(o.tracking_number, { ...o, customer_id: Number(vendorId) });
+        if (o && (o.tracking_number || o.id)) {
+          const key = o.tracking_number || `id_${o.id}`;
+          if (!mergedMap.has(key)) {
+            mergedMap.set(key, { ...o, customer_id: Number(vendorId), vendor_id: Number(vendorId) });
           } else {
-            // Merge fields if customerShipments lacks any
-            const existing = mergedMap.get(o.tracking_number);
-            mergedMap.set(o.tracking_number, { ...o, ...existing, customer_id: Number(vendorId) });
+            const existing = mergedMap.get(key);
+            mergedMap.set(key, { ...o, ...existing, customer_id: Number(vendorId), vendor_id: Number(vendorId) });
           }
         }
       });
 
       const allVendorShipments = Array.from(mergedMap.values());
 
-      updateData((prev) => {
-        const existingOther = (prev.shipments || []).filter((s) => Number(s.customer_id) !== Number(vendorId));
-        return {
-          ...prev,
-          shipments: [...allVendorShipments, ...existingOther],
-        };
-      });
+      if (allVendorShipments.length > 0) {
+        updateData((prev) => {
+          if (!prev) return prev;
+          const prevShipments = prev.shipments || [];
+          const map = new Map();
+          // Keep all existing shipments
+          prevShipments.forEach((s) => {
+            if (s) {
+              const k = s.tracking_number || `id_${s.id}`;
+              map.set(k, s);
+            }
+          });
+          // Merge in fresh vendor shipments
+          allVendorShipments.forEach((s) => {
+            const k = s.tracking_number || `id_${s.id}`;
+            const existing = map.get(k) || {};
+            map.set(k, { ...existing, ...s, customer_id: Number(vendorId), vendor_id: Number(vendorId) });
+          });
+          return {
+            ...prev,
+            shipments: Array.from(map.values()),
+          };
+        });
+      }
+
       return allVendorShipments;
     } catch (e) {
       console.warn('Failed to load vendor orders from D1:', e);
+      return [];
     }
-    return [];
-  };
+  }, [companyId]);
 
   const addVendorOrder = async (orderPayload) => {
     return addShipment({

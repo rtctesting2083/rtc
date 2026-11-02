@@ -49,6 +49,7 @@ export function CustomerOrdersPage() {
 
   const [selectedOrderIds, setSelectedOrderIds] = useState([]);
   const [loading, setLoading] = useState(false);
+  const fetchedCustIdRef = React.useRef(null);
 
   // Auto-open modal if ?create=1 in query params
   useEffect(() => {
@@ -64,21 +65,27 @@ export function CustomerOrdersPage() {
     }
   }, [searchParams, handleOpenCreateOrder, setSearchParams]);
 
-  // Load from D1 vendor_order on mount
+  // Load from D1 vendor_order on mount or customer change
   useEffect(() => {
-    if (currentCustomer?.id && typeof loadVendorOrders === 'function') {
-      setLoading(true);
-      try {
-        const p = loadVendorOrders(currentCustomer.id);
-        if (p && typeof p.finally === 'function') {
-          p.finally(() => setLoading(false));
-        } else {
-          setLoading(false);
-        }
-      } catch {
-        setLoading(false);
-      }
-    }
+    const custId = currentCustomer?.id;
+    if (!custId || typeof loadVendorOrders !== 'function') return;
+    if (fetchedCustIdRef.current === custId) return;
+    fetchedCustIdRef.current = custId;
+
+    let isMounted = true;
+    setLoading(true);
+
+    loadVendorOrders(custId)
+      .catch((err) => {
+        console.warn('Failed to load vendor orders from D1:', err);
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, [currentCustomer?.id, loadVendorOrders]);
 
   // Manual reload from Cloudflare D1
@@ -98,8 +105,17 @@ export function CustomerOrdersPage() {
   // Map live shipments for this customer into the unified format directly from Cloudflare D1
   const liveCustomerOrders = useMemo(() => {
     const custId = Number(currentCustomer?.id);
+    const custPhone = String(currentCustomer?.phone || '').trim();
+    const custName = String(currentCustomer?.name || '').trim().toLowerCase();
+
     return (shipments || [])
-      .filter((s) => s && (Number(s.customer_id) === custId || Number(s.vendor_id) === custId))
+      .filter((s) => {
+        if (!s) return false;
+        if (custId && (Number(s.customer_id) === custId || Number(s.vendor_id) === custId)) return true;
+        if (custPhone && (String(s.sender_phone || '').trim() === custPhone || String(s.customer_phone || '').trim() === custPhone)) return true;
+        if (custName && (String(s.sender_name || '').trim().toLowerCase() === custName || String(s.customer_name || '').trim().toLowerCase() === custName)) return true;
+        return false;
+      })
       .map((s) => {
         const destB = s.destination_branch_id
           ? typeof findBranch === 'function' ? findBranch(s.destination_branch_id) : null
@@ -158,7 +174,7 @@ export function CustomerOrdersPage() {
           rawShipment: s,
         };
       });
-  }, [shipments, currentCustomer, findBranch]);
+  }, [shipments, currentCustomer?.id, currentCustomer?.phone, currentCustomer?.name, findBranch]);
 
   // Pure live orders directly from Cloudflare D1 (Zero static dummy data)
   const allOrders = liveCustomerOrders;
