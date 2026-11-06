@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   Home,
   Package,
@@ -25,41 +25,62 @@ import {
   User,
   Menu,
   X,
+  Truck,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
 import { initialsFor } from '../../utils/helpers';
 import { CreateOrderModal } from '../customer/CreateOrderModal';
+import { VendorPickupRequestModal } from '../customer/VendorPickupRequestModal';
+import { ThemeToggleBtn } from '../common/ThemeToggleBtn';
 import logoImg from '../../assets/logo-transparent.png';
 import '../../pages/customer/VendorDashboard.css';
 
 export function CustomerLayout() {
   const { session, logout } = useAuth();
-  const { company, customers } = useCompany();
-  const { openModal } = useModal();
+  const { company, customers, shipments = [] } = useCompany();
+  const { openModal, closeModal } = useModal();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const [orderOpen, setOrderOpen] = useState(false);
-  const [accountsOpen, setAccountsOpen] = useState(false);
-  const [usersOpen, setUsersOpen] = useState(false);
-  const [reportsOpen, setReportsOpen] = useState(false);
+  const [orderOpen, setOrderOpen] = useState(() => location.pathname.startsWith('/customer/orders'));
+  const [accountsOpen, setAccountsOpen] = useState(() => location.pathname.startsWith('/customer/invoices') || location.pathname.startsWith('/customer/cod-settlement'));
+  const [usersOpen, setUsersOpen] = useState(() => location.pathname.startsWith('/customer/staff'));
+  const [reportsOpen, setReportsOpen] = useState(() => location.pathname.startsWith('/customer/orders/pickup-report'));
+
+  useEffect(() => {
+    if (location.pathname.startsWith('/customer/orders')) {
+      setOrderOpen(true);
+    }
+    if (location.pathname.startsWith('/customer/invoices') || location.pathname.startsWith('/customer/cod-settlement')) {
+      setAccountsOpen(true);
+    }
+    if (location.pathname.startsWith('/customer/staff')) {
+      setUsersOpen(true);
+    }
+    if (location.pathname.startsWith('/customer/orders/pickup-report')) {
+      setReportsOpen(true);
+    }
+  }, [location.pathname]);
 
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
   const [dateFilter, setDateFilter] = useState('Overall');
   const [searchQuery, setSearchQuery] = useState('');
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const currentCustomer = (customers || []).find((c) => Number(c.id) === Number(session?.customerId)) ||
     (customers && customers.length > 0 ? customers[0] : null) || {
-      id: 1,
-      name: 'Himalayan Traders',
-      email: 'contact@himalayantraders.com.np',
-      phone: '9800000001',
-      address: 'Butwal',
-      city: 'Butwal',
-    };
+    id: 1,
+    name: 'Wens Trade Link',
+    contact_person: 'Tara Thapa',
+    email: 'contact@wenstradelink.com',
+    phone: '9857036839',
+    address: 'Butwal',
+    city: 'Butwal',
+  };
 
   const staffUser = currentCustomer && session?.staffUserId
     ? (currentCustomer.staffUsers || []).find((u) => Number(u.id) === Number(session.staffUserId))
@@ -79,7 +100,25 @@ export function CustomerLayout() {
 
   const handleOpenCreateOrder = () => {
     setMobileMenuOpen(false);
-    openModal('Create New Order', <CreateOrderModal currentCustomer={currentCustomer} />, 'xxwide', { hideHeader: true });
+    navigate('/customer/orders/create');
+  };
+
+  const handleOpenPickupRequest = () => {
+    setMobileMenuOpen(false);
+    openModal(
+      'Request Parcel Pickup from Store',
+      <VendorPickupRequestModal
+        currentCustomer={currentCustomer}
+        allVendorOrders={shipments}
+        onClose={closeModal}
+        onSuccess={() => {
+          closeModal();
+          navigate('/customer/orders/pickup-report');
+        }}
+      />,
+      'wide',
+      { hideHeader: true }
+    );
   };
 
   const closeMobileMenu = () => {
@@ -93,13 +132,30 @@ export function CustomerLayout() {
     }
   };
 
-  const customerName = (staffUser && typeof staffUser.name === 'string' && staffUser.name)
-    ? staffUser.name
-    : (currentCustomer && typeof currentCustomer.name === 'string' && currentCustomer.name)
-    ? currentCustomer.name
-    : 'Himalayan Traders';
+  // Vendor User's Name (e.g. "Tara Thapa")
+  const vendorUserName = (staffUser && typeof staffUser.name === 'string' && staffUser.name.trim())
+    ? staffUser.name.trim()
+    : (currentCustomer && typeof currentCustomer.contact_person === 'string' && currentCustomer.contact_person.trim())
+      ? currentCustomer.contact_person.trim()
+      : (currentCustomer && typeof currentCustomer.owner_name === 'string' && currentCustomer.owner_name.trim())
+        ? currentCustomer.owner_name.trim()
+        : 'Tara Thapa';
 
-  const customerInitials = initialsFor(customerName);
+  // Vendor Business / Store Name (e.g. "Wens Trade Link")
+  const vendorBusinessName = (currentCustomer && typeof currentCustomer.name === 'string' && currentCustomer.name.trim())
+    ? currentCustomer.name.trim()
+    : 'Wens Trade Link';
+
+  const customerName = vendorUserName;
+  const customerInitials = initialsFor(vendorUserName || vendorBusinessName);
+
+  const handleToggleSidebar = () => {
+    if (typeof window !== 'undefined' && window.innerWidth <= 991) {
+      setMobileMenuOpen((prev) => !prev);
+    } else {
+      setSidebarCollapsed((prev) => !prev);
+    }
+  };
 
   const locationCity = (() => {
     if (!currentCustomer) return 'Butwal';
@@ -112,16 +168,17 @@ export function CustomerLayout() {
   })();
 
   return (
-    <div className="vendor-shell">
+    <div className={`vendor-shell ${sidebarCollapsed ? 'sidebar-is-collapsed' : ''}`}>
       {/* ── Top Navbar (Matches Screenshot) ── */}
       <header className="vendor-global-topbar">
         {/* Left: Mobile Toggle & Brand Logo */}
         <div className="vendor-topbar-left">
           <button
             type="button"
-            className="vendor-hamburger-btn"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            aria-label="Toggle Navigation"
+            className={`vendor-hamburger-btn ${sidebarCollapsed ? 'is-collapsed' : ''}`}
+            onClick={handleToggleSidebar}
+            aria-label="Toggle Navigation Sidebar"
+            title="Toggle Sidebar Navigation"
           >
             <Menu size={20} />
           </button>
@@ -151,6 +208,8 @@ export function CustomerLayout() {
 
         {/* Right: Date Filter, + Create Order, Notifications & Profile */}
         <div className="vendor-topbar-right">
+          <ThemeToggleBtn variant="pill" style={{ color: 'var(--vendor-text, #0f172a)' }} />
+
           {/* Date Filter Dropdown */}
           <div className="vendor-filter-dropdown-wrapper">
             <button
@@ -197,17 +256,17 @@ export function CustomerLayout() {
             onClick={() => navigate('/customer/orders')}
           >
             <ShoppingBag size={18} />
-            <span className="vendor-badge-pill green">5</span>
+            <span className="vendor-badge-pill red">5</span>
           </div>
 
           {/* Bell Notification Badge */}
           <div
             className="vendor-icon-badge-btn"
-            title="Notifications"
-            onClick={() => navigate('/customer/placeholder/Notice Board')}
+            title="Notice Board & Announcements"
+            onClick={() => navigate('/customer/notices')}
           >
             <Bell size={18} />
-            <span className="vendor-badge-pill green">0</span>
+            <span className="vendor-badge-pill red">1</span>
           </div>
 
           {/* Profile Circle Avatar */}
@@ -267,7 +326,7 @@ export function CustomerLayout() {
         )}
 
         {/* ── Left Sidebar (Matches Screenshot) ── */}
-        <aside className={`vendor-sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
+        <aside className={`vendor-sidebar ${mobileMenuOpen ? 'mobile-open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
           <div className="vendor-sidebar-scroll">
             {/* Mobile Close Header */}
             <div className="vendor-sidebar-mobile-head">
@@ -288,6 +347,7 @@ export function CustomerLayout() {
               <NavLink
                 to="/customer/dashboard"
                 onClick={closeMobileMenu}
+                title="Dashboard"
                 className={({ isActive }) => `vendor-nav-item ${isActive ? 'active' : ''}`}
               >
                 <span className="vendor-nav-icon"><Home size={16} strokeWidth={2} /></span>
@@ -298,6 +358,7 @@ export function CustomerLayout() {
               <div>
                 <button
                   type="button"
+                  title="Order page"
                   className={`vendor-nav-item with-chevron ${orderOpen ? 'open' : ''}`}
                   onClick={() => setOrderOpen(!orderOpen)}
                 >
@@ -311,6 +372,7 @@ export function CustomerLayout() {
                   <div className="vendor-sub-list">
                     <NavLink
                       to="/customer/orders"
+                      end
                       onClick={closeMobileMenu}
                       className={({ isActive }) => `vendor-sub-item ${isActive ? 'active' : ''}`}
                     >
@@ -325,14 +387,31 @@ export function CustomerLayout() {
                       <span className="vendor-sub-icon"><PlusCircle size={14} strokeWidth={2} /></span>
                       <span>+ Create Order</span>
                     </NavLink>
+                    <NavLink
+                      to="/customer/orders/pickup-request"
+                      onClick={closeMobileMenu}
+                      className={({ isActive }) => `vendor-sub-item ${isActive ? 'active' : ''}`}
+                    >
+                      <span className="vendor-sub-icon"><Truck size={14} strokeWidth={2} /></span>
+                      <span>+ Pickup Request</span>
+                    </NavLink>
+                    <NavLink
+                      to="/customer/orders/pickup-report"
+                      onClick={closeMobileMenu}
+                      className={({ isActive }) => `vendor-sub-item ${isActive ? 'active' : ''}`}
+                    >
+                      <span className="vendor-sub-icon"><FileText size={14} strokeWidth={2} /></span>
+                      <span>Pickup Request Report</span>
+                    </NavLink>
                   </div>
                 )}
               </div>
 
               {/* 3. Tickets */}
               <NavLink
-                to="/customer/placeholder/Tickets"
+                to="/customer/tickets"
                 onClick={closeMobileMenu}
+                title="Tickets"
                 className={({ isActive }) => `vendor-nav-item ${isActive ? 'active' : ''}`}
               >
                 <span className="vendor-nav-icon"><Ticket size={16} strokeWidth={2} /></span>
@@ -343,6 +422,7 @@ export function CustomerLayout() {
               <NavLink
                 to="/customer/placeholder/Order Comment"
                 onClick={closeMobileMenu}
+                title="Order Comment"
                 className={({ isActive }) => `vendor-nav-item ${isActive ? 'active' : ''}`}
               >
                 <span className="vendor-nav-icon"><MessageSquare size={16} strokeWidth={2} /></span>
@@ -353,6 +433,7 @@ export function CustomerLayout() {
               <div>
                 <button
                   type="button"
+                  title="Accounts"
                   className={`vendor-nav-item with-chevron ${accountsOpen ? 'open' : ''}`}
                   onClick={() => setAccountsOpen(!accountsOpen)}
                 >
@@ -388,6 +469,7 @@ export function CustomerLayout() {
               <div>
                 <button
                   type="button"
+                  title="User Management"
                   className={`vendor-nav-item with-chevron ${usersOpen ? 'open' : ''}`}
                   onClick={() => setUsersOpen(!usersOpen)}
                 >
@@ -413,8 +495,9 @@ export function CustomerLayout() {
 
               {/* 7. Address Book */}
               <NavLink
-                to="/customer/customers"
+                to="/customer/address-book"
                 onClick={closeMobileMenu}
+                title="Address Book"
                 className={({ isActive }) => `vendor-nav-item ${isActive ? 'active' : ''}`}
               >
                 <span className="vendor-nav-icon"><BookOpen size={16} strokeWidth={2} /></span>
@@ -423,8 +506,9 @@ export function CustomerLayout() {
 
               {/* 8. Customer Details */}
               <NavLink
-                to="/customer/placeholder/Customer Details"
+                to="/customer/customer-details"
                 onClick={closeMobileMenu}
+                title="Customer Details"
                 className={({ isActive }) => `vendor-nav-item ${isActive ? 'active' : ''}`}
               >
                 <span className="vendor-nav-icon"><UserCheck size={16} strokeWidth={2} /></span>
@@ -435,6 +519,7 @@ export function CustomerLayout() {
               <div>
                 <button
                   type="button"
+                  title="Reports"
                   className={`vendor-nav-item with-chevron ${reportsOpen ? 'open' : ''}`}
                   onClick={() => setReportsOpen(!reportsOpen)}
                 >
@@ -446,6 +531,14 @@ export function CustomerLayout() {
                 </button>
                 {reportsOpen && (
                   <div className="vendor-sub-list">
+                    <NavLink
+                      to="/customer/orders/pickup-report"
+                      onClick={closeMobileMenu}
+                      className={({ isActive }) => `vendor-sub-item ${isActive ? 'active' : ''}`}
+                    >
+                      <span className="vendor-sub-icon"><Truck size={14} strokeWidth={2} /></span>
+                      <span>Pickup Request Report</span>
+                    </NavLink>
                     <NavLink
                       to="/customer/placeholder/Shipment Report"
                       onClick={closeMobileMenu}
@@ -460,8 +553,9 @@ export function CustomerLayout() {
 
               {/* 10. Check Rate */}
               <NavLink
-                to="/customer/placeholder/Check Rate"
+                to="/customer/check-rate"
                 onClick={closeMobileMenu}
+                title="Check Rate"
                 className={({ isActive }) => `vendor-nav-item ${isActive ? 'active' : ''}`}
               >
                 <span className="vendor-nav-icon"><TrendingUp size={16} strokeWidth={2} /></span>
@@ -472,6 +566,7 @@ export function CustomerLayout() {
               <NavLink
                 to="/customer/placeholder/API & Webhooks"
                 onClick={closeMobileMenu}
+                title="API & Webhooks"
                 className={({ isActive }) => `vendor-nav-item ${isActive ? 'active' : ''}`}
               >
                 <span className="vendor-nav-icon"><Code size={16} strokeWidth={2} /></span>
@@ -480,16 +575,15 @@ export function CustomerLayout() {
             </nav>
           </div>
 
-          {/* ── Bottom Sidebar User Profile Card (Matches Screenshot) ── */}
+          {/* ── Bottom Sidebar User Profile Card (Matches Screenshot Mark Area 2) ── */}
           <div className="vendor-sidebar-bottom">
-            <div className="vendor-sidebar-user-pill">
+            <div className="vendor-sidebar-user-pill" title={`${vendorUserName} • ${vendorBusinessName}`}>
               <div className="vendor-user-avatar">
                 {customerInitials}
               </div>
               <div className="vendor-user-info">
-                <div className="vendor-user-name">{customerName}</div>
-                <div className="vendor-user-company">R.T.C. COURIER PVT. LTD.</div>
-                <div className="vendor-user-city">{locationCity}</div>
+                <div className="vendor-user-name">{vendorUserName}</div>
+                <div className="vendor-user-company">{vendorBusinessName}</div>
               </div>
             </div>
           </div>
@@ -503,6 +597,7 @@ export function CustomerLayout() {
                 currentCustomer,
                 staffUser,
                 handleOpenCreateOrder,
+                handleOpenPickupRequest,
                 dateFilter,
                 searchQuery,
               }}

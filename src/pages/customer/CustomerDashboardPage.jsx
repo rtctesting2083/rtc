@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import {
   Package,
@@ -14,10 +14,20 @@ import {
   X,
   FileSpreadsheet,
   Download,
+  Bell,
+  ChevronLeft,
+  ChevronRight,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
-import { fmtMoney, isToday } from '../../utils/helpers';
+import { fmtMoney, fmtDate, isToday } from '../../utils/helpers';
+import { d1Api } from '../../utils/d1Api';
+import { RequestCodModal } from '../../components/customer/RequestCodModal';
+import { VendorNoticeBanner } from '../../components/customer/VendorNoticeBanner';
+import { CreateTicketModal } from '../../components/customer/CreateTicketModal';
+import { VendorPickupRequestModal } from '../../components/customer/VendorPickupRequestModal';
+import { NoticeDetailModal } from '../../components/common/NoticeDetailModal';
 
 export function CustomerDashboardPage() {
   const navigate = useNavigate();
@@ -33,6 +43,47 @@ export function CustomerDashboardPage() {
   const [trendMode, setTrendMode] = useState('orders'); // 'orders' or 'value'
   const fetchedCustIdRef = useRef(null);
 
+  /* ── 1. Real COD Settlements from Cloudflare D1 (cod_settlements table) ── */
+  const [vendorSettlements, setVendorSettlements] = useState([]);
+  const [loadingSettlements, setLoadingSettlements] = useState(true);
+
+  useEffect(() => {
+    const custId = currentCustomer?.id;
+    if (!custId) return;
+    let active = true;
+    d1Api.getSettlements(1, { customer_id: custId })
+      .then((data) => {
+        if (active && Array.isArray(data)) {
+          setVendorSettlements(data);
+        }
+      })
+      .catch((err) => console.warn('Could not load settlements from D1:', err))
+      .finally(() => {
+        if (active) setLoadingSettlements(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [currentCustomer?.id]);
+
+  /* ── 2. Real Notices from Cloudflare D1 (notices table) ── */
+  const [d1Notices, setD1Notices] = useState([]);
+  const [activeNoticeIdx, setActiveNoticeIdx] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    d1Api.getNotices(1, 'vendor', 'published')
+      .then((data) => {
+        if (active && Array.isArray(data)) {
+          setD1Notices(data);
+        }
+      })
+      .catch((err) => console.warn('Could not load notices from D1:', err));
+    return () => {
+      active = false;
+    };
+  }, []);
+
   /* ── Load vendor orders from D1 ───────────────────────── */
   useEffect(() => {
     const custId = currentCustomer?.id;
@@ -40,19 +91,24 @@ export function CustomerDashboardPage() {
     if (fetchedCustIdRef.current === custId) return;
     fetchedCustIdRef.current = custId;
 
-    let isMounted = true;
+    let active = true;
     setLoading(true);
+    const timer = setTimeout(() => {
+      if (active) setLoading(false);
+    }, 4000);
 
     loadVendorOrders(custId)
       .catch((err) => {
         console.warn('Failed to load vendor orders from D1:', err);
       })
       .finally(() => {
-        if (isMounted) setLoading(false);
+        clearTimeout(timer);
+        if (active) setLoading(false);
       });
 
     return () => {
-      isMounted = false;
+      active = false;
+      clearTimeout(timer);
     };
   }, [currentCustomer?.id, loadVendorOrders]);
 
@@ -112,13 +168,22 @@ export function CustomerDashboardPage() {
   const totalDeliveryCharge = myShipments
     .reduce((sum, s) => sum + (Number(s.delivery_fee) || 0), 0);
 
-  const totalSettledCOD = myInvoices
+  // 100% Real Settled COD from D1 cod_settlements table (falling back to invoices if any)
+  const settlementsTotal = vendorSettlements.reduce(
+    (sum, st) => sum + (Number(st.net_payable) || Number(st.total_cod) || 0),
+    0
+  );
+  const invoicesTotal = myInvoices
     .filter((inv) => inv.status === 'paid')
     .reduce((sum, inv) => sum + (Number(inv.total_amount) || 0), 0);
+  const totalSettledCOD = settlementsTotal > 0 ? settlementsTotal : invoicesTotal;
 
   const codBalanceNet = Math.max(0, totalCODCollected - totalSettledCOD - totalDeliveryCharge);
 
-  // Last settled invoice
+  // Last settled transaction from D1
+  const lastSettledRecord = vendorSettlements.length > 0
+    ? [...vendorSettlements].sort((a, b) => new Date(b.settled_at || b.created_at) - new Date(a.settled_at || a.created_at))[0]
+    : null;
   const lastSettledInvoice = myInvoices
     .filter((inv) => inv.status === 'paid')
     .sort((a, b) => new Date(b.paid_at || b.created_at) - new Date(a.paid_at || a.created_at))[0];
@@ -148,198 +213,58 @@ export function CustomerDashboardPage() {
   const deliveredPct = totalProcessed > 0 ? Math.round((delivered / totalProcessed) * 100) : 100;
 
   /* ── Quick Action Modals ───────────────────────────────── */
-  const handleOpenTicketModal = () => {
+  const handleOpenTicketModal = (preselectedType = 'Pickup Issue') => {
     openModal(
       'Create Support Ticket',
-      <div style={{ padding: '8px' }}>
-        <p style={{ fontSize: '13px', color: '#6b7280', marginBottom: '14px' }}>
-          Submit an issue or inquiry regarding an order, pickup, or billing dispute.
-        </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '4px' }}>
-              Subject *
-            </label>
-            <input
-              type="text"
-              placeholder="e.g., Delay in Biratnagar delivery / Tracking update"
-              style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px' }}
-            />
-          </div>
-          <div>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '4px' }}>
-              Tracking Code / Order ID (Optional)
-            </label>
-            <input
-              type="text"
-              placeholder="e.g., RTC-20261102-1"
-              style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px' }}
-            />
-          </div>
-          <div>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '4px' }}>
-              Message / Description *
-            </label>
-            <textarea
-              rows={4}
-              placeholder="Provide full details of your inquiry..."
-              style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px' }}
-            />
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '10px' }}>
-            <button
-              type="button"
-              className="vendor-btn-secondary"
-              onClick={closeModal}
-              style={{ padding: '8px 14px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff', fontSize: '13px', cursor: 'pointer' }}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                alert('Your ticket has been submitted. RTC Support ticket #TK-8492 created.');
-                closeModal();
-              }}
-              style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: 'var(--theme-color, #dc2626)', color: '#fff', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}
-            >
-              Submit Ticket
-            </button>
-          </div>
-        </div>
-      </div>,
+      <CreateTicketModal
+        currentCustomer={currentCustomer}
+        preselectedType={preselectedType}
+        onClose={closeModal}
+        onSuccess={(ticket) => {
+          closeModal();
+          alert(`Support Ticket #${ticket?.ticket_number || ''} submitted successfully to Cloudflare D1.`);
+          navigate('/customer/tickets');
+        }}
+      />,
       'medium',
+      { hideHeader: true }
     );
   };
 
   const handleOpenCODModal = () => {
     openModal(
-      'Request COD Settlement',
-      <div style={{ padding: '8px' }}>
-        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', padding: '12px', borderRadius: '8px', marginBottom: '16px' }}>
-          <div style={{ fontSize: '12px', color: '#991b1b', fontWeight: 600 }}>AVAILABLE FOR SETTLEMENT</div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--theme-color, #dc2626)', marginTop: '2px' }}>
-            Rs. 32,550.00
-          </div>
-          <div style={{ fontSize: '11.5px', color: '#b91c1c', marginTop: '4px' }}>
-            Last Settled: Rs. 57,710.00 on 30 Oct 2026
-          </div>
-        </div>
-        <p style={{ fontSize: '13px', color: '#4b5563', lineHeight: 1.5 }}>
-          Requested funds will be transferred to your registered bank account or digital wallet within 24 banking hours.
-        </p>
-        <div style={{ marginTop: '12px' }}>
-          <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '4px' }}>
-            Settlement Amount (NPR)
-          </label>
-          <input
-            type="number"
-            defaultValue={32550}
-            max={32550}
-            style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px' }}
-          />
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '18px' }}>
-          <button
-            type="button"
-            onClick={closeModal}
-            style={{ padding: '8px 14px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff', fontSize: '13px', cursor: 'pointer' }}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              alert('Settlement request submitted successfully. You will receive an SMS confirmation.');
-              closeModal();
-            }}
-            style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: 'var(--theme-color, #dc2626)', color: '#fff', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}
-          >
-            Request Payout
-          </button>
-        </div>
-      </div>,
-      'medium',
+      'Request COD Settlement Payout',
+      <RequestCodModal
+        currentCustomer={currentCustomer}
+        onClose={closeModal}
+        onSuccess={() => {
+          closeModal();
+          if (typeof refreshData === 'function') refreshData();
+        }}
+      />,
+      'xxwide',
+      { hideHeader: true }
     );
   };
 
   const handleOpenPickupModal = () => {
+    if (typeof outletCtx.handleOpenPickupRequest === 'function') {
+      outletCtx.handleOpenPickupRequest();
+      return;
+    }
     openModal(
-      'Schedule Parcel Pickup',
-      <div style={{ padding: '8px' }}>
-        <p style={{ fontSize: '13px', color: '#6b7280', marginBottom: '14px' }}>
-          An RTC rider from Butwal Hub will be dispatched to collect your outgoing packages.
-        </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '4px' }}>
-              Pickup Address *
-            </label>
-            <input
-              type="text"
-              defaultValue={
-                typeof currentCustomer?.address === 'object' && currentCustomer.address
-                  ? (currentCustomer.address.municipality || currentCustomer.address.district || 'Milanchowk, Butwal, Rupandehi')
-                  : (typeof currentCustomer?.address === 'string' && currentCustomer.address ? currentCustomer.address : 'Milanchowk, Butwal, Rupandehi')
-              }
-              style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px' }}
-            />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '4px' }}>
-                Estimated Parcels *
-              </label>
-              <input
-                type="number"
-                defaultValue={5}
-                min={1}
-                style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px' }}
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '4px' }}>
-                Preferred Ready Time
-              </label>
-              <input
-                type="time"
-                defaultValue="14:00"
-                style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px' }}
-              />
-            </div>
-          </div>
-          <div>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '4px' }}>
-              Special Instructions
-            </label>
-            <input
-              type="text"
-              placeholder="e.g., Call upon arrival at gate"
-              style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px' }}
-            />
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px' }}>
-            <button
-              type="button"
-              onClick={closeModal}
-              style={{ padding: '8px 14px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff', fontSize: '13px', cursor: 'pointer' }}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                alert('Pickup scheduled! Rider will contact you before arriving.');
-                closeModal();
-              }}
-              style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: 'var(--theme-color, #dc2626)', color: '#fff', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}
-            >
-              Confirm Pickup
-            </button>
-          </div>
-        </div>
-      </div>,
-      'medium',
+      'Request Parcel Pickup from Store',
+      <VendorPickupRequestModal
+        currentCustomer={currentCustomer}
+        allVendorOrders={shipments}
+        onClose={closeModal}
+        onSuccess={() => {
+          closeModal();
+          navigate('/customer/orders/pickup-report');
+        }}
+      />,
+      'wide',
+      { hideHeader: true }
     );
   };
 
@@ -415,6 +340,9 @@ export function CustomerDashboardPage() {
 
   return (
     <div className="vendor-dashboard-content">
+      {/* ── Official Notice Board Announcement (Matches Screenshot) ── */}
+      <VendorNoticeBanner onOpenTicketModal={handleOpenTicketModal} />
+
       {/* ── 1. QUICK ACTION SECTION ── */}
       <section className="vendor-section">
         <h2 className="vendor-section-heading">QUICK ACTION</h2>
@@ -422,7 +350,7 @@ export function CustomerDashboardPage() {
           <button
             type="button"
             className="vendor-quick-action-card"
-            onClick={handleOpenCreateOrder}
+            onClick={() => navigate('/customer/orders/create')}
           >
             <Package size={16} className="qa-icon blue" />
             <span>Create Order</span>
@@ -488,7 +416,7 @@ export function CustomerDashboardPage() {
             <div className="metric-pill-title">IN PROCESS</div>
             <div className="metric-pill-val" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span>{inProcess}</span>
-              <RefreshCw size={13} style={{ color: '#d97706', opacity: 0.7 }} />
+              <RefreshCw size={13} style={{ color: 'var(--theme-color, #dc2626)', opacity: 0.85 }} />
             </div>
           </div>
 
@@ -615,16 +543,16 @@ export function CustomerDashboardPage() {
                     cy="80"
                     r="55"
                     fill="none"
-                    stroke="#e2e8f0"
+                    stroke="#fee2e2"
                     strokeWidth="20"
                   />
-                  {/* Green Delivered/Orders Ring */}
+                  {/* Red Delivered/Orders Ring */}
                   <circle
                     cx="80"
                     cy="80"
                     r="55"
                     fill="none"
-                    stroke="#16a34a"
+                    stroke="#dc2626"
                     strokeWidth="20"
                     strokeDasharray="345.57"
                     strokeDashoffset={345.57 * (1 - deliveredPct / 100)}
@@ -636,9 +564,9 @@ export function CustomerDashboardPage() {
                     x="80"
                     y="86"
                     textAnchor="middle"
-                    fill="#15803d"
+                    fill="#dc2626"
                     fontSize="20"
-                    fontWeight="700"
+                    fontWeight="800"
                   >
                     {deliveredPct}%
                   </text>
@@ -647,20 +575,20 @@ export function CustomerDashboardPage() {
                 {/* Legend */}
                 <div className="donut-legend-row">
                   <span className="legend-item">
-                    <span className="legend-dot green" /> Orders
+                    <span className="legend-dot red" /> Orders Delivered
                   </span>
                   <span className="legend-item">
-                    <span className="legend-dot red" /> RTO
+                    <span className="legend-dot dark" /> RTO / Returned
                   </span>
                 </div>
 
                 {/* Stat Box Badges */}
                 <div className="donut-stat-boxes">
-                  <div className="donut-stat-box green">
+                  <div className="donut-stat-box red">
                     <div className="donut-stat-label">Orders</div>
                     <div className="donut-stat-number">{totalOrders}</div>
                   </div>
-                  <div className="donut-stat-box red">
+                  <div className="donut-stat-box dark">
                     <div className="donut-stat-label">RTO Orders</div>
                     <div className="donut-stat-number">{rtoCount}</div>
                   </div>
@@ -692,10 +620,10 @@ export function CustomerDashboardPage() {
 
               {/* Bar Legend */}
               <div className="bar-legend-row">
-                <span className="legend-item"><span className="legend-square blue" /> Orders Created</span>
-                <span className="legend-item"><span className="legend-square green" /> Delivered</span>
-                <span className="legend-item"><span className="legend-square yellow" /> Pickup</span>
-                <span className="legend-item"><span className="legend-square pink" /> Returned</span>
+                <span className="legend-item"><span className="legend-square red" /> Orders Created</span>
+                <span className="legend-item"><span className="legend-square coral" /> Delivered</span>
+                <span className="legend-item"><span className="legend-square dark" /> Pickup</span>
+                <span className="legend-item"><span className="legend-square soft-red" /> Returned</span>
               </div>
 
               {/* Grouped SVG Bar Chart */}
@@ -726,47 +654,47 @@ export function CustomerDashboardPage() {
 
                     return (
                       <g key={item.date}>
-                        {/* Blue: Created */}
+                        {/* Red: Created */}
                         {hCreated > 0 && (
                           <rect
                             x={groupX}
                             y={170 - hCreated}
                             width={barW}
                             height={hCreated}
-                            fill="#93c5fd"
+                            fill="#dc2626"
                             rx="1"
                           />
                         )}
-                        {/* Green: Delivered */}
+                        {/* Coral: Delivered */}
                         {hDelivered > 0 && (
                           <rect
                             x={groupX + 10}
                             y={170 - hDelivered}
                             width={barW}
                             height={hDelivered}
-                            fill="#86efac"
+                            fill="#ef4444"
                             rx="1"
                           />
                         )}
-                        {/* Yellow: Pickup */}
+                        {/* Dark: Pickup */}
                         {hPickup > 0 && (
                           <rect
                             x={groupX + 20}
                             y={170 - hPickup}
                             width={barW}
                             height={hPickup}
-                            fill="#fde047"
+                            fill="#0f172a"
                             rx="1"
                           />
                         )}
-                        {/* Pink: Returned */}
+                        {/* Soft Red: Returned */}
                         {hReturned > 0 && (
                           <rect
                             x={groupX + 30}
                             y={170 - hReturned}
                             width={barW}
                             height={hReturned}
-                            fill="#f472b6"
+                            fill="#fca5a5"
                             rx="1"
                           />
                         )}
@@ -823,10 +751,10 @@ export function CustomerDashboardPage() {
                       <div className="cod-card-title">COD BALANCE ( NET )</div>
                       <div className="cod-balance-amount">{fmtMoney(codBalanceNet)}</div>
                       <div className="cod-card-sub">
-                        Last Settled: {lastSettledInvoice ? fmtMoney(lastSettledInvoice.total_amount) : 'Rs. 0.00'}
+                        Last Settled: {lastSettledRecord ? fmtMoney(lastSettledRecord.net_payable || lastSettledRecord.total_cod) : lastSettledInvoice ? fmtMoney(lastSettledInvoice.total_amount) : 'Rs. 0.00'}
                       </div>
                       <div className="cod-card-sub">
-                        Last Settled Date: {lastSettledInvoice ? fmtDate(lastSettledInvoice.paid_at || lastSettledInvoice.created_at) : '—'}
+                        Last Settled Date: {lastSettledRecord ? fmtDate(lastSettledRecord.settled_at || lastSettledRecord.created_at) : lastSettledInvoice ? fmtDate(lastSettledInvoice.paid_at || lastSettledInvoice.created_at) : '—'}
                       </div>
                     </div>
                     <div>
@@ -843,18 +771,86 @@ export function CustomerDashboardPage() {
               </div>
             </div>
 
-            {/* Notice Announcement Box */}
+            {/* Notice Announcement Box (100% Dynamic with D1 Database) */}
             <div className="vendor-card-panel notice-box">
-              <div className="panel-header-row">
-                <span className="panel-title red">NOTICE</span>
+              <div className="panel-header-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span className="panel-title red" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Bell size={14} />
+                  <span>NOTICE</span>
+                </span>
+
+                {d1Notices.length > 1 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#64748b' }}>
+                    <span>{activeNoticeIdx + 1}/{d1Notices.length}</span>
+                    <button
+                      type="button"
+                      onClick={() => setActiveNoticeIdx((prev) => (prev > 0 ? prev - 1 : d1Notices.length - 1))}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '1px', color: 'inherit', display: 'flex' }}
+                      title="Previous"
+                    >
+                      <ChevronLeft size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveNoticeIdx((prev) => (prev < d1Notices.length - 1 ? prev + 1 : 0))}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '1px', color: 'inherit', display: 'flex' }}
+                      title="Next"
+                    >
+                      <ChevronRight size={13} />
+                    </button>
+                  </div>
+                )}
               </div>
 
-              <div className="vendor-notice-content">
-                <h4 className="notice-title-nepali">डेलिभरीमा ढिलाइ सम्बन्धी सूचना</h4>
-                <p className="notice-body-nepali">
-                  आदरणीय ग्राहकवर्ग, हाल भइरहेको वर्षाका कारण केही स्थानहरूमा डेलिभरी सेवामा ढिलाइ हुन सक्ने जानकारी गराउन चाहन्छौं। वर्षाका कारण निर्धारित समयमै डेलिभरी सम्पन्न गर्न कठिनाइ भइरहेको छ। यसबाट पर्न गएको असुविधाप्रति हामी क्षमाप्रार्थी छौं। हामी तपाइँका सम्पूर्ण अर्डरहरू सुरक्षित र छिटोभन्दा छिटो डेलिभरी गर्ने प्रयासमा निरन्तर लागिरहेका छौं। यसबाट पर्न गएको असुविधाका लागि क्षमा गरिदिनुहुन अनुरोध गर्दछौं। धन्यवाद!
-                </p>
-              </div>
+              {d1Notices.length > 0 ? (
+                <div className="vendor-notice-content">
+                  <h4 className="notice-title-nepali" style={{ color: 'var(--theme-color, #dc2626)', margin: '0 0 6px 0', fontSize: '13.5px', fontWeight: 700 }}>
+                    {d1Notices[activeNoticeIdx]?.title}
+                  </h4>
+                  <p className="notice-body-nepali" style={{ whiteSpace: 'pre-line', lineHeight: '1.6', fontSize: '12px', color: '#334155', margin: 0 }}>
+                    {d1Notices[activeNoticeIdx]?.content}
+                  </p>
+
+                  {d1Notices[activeNoticeIdx]?.image_url && (
+                    <div style={{ marginTop: '8px' }}>
+                      <img
+                        src={d1Notices[activeNoticeIdx].image_url}
+                        alt="Notice Attachment"
+                        onClick={() =>
+                          openModal(
+                            d1Notices[activeNoticeIdx].title,
+                            <NoticeDetailModal notice={d1Notices[activeNoticeIdx]} onClose={closeModal} />,
+                            'wide'
+                          )
+                        }
+                        style={{
+                          maxHeight: '120px',
+                          maxWidth: '100%',
+                          objectFit: 'cover',
+                          borderRadius: '6px',
+                          border: '1px solid #e2e8f0',
+                          cursor: 'pointer',
+                        }}
+                        title="Click to view full image"
+                      />
+                    </div>
+                  )}
+
+                  <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8' }}>
+                    <span>{d1Notices[activeNoticeIdx]?.created_by || 'RTC Courier Team'}</span>
+                    <span>{fmtDate(d1Notices[activeNoticeIdx]?.created_at)}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="vendor-notice-content" style={{ padding: '8px 0', color: '#64748b', fontSize: '12.5px' }}>
+                  <p style={{ margin: '0 0 4px', fontStyle: 'italic', fontSize: '12px' }}>
+                    हाल कुनै नयाँ सूचना उपलब्ध छैन। (No active notices at this time.)
+                  </p>
+                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                    RTC Courier व्यवस्थापनबाट नयाँ सूचनाहरू प्रकाशित भएपछि यहाँ स्वतः देखिनेछ।
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         </div>

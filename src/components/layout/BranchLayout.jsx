@@ -11,10 +11,12 @@ import {
   Users,
   Building2,
   UserCheck,
+  Bell,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCompany } from '../../context/CompanyContext';
 import { initialsFor } from '../../utils/helpers';
+import { ThemeToggleBtn } from '../common/ThemeToggleBtn';
 import logoImg from '../../assets/logo-transparent.png';
 import '../../pages/company/AdminDashboard.css';
 
@@ -59,6 +61,7 @@ export function BranchLayout() {
 
   const navItems = [
     { key: 'overview', label: 'Overview', Icon: Home, path: '/branch/overview' },
+    { key: 'notices', label: 'Notice Board', Icon: Bell, path: '/branch/notices' },
     { key: 'shipments', label: 'Shipments', Icon: Package, path: '/branch/shipments' },
     { key: 'received-shipments', label: 'Received Shipment', Icon: Inbox, path: '/branch/received-shipments' },
     { key: 'track', label: 'Track Package', Icon: Search, path: '/branch/track' },
@@ -165,7 +168,13 @@ export function BranchLayout() {
           </div>
 
           <div className="admin-topbar-right">
-            <button type="button" className="admin-topbar-bell" title="Notifications">
+            <ThemeToggleBtn variant="pill" style={{ marginRight: '6px' }} />
+            <button
+              type="button"
+              className="admin-topbar-bell"
+              title="Notice Board & Advisories"
+              onClick={() => navigate('/branch/notices')}
+            >
               🔔
               <span className="admin-topbar-badge">1</span>
             </button>

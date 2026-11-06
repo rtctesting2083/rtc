@@ -7,7 +7,9 @@ export function ForwardShipmentModal({ shipmentIds = [], currentBranchId = null,
   const { branches, forwardToBranch, bulkForwardToBranch, findBranch } = useCompany();
   const { closeModal } = useModal();
 
-  const destinationOptions = branches.filter((b) => b.id !== Number(currentBranchId));
+  const destinationOptions = (branches || []).filter(
+    (b) => b && b.id !== Number(currentBranchId) && b.status !== 'inactive' && b.status !== 'disabled'
+  );
   const [destBranchId, setDestBranchId] = useState(destinationOptions[0]?.id || '');
   const [error, setError] = useState('');
 

@@ -1,0 +1,494 @@
+/* ==========================================================================
+   RTC Courier SaaS — Full Night Mode (Dark Theme) Stylesheet
+   Persisted to Cloudflare D1 Database across all portals
+   ========================================================================== */
+
+/* ── 1. Root & Base Tokens Override ─────────────────────────────────────── */
+html[data-theme="night"],
+body.night-mode {
+  --bg: #0b0f19 !important;
+  --surface: #111827 !important;
+  --surface-2: #1e293b !important;
+  --border: #2e3b52 !important;
+  --text: #f1f5f9 !important;
+  --text-muted: #94a3b8 !important;
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.5) !important;
+
+  /* Admin Dashboard Tokens */
+  --admin-bg: #0b0f19 !important;
+  --admin-card-border: #22314e !important;
+  --admin-card-shadow: 0 4px 20px rgba(0, 0, 0, 0.45) !important;
+  --admin-card-hover: 0 8px 30px rgba(0, 0, 0, 0.6) !important;
+  --admin-text-main: #f8fafc !important;
+  --admin-text-muted: #94a3b8 !important;
+
+  /* Vendor Dashboard Tokens */
+  --vendor-bg: #0b0f19 !important;
+  --vendor-card-border: #22314e !important;
+  --vendor-text: #f8fafc !important;
+  --vendor-text-muted: #94a3b8 !important;
+  --vendor-navy: #38bdf8 !important;
+
+  background-color: #0b0f19 !important;
+  color: #f1f5f9 !important;
+  color-scheme: dark;
+}
+
+/* ── 2. Admin & Branch Portal Layouts ────────────────────────────────────── */
+html[data-theme="night"] .admin-app-container,
+body.night-mode .admin-app-container {
+  background: #0b0f19 !important;
+  color: #f1f5f9 !important;
+}
+
+html[data-theme="night"] .admin-sidebar,
+body.night-mode .admin-sidebar {
+  background: #0f172a !important;
+  border-right: 1px solid #1e293b !important;
+  color: #f1f5f9 !important;
+}
+
+html[data-theme="night"] .admin-brand-card,
+body.night-mode .admin-brand-card {
+  background: #172239 !important;
+  border: 1px solid #273756 !important;
+  color: #f8fafc !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+html[data-theme="night"] .admin-brand-card h3,
+body.night-mode .admin-brand-card h3 {
+  color: #f8fafc !important;
+}
+
+html[data-theme="night"] .admin-brand-card p,
+body.night-mode .admin-brand-card p {
+  color: #94a3b8 !important;
+}
+
+html[data-theme="night"] .admin-nav-section-title,
+body.night-mode .admin-nav-section-title {
+  color: #64748b !important;
+}
+
+html[data-theme="night"] .admin-nav-link,
+body.night-mode .admin-nav-link {
+  color: #94a3b8 !important;
+}
+
+html[data-theme="night"] .admin-nav-link:hover,
+body.night-mode .admin-nav-link:hover {
+  background: rgba(220, 38, 38, 0.18) !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="night"] .admin-nav-link.active,
+body.night-mode .admin-nav-link.active {
+  background: rgba(220, 38, 38, 0.25) !important;
+  color: #ef4444 !important;
+  font-weight: 700 !important;
+}
+
+html[data-theme="night"] .admin-sidebar-footer,
+body.night-mode .admin-sidebar-footer {
+  background: #0f172a !important;
+  border-top: 1px solid #1e293b !important;
+  color: #f1f5f9 !important;
+}
+
+html[data-theme="night"] .admin-sidebar-btn,
+body.night-mode .admin-sidebar-btn {
+  background: #1e293b !important;
+  border: 1px solid #334155 !important;
+  color: #f1f5f9 !important;
+}
+
+html[data-theme="night"] .admin-sidebar-btn:hover,
+body.night-mode .admin-sidebar-btn:hover {
+  background: #334155 !important;
+  border-color: #475569 !important;
+}
+
+html[data-theme="night"] .admin-content,
+body.night-mode .admin-content {
+  background: #0b0f19 !important;
+  color: #f1f5f9 !important;
+}
+
+/* ── 3. Vendor Portal Layout ────────────────────────────────────────────── */
+html[data-theme="night"] .vendor-shell,
+body.night-mode .vendor-shell {
+  background: #0b0f19 !important;
+  color: #f1f5f9 !important;
+}
+
+html[data-theme="night"] .vendor-global-topbar,
+body.night-mode .vendor-global-topbar {
+  background: #0f172a !important;
+  border-bottom: 1px solid #1e293b !important;
+  color: #f8fafc !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4) !important;
+}
+
+html[data-theme="night"] .vendor-sidebar,
+body.night-mode .vendor-sidebar {
+  background: #0f172a !important;
+  border-right: 1px solid #1e293b !important;
+  color: #f1f5f9 !important;
+}
+
+html[data-theme="night"] .vendor-nav-item,
+body.night-mode .vendor-nav-item {
+  color: #94a3b8 !important;
+}
+
+html[data-theme="night"] .vendor-nav-item:hover,
+body.night-mode .vendor-nav-item:hover {
+  background: rgba(220, 38, 38, 0.16) !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="night"] .vendor-nav-item.active,
+body.night-mode .vendor-nav-item.active {
+  background: rgba(220, 38, 38, 0.25) !important;
+  color: #ef4444 !important;
+  border-left-color: #ef4444 !important;
+}
+
+html[data-theme="night"] .vendor-content-area,
+body.night-mode .vendor-content-area {
+  background: #0b0f19 !important;
+  color: #f1f5f9 !important;
+}
+
+/* ── 4. Cards, Panels, Stats & Containers ───────────────────────────────── */
+html[data-theme="night"] .panel,
+html[data-theme="night"] .card,
+html[data-theme="night"] .admin-card,
+html[data-theme="night"] .vendor-card,
+html[data-theme="night"] .vendor-stat-card,
+html[data-theme="night"] .dashboard-card,
+html[data-theme="night"] .stat-strip,
+html[data-theme="night"] .stat-pill,
+body.night-mode .panel,
+body.night-mode .card,
+body.night-mode .admin-card,
+body.night-mode .vendor-card,
+body.night-mode .vendor-stat-card,
+body.night-mode .dashboard-card,
+body.night-mode .stat-strip,
+body.night-mode .stat-pill {
+  background: #111827 !important;
+  border: 1px solid #22314e !important;
+  color: #f8fafc !important;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35) !important;
+}
+
+html[data-theme="night"] .stat-label,
+html[data-theme="night"] .card-label,
+body.night-mode .stat-label,
+body.night-mode .card-label {
+  color: #94a3b8 !important;
+}
+
+html[data-theme="night"] .stat-value,
+html[data-theme="night"] .card-value,
+body.night-mode .stat-value,
+body.night-mode .card-value {
+  color: #f8fafc !important;
+}
+
+/* ── 5. Tables & Data Grids ─────────────────────────────────────────────── */
+html[data-theme="night"] table,
+body.night-mode table {
+  background: #111827 !important;
+  color: #f1f5f9 !important;
+  border-color: #22314e !important;
+}
+
+html[data-theme="night"] thead,
+html[data-theme="night"] thead tr,
+html[data-theme="night"] th,
+body.night-mode thead,
+body.night-mode thead tr,
+body.night-mode th {
+  background: #172239 !important;
+  color: #94a3b8 !important;
+  border-bottom: 1px solid #283958 !important;
+}
+
+html[data-theme="night"] tbody tr,
+body.night-mode tbody tr {
+  background: #111827 !important;
+  border-bottom: 1px solid #1e293b !important;
+  color: #e2e8f0 !important;
+}
+
+html[data-theme="night"] tbody tr:hover,
+body.night-mode tbody tr:hover {
+  background: #1a253d !important;
+}
+
+html[data-theme="night"] td,
+body.night-mode td {
+  border-bottom: 1px solid #1e293b !important;
+  color: #e2e8f0 !important;
+}
+
+/* ── 6. Form Controls & Inputs ──────────────────────────────────────────── */
+html[data-theme="night"] input,
+html[data-theme="night"] select,
+html[data-theme="night"] textarea,
+body.night-mode input,
+body.night-mode select,
+body.night-mode textarea {
+  background: #172239 !important;
+  border: 1px solid #2a3d60 !important;
+  color: #f8fafc !important;
+}
+
+html[data-theme="night"] input:focus,
+html[data-theme="night"] select:focus,
+html[data-theme="night"] textarea:focus,
+body.night-mode input:focus,
+body.night-mode select:focus,
+body.night-mode textarea:focus {
+  border-color: #ef4444 !important;
+  outline: 2px solid rgba(239, 68, 68, 0.3) !important;
+}
+
+html[data-theme="night"] input::placeholder,
+html[data-theme="night"] textarea::placeholder,
+body.night-mode input::placeholder,
+body.night-mode textarea::placeholder {
+  color: #64748b !important;
+}
+
+/* ── 7. Modals & Dialogs ────────────────────────────────────────────────── */
+html[data-theme="night"] .modal-backdrop,
+body.night-mode .modal-backdrop {
+  background: rgba(0, 0, 0, 0.78) !important;
+  backdrop-filter: blur(4px);
+}
+
+html[data-theme="night"] .modal-card,
+html[data-theme="night"] .modal-content,
+html[data-theme="night"] .modal-dialog,
+body.night-mode .modal-card,
+body.night-mode .modal-content,
+body.night-mode .modal-dialog {
+  background: #111827 !important;
+  border: 1px solid #283958 !important;
+  color: #f8fafc !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7) !important;
+}
+
+html[data-theme="night"] .modal-head,
+html[data-theme="night"] .modal-header,
+body.night-mode .modal-head,
+body.night-mode .modal-header {
+  background: #172239 !important;
+  border-bottom: 1px solid #243450 !important;
+  color: #f8fafc !important;
+}
+
+html[data-theme="night"] .modal-footer,
+body.night-mode .modal-footer {
+  background: #172239 !important;
+  border-top: 1px solid #243450 !important;
+}
+
+/* ── 8. Buttons & Controls ──────────────────────────────────────────────── */
+html[data-theme="night"] .btn-secondary,
+body.night-mode .btn-secondary {
+  background: #1e293b !important;
+  border: 1px solid #334155 !important;
+  color: #f1f5f9 !important;
+}
+
+html[data-theme="night"] .btn-secondary:hover,
+body.night-mode .btn-secondary:hover {
+  background: #334155 !important;
+  border-color: #475569 !important;
+}
+
+/* ── 9. Dropdown Menus ──────────────────────────────────────────────────── */
+html[data-theme="night"] .profile-dropdown,
+html[data-theme="night"] .dropdown-menu,
+body.night-mode .profile-dropdown,
+body.night-mode .dropdown-menu {
+  background: #0f172a !important;
+  border: 1px solid #2a3d60 !important;
+  color: #f8fafc !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6) !important;
+}
+
+html[data-theme="night"] .profile-dropdown-item:hover,
+body.night-mode .profile-dropdown-item:hover {
+  background: #1e293b !important;
+  color: #ffffff !important;
+}
+
+/* ── 10. Login / Portal Screen ──────────────────────────────────────────── */
+html[data-theme="night"] .portal-screen,
+body.night-mode .portal-screen {
+  background: #0b0f19 !important;
+}
+
+html[data-theme="night"] .portal-card,
+body.night-mode .portal-card {
+  background: #111827 !important;
+  border: 1px solid #243450 !important;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.65) !important;
+  color: #f8fafc !important;
+}
+
+html[data-theme="night"] .portal-hint,
+body.night-mode .portal-hint {
+  background: #172239 !important;
+  color: #94a3b8 !important;
+  border: 1px solid #243450 !important;
+}
+
+html[data-theme="night"] .quick-login-btn,
+body.night-mode .quick-login-btn {
+  background: #172239 !important;
+  border: 1px solid #283958 !important;
+  color: #f8fafc !important;
+}
+
+html[data-theme="night"] .quick-login-btn:hover,
+body.night-mode .quick-login-btn:hover {
+  background: #1f2e4d !important;
+  border-color: #ef4444 !important;
+}
+
+/* Modern Split Login Page in Night Mode */
+html[data-theme="night"] .rtc-login-container,
+body.night-mode .rtc-login-container {
+  background: #0b0f19 !important;
+  background-image: 
+    radial-gradient(at 10% 15%, rgba(220, 38, 38, 0.12) 0px, transparent 50%),
+    radial-gradient(at 90% 85%, rgba(30, 41, 59, 0.4) 0px, transparent 50%),
+    radial-gradient(at 50% 50%, rgba(11, 15, 25, 1) 0px, transparent 100%) !important;
+}
+
+html[data-theme="night"] .rtc-login-card,
+body.night-mode .rtc-login-card {
+  background: #111827 !important;
+  border: 1px solid #243450 !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75) !important;
+}
+
+html[data-theme="night"] .rtc-login-hero,
+body.night-mode .rtc-login-hero {
+  background: linear-gradient(175deg, #0f172a 0%, #111827 55%, #182238 100%) !important;
+  border-right: 1px solid #1e293b !important;
+}
+
+html[data-theme="night"] .rtc-login-form-side,
+body.night-mode .rtc-login-form-side {
+  background: #111827 !important;
+  color: #f8fafc !important;
+}
+
+html[data-theme="night"] .rtc-hero-headline-wrap .rtc-hero-headline-nepali,
+html[data-theme="night"] .rtc-hero-headline-sub,
+body.night-mode .rtc-hero-headline-wrap .rtc-hero-headline-nepali,
+body.night-mode .rtc-hero-headline-sub {
+  color: #e2e8f0 !important;
+}
+
+html[data-theme="night"] .rtc-phone-mockup,
+body.night-mode .rtc-phone-mockup {
+  background: #0f172a !important;
+  border-color: #334155 !important;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6) !important;
+}
+
+html[data-theme="night"] .rtc-phone-screen,
+body.night-mode .rtc-phone-screen {
+  background: #111827 !important;
+}
+
+html[data-theme="night"] .rtc-phone-card-mockup,
+body.night-mode .rtc-phone-card-mockup {
+  background: #1e293b !important;
+  border: 1px solid #334155 !important;
+}
+
+html[data-theme="night"] .rtc-orbit-badge,
+body.night-mode .rtc-orbit-badge {
+  background: #1e293b !important;
+  border: 1px solid #334155 !important;
+  color: #ef4444 !important;
+}
+
+html[data-theme="night"] .rtc-login-subtitle,
+body.night-mode .rtc-login-subtitle {
+  color: #94a3b8 !important;
+}
+
+html[data-theme="night"] .rtc-field-label,
+body.night-mode .rtc-field-label {
+  color: #cbd5e1 !important;
+}
+
+html[data-theme="night"] .rtc-field-input,
+body.night-mode .rtc-field-input {
+  background: #172239 !important;
+  border: 1px solid #2a3d60 !important;
+  color: #f8fafc !important;
+}
+
+html[data-theme="night"] .rtc-field-input:focus,
+body.night-mode .rtc-field-input:focus {
+  border-color: #ef4444 !important;
+}
+
+html[data-theme="night"] .rtc-demo-btn,
+body.night-mode .rtc-demo-btn {
+  background: #1e293b !important;
+  border: 1px solid #334155 !important;
+  color: #f1f5f9 !important;
+}
+
+html[data-theme="night"] .rtc-demo-btn:hover,
+body.night-mode .rtc-demo-btn:hover {
+  background: #334155 !important;
+}
+
+html[data-theme="night"] .rtc-hero-step-item,
+body.night-mode .rtc-hero-step-item {
+  color: #e2e8f0 !important;
+}
+
+html[data-theme="night"] .rtc-lang-toggle-btn,
+body.night-mode .rtc-lang-toggle-btn {
+  background: #1e293b !important;
+  border: 1px solid #334155 !important;
+  color: #f8fafc !important;
+}
+
+/* ── 11. Subtle Scrollbars in Night Mode ─────────────────────────────────── */
+html[data-theme="night"] ::-webkit-scrollbar,
+body.night-mode ::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+html[data-theme="night"] ::-webkit-scrollbar-track,
+body.night-mode ::-webkit-scrollbar-track {
+  background: #0b0f19;
+}
+
+html[data-theme="night"] ::-webkit-scrollbar-thumb,
+body.night-mode ::-webkit-scrollbar-thumb {
+  background: #243450;
+  border-radius: 4px;
+}
+
+html[data-theme="night"] ::-webkit-scrollbar-thumb:hover,
+body.night-mode ::-webkit-scrollbar-thumb:hover {
+  background: #374b70;
+}

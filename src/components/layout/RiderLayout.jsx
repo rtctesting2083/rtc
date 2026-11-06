@@ -1,10 +1,13 @@
 import React from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
+import { Bell } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
 import { initialsFor } from '../../utils/helpers';
 import { RiderProfileModal } from '../rider/RiderProfileModal';
+import { ThemeToggleBtn } from '../common/ThemeToggleBtn';
+import { NoticeBoardView } from '../common/NoticeBoardView';
 
 export function RiderLayout() {
   const { session, logout } = useAuth();
@@ -45,6 +48,8 @@ export function RiderLayout() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <ThemeToggleBtn variant="pill" />
+
           {/* Duty Status Display (Read-Only) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ fontSize: '12px', fontWeight: 600, color: '#ffffff' }}>Duty:</span>
@@ -77,6 +82,26 @@ export function RiderLayout() {
           </div>
 
           <div className="row-actions" style={{ display: 'flex', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={() => openModal('Rider Announcements (सूचना)', <NoticeBoardView portalType="rider" title="Rider Notices (राइडर सूचना)" />, 'wide')}
+              style={{
+                background: 'rgba(255, 255, 255, 0.2)',
+                color: '#ffffff',
+                border: '1px solid rgba(255, 255, 255, 0.4)',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                fontSize: '12px',
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}
+              title="View Notices & Announcements"
+            >
+              <Bell size={13} />
+              <span>Notices</span>
+            </button>
             <button
               type="button"
               onClick={handleViewProfile}

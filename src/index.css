@@ -1,4 +1,6 @@
 
+@import './theme-night.css';
+
   :root {
     --theme-color: #dc2626;
     --theme-color-light: rgba(220, 38, 38, 0.09);
@@ -654,13 +656,103 @@
 
   /* Print Styles */
   @media print {
-    body { background: #fff !important; color: #000 !important; }
-    .sidebar, .admin-topbar, .mobile-topbar, .filters, .row-actions, button, .no-print, .settlement-report-actions-bar, .vendor-global-topbar, .vendor-sidebar, .vendor-footer-strip { display: none !important; }
-    .main, .admin-main, .vendor-main-content { padding: 0 !important; max-width: 100% !important; margin: 0 !important; }
-    .panel, table { box-shadow: none !important; border-color: #ddd !important; }
-    .modal-backdrop { background: none !important; position: static !important; }
-    .modal, .modal-xxwide { width: 100% !important; max-width: 100% !important; padding: 0 !important; box-shadow: none !important; border: none !important; }
-    .settlement-statement-sheet { box-shadow: none !important; border: 1px solid #ccc !important; padding: 20px !important; margin: 0 !important; width: 100% !important; }
+    html, body {
+      background: #ffffff !important;
+      color: #000000 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 100% !important;
+      height: auto !important;
+      overflow: visible !important;
+    }
+
+    /* Hide entire app shells, sidebars, topbars, background pages, buttons */
+    .vendor-shell,
+    .customer-cod-settlement-page,
+    .company-shell,
+    .branch-shell,
+    .rider-shell,
+    .admin-shell,
+    .sidebar,
+    .vendor-sidebar,
+    .admin-topbar,
+    .mobile-topbar,
+    .vendor-global-topbar,
+    .vendor-footer-strip,
+    .filters,
+    .row-actions,
+    button,
+    .no-print,
+    .settlement-report-actions-bar,
+    .modal-head,
+    .modal-close,
+    .btn-print-statement,
+    .btn-close-statement,
+    .btn-cancel-statement {
+      display: none !important;
+      visibility: hidden !important;
+    }
+
+    .main, .admin-main, .vendor-main, .vendor-content-container, .vendor-main-content {
+      padding: 0 !important;
+      max-width: 100% !important;
+      margin: 0 !important;
+      display: none !important;
+    }
+
+    /* Modal Backdrop and Outer Modal Container */
+    .modal-backdrop {
+      background: none !important;
+      position: static !important;
+      display: block !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      width: 100% !important;
+      box-shadow: none !important;
+    }
+
+    .modal,
+    .modal-wide,
+    .modal-xwide,
+    .modal-xxwide,
+    .modal-body,
+    .modal-body.no-head,
+    .settlement-report-modal-wrapper {
+      position: static !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      border: none !important;
+      box-shadow: none !important;
+      background: #ffffff !important;
+      display: block !important;
+      overflow: visible !important;
+    }
+
+    /* Display ONLY the printable statement sheet cleanly */
+    .settlement-statement-sheet {
+      display: block !important;
+      visibility: visible !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      padding: 10px 14px !important;
+      margin: 0 !important;
+      border: 1px solid #cbd5e1 !important;
+      box-shadow: none !important;
+      background: #ffffff !important;
+      page-break-after: avoid !important;
+      page-break-inside: avoid !important;
+    }
+
+    .settlement-statement-sheet * {
+      visibility: visible !important;
+    }
+
+    @page {
+      size: A4 portrait;
+      margin: 8mm;
+    }
   }
 
   /* ==========================================================================

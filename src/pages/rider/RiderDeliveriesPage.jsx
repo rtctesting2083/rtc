@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
+import { Truck, Phone, MapPin, CheckCircle, RotateCcw } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
 import { StatStrip } from '../../components/common/StatStrip';
@@ -42,10 +43,36 @@ export function RiderDeliveriesPage() {
     (s) => s.status === 'delivered' && isToday(s.delivered_at)
   ).length;
 
-  const [activeTab, setActiveTab] = useState(assigned > 0 ? 'assigned' : 'all');
+  // Step 3: Vendor Pickup Requests assigned to this rider
+  const [riderPickups, setRiderPickups] = useState([]);
+  const [loadingPickups, setLoadingPickups] = useState(false);
+
+  const loadRiderPickups = async () => {
+    if (!currentRider?.id) return;
+    setLoadingPickups(true);
+    try {
+      const data = await d1Api.getPickupRequests(1, { courier_id: currentRider.id });
+      setRiderPickups(data);
+    } catch (e) {
+      console.warn('Failed to load rider pickups:', e);
+    } finally {
+      setLoadingPickups(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRiderPickups();
+  }, [currentRider?.id]);
+
+  const assignedPickupCount = useMemo(() => {
+    return riderPickups.filter((r) => r.status === 'assigned').length;
+  }, [riderPickups]);
+
+  const [activeTab, setActiveTab] = useState(assignedPickupCount > 0 ? 'vendor_pickups' : assigned > 0 ? 'assigned' : 'all');
   const [search, setSearch] = useState('');
 
   const stats = [
+    { label: 'Vendor Pickups', value: assignedPickupCount, accent: assignedPickupCount > 0 },
     { label: 'Assigned (To Pick Up)', value: assigned, accent: assigned > 0 },
     { label: 'Received (Picked Up)', value: pickedUp, accent: pickedUp > 0 },
     { label: 'In Transit', value: inTransit },
@@ -81,7 +108,12 @@ export function RiderDeliveriesPage() {
   }, [myDeliveries, activeTab, assignedShipments, pickedUpShipments, outForDeliveryShipments, search]);
 
   const handleOpenDetail = (shipment) => {
-    openModal(`Shipment ${shipment.tracking_number}`, <ShipmentDetailModal shipment={shipment} />, 'wide');
+    openModal(
+      `Shipment ${shipment.tracking_number}`,
+      <ShipmentDetailModal shipment={shipment} onClose={closeModal} />,
+      'xxwide',
+      { hideHeader: true }
+    );
   };
 
   const handleOpenComments = (shipment) => {
@@ -100,8 +132,38 @@ export function RiderDeliveriesPage() {
     );
   };
 
-  const handleReceiveSingle = (shipment) => {
-    updateShipmentStatus(shipment.id, 'picked_up', 'Received by rider at branch.');
+  // Step 3: Rider confirms pickup from vendor
+  const handleConfirmPickupFromVendor = async (req) => {
+    if (
+      window.confirm(
+        `Confirm pickup of ${req.package_count || 1} parcel(s) from vendor ${req.vendor_name || 'Store'}?`
+      )
+    ) {
+      await d1Api.confirmRiderPickup(req.id, '', currentRider?.name || 'Rider');
+      await loadRiderPickups();
+      // Update local shipments status
+      if (req.tracking_numbers && Array.isArray(req.tracking_numbers)) {
+        req.tracking_numbers.forEach((trk) => {
+          const match = (shipments || []).find((s) => s.tracking_number === trk);
+          if (match && typeof updateShipmentStatus === 'function') {
+            updateShipmentStatus(match.id, 'picked_up', `Picked up from vendor by rider ${currentRider?.name}.`);
+          }
+        });
+      }
+      alert(`Parcels from ${req.vendor_name || 'Vendor'} marked as picked up! Please hand over at branch hub.`);
+    }
+  };
+
+  const handleReceiveSingle = async (shipment) => {
+    const isVendor = shipment.customer_id || shipment.client_type === 'vendor';
+    const notes = isVendor
+      ? `Picked up from vendor ${shipment.sender_name || ''} by rider ${currentRider?.name || 'Rider'}.`
+      : 'Received by rider at branch.';
+    await d1Api.updateShipment(shipment.id, {
+      status: 'picked_up',
+      notes,
+    });
+    updateShipmentStatus(shipment.id, 'picked_up', notes);
   };
 
   const handleReceiveAllAssigned = () => {
@@ -112,7 +174,12 @@ export function RiderDeliveriesPage() {
       )
     ) {
       assignedShipments.forEach((s) => {
-        updateShipmentStatus(s.id, 'picked_up', 'Bulk received by rider at branch.');
+        const isVendor = s.customer_id || s.client_type === 'vendor';
+        const notes = isVendor
+          ? `Picked up from vendor by rider ${currentRider?.name || 'Rider'}.`
+          : 'Bulk received by rider at branch.';
+        d1Api.updateShipment(s.id, { status: 'picked_up', notes });
+        updateShipmentStatus(s.id, 'picked_up', notes);
       });
       setActiveTab('picked_up');
     }
@@ -394,6 +461,40 @@ export function RiderDeliveriesPage() {
           >
             <button
               type="button"
+              onClick={() => setActiveTab('vendor_pickups')}
+              style={{
+                padding: '8px 14px',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                border: 'none',
+                background: activeTab === 'vendor_pickups' ? '#dc2626' : 'var(--surface-2)',
+                color: activeTab === 'vendor_pickups' ? '#fff' : 'var(--text)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              🏢 Vendor Pickups
+              {assignedPickupCount > 0 && (
+                <span
+                  style={{
+                    padding: '2px 7px',
+                    borderRadius: '10px',
+                    fontSize: '11px',
+                    background: activeTab === 'vendor_pickups' ? 'rgba(255,255,255,0.25)' : '#fee2e2',
+                    color: activeTab === 'vendor_pickups' ? '#fff' : '#b91c1c',
+                    fontWeight: 700,
+                  }}
+                >
+                  {assignedPickupCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
               onClick={() => setActiveTab('assigned')}
               style={{
                 padding: '8px 14px',
@@ -532,6 +633,215 @@ export function RiderDeliveriesPage() {
             />
           </div>
         </div>
+
+        {/* Tab Context Banner: Vendor Pickups (Step 3) */}
+        {activeTab === 'vendor_pickups' && (
+          <div style={{ marginBottom: '20px' }}>
+            <div
+              style={{
+                padding: '12px 16px',
+                background: '#fff5f5',
+                border: '1px solid #fecaca',
+                borderRadius: '8px',
+                color: '#991b1b',
+                fontSize: '13px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '10px',
+                marginBottom: '14px',
+              }}
+            >
+              <div>
+                <b>Step 3: Vendor Store Pickups ({riderPickups.length})</b> — Collect parcels from merchants/stores and mark them as Picked Up.
+              </div>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={loadRiderPickups}
+                style={{ fontSize: '12px', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+              >
+                <RotateCcw size={12} className={loadingPickups ? 'spin' : ''} />
+                <span>Refresh Pickups</span>
+              </button>
+            </div>
+
+            {riderPickups.length === 0 ? (
+              <div className="panel" style={{ padding: '36px', textAlign: 'center', color: '#64748b' }}>
+                {loadingPickups ? 'Loading assigned pickup tasks...' : 'No vendor pickup tasks assigned to you right now.'}
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '14px' }}>
+                {riderPickups.map((req) => {
+                  const isAssigned = req.status === 'assigned';
+                  const isPickedUp = req.status === 'picked_up';
+                  const isReceivedAtHub = req.status === 'received_at_branch';
+
+                  return (
+                    <div
+                      key={req.id}
+                      className="panel"
+                      style={{
+                        padding: '16px',
+                        borderLeft: `4px solid ${isAssigned ? '#dc2626' : isPickedUp ? '#10b981' : '#3b82f6'}`,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                          <div>
+                            <span style={{ fontSize: '11px', fontWeight: 700, color: '#dc2626', textTransform: 'uppercase' }}>
+                              Pickup Request #{req.id}
+                            </span>
+                            <h3 style={{ margin: '2px 0 0', fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
+                              {req.vendor_name || `Vendor #${req.vendor_id}`}
+                            </h3>
+                          </div>
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              padding: '2px 8px',
+                              borderRadius: '12px',
+                              fontWeight: 600,
+                              background: isAssigned ? '#fee2e2' : isPickedUp ? '#dcfce7' : '#e0f2fe',
+                              color: isAssigned ? '#991b1b' : isPickedUp ? '#166534' : '#0369a1',
+                            }}
+                          >
+                            {isAssigned ? 'To Pick Up' : isPickedUp ? 'Picked Up' : 'Received at Hub'}
+                          </span>
+                        </div>
+
+                        {/* Store Address & Map Link */}
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', fontSize: '12.5px', color: '#334155', marginBottom: '6px' }}>
+                          <MapPin size={15} color="#dc2626" style={{ marginTop: '2px', flexShrink: 0 }} />
+                          <span>{req.pickup_address}</span>
+                        </div>
+
+                        {/* Phone Number with click-to-call */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: '#334155', marginBottom: '8px' }}>
+                          <Phone size={14} color="#0284c7" style={{ flexShrink: 0 }} />
+                          <span>{req.contact_person ? `${req.contact_person}: ` : ''}</span>
+                          <a
+                            href={`tel:${req.contact_phone}`}
+                            style={{
+                              fontWeight: 700,
+                              color: '#0284c7',
+                              textDecoration: 'none',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            {req.contact_phone}
+                          </a>
+                        </div>
+
+                        {/* Parcel Details */}
+                        <div
+                          style={{
+                            background: '#f8fafc',
+                            padding: '8px 10px',
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            marginBottom: '10px',
+                            border: '1px solid #e2e8f0',
+                          }}
+                        >
+                          <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: '3px' }}>
+                            📦 {req.package_count || (req.tracking_numbers?.length || 1)} Parcel(s) · ~{req.total_weight_kg || 1} kg
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                            {(req.tracking_numbers || []).map((trk, i) => (
+                              <span
+                                key={i}
+                                className="mono"
+                                style={{
+                                  background: '#fff',
+                                  border: '1px solid #cbd5e1',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                }}
+                              >
+                                {trk}
+                              </span>
+                            ))}
+                          </div>
+                          {req.notes && (
+                            <div style={{ marginTop: '6px', fontSize: '11px', color: '#b45309', fontStyle: 'italic' }}>
+                              Note: {req.notes}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Step 3 Action Button */}
+                      <div>
+                        {isAssigned && (
+                          <button
+                            type="button"
+                            className="btn-primary"
+                            onClick={() => handleConfirmPickupFromVendor(req)}
+                            style={{
+                              width: '100%',
+                              padding: '8px 14px',
+                              fontSize: '13px',
+                              fontWeight: 700,
+                              background: '#16a34a',
+                              borderColor: '#16a34a',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '6px',
+                              boxShadow: '0 2px 4px rgba(22, 163, 74, 0.25)',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <CheckCircle size={15} />
+                            <span>Confirm Pickup from Vendor</span>
+                          </button>
+                        )}
+                        {isPickedUp && (
+                          <div
+                            style={{
+                              textAlign: 'center',
+                              padding: '6px',
+                              background: '#dcfce7',
+                              borderRadius: '6px',
+                              color: '#15803d',
+                              fontWeight: 600,
+                              fontSize: '12px',
+                            }}
+                          >
+                            ✓ Picked Up · Hand over at Branch Hub
+                          </div>
+                        )}
+                        {isReceivedAtHub && (
+                          <div
+                            style={{
+                              textAlign: 'center',
+                              padding: '6px',
+                              background: '#e0f2fe',
+                              borderRadius: '6px',
+                              color: '#0369a1',
+                              fontWeight: 600,
+                              fontSize: '12px',
+                            }}
+                          >
+                            ✓ Handed over & received at Hub
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Tab Context Banner */}
         {activeTab === 'assigned' && (

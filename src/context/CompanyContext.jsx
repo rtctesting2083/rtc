@@ -212,6 +212,45 @@ export function CompanyProvider({ children }) {
         console.warn('Could not fetch D1 delivery_charges:', err);
       });
 
+      // 2e2. Hydrate dedicated shipment status settings from Cloudflare remote D1 table 'shipment_status_settings'
+      d1Api.getShipmentStatuses(companyId).then((remoteStatusData) => {
+        if (remoteStatusData && remoteStatusData.success) {
+          setData((prev) => {
+            if (!prev) return prev;
+            const updated = {
+              ...prev,
+              shipmentStatusSettings: remoteStatusData.core_statuses && Object.keys(remoteStatusData.core_statuses).length > 0
+                ? remoteStatusData.core_statuses
+                : prev.shipmentStatusSettings,
+              customShipmentStatuses: Array.isArray(remoteStatusData.custom_statuses)
+                ? remoteStatusData.custom_statuses
+                : prev.customShipmentStatuses,
+            };
+            saveCompanyState(companyId, updated);
+            return updated;
+          });
+        }
+      }).catch((err) => {
+        console.warn('Could not fetch D1 shipment_status_settings:', err);
+      });
+
+      // 2e3. Hydrate live address/landmark settings from Cloudflare remote D1 table 'landmarks'
+      d1Api.getLandmarks(companyId).then((remoteLandmarks) => {
+        if (Array.isArray(remoteLandmarks) && remoteLandmarks.length > 0) {
+          setData((prev) => {
+            if (!prev) return prev;
+            const updated = {
+              ...prev,
+              landmarks: remoteLandmarks,
+            };
+            saveCompanyState(companyId, updated);
+            return updated;
+          });
+        }
+      }).catch((err) => {
+        console.warn('Could not fetch D1 landmarks:', err);
+      });
+
       // 2f. Hydrate staff users from Cloudflare remote D1 table 'company_users'
       d1Api.getCompanyUsers(companyId).then((remoteUsers) => {
         if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
@@ -316,13 +355,39 @@ export function CompanyProvider({ children }) {
 
       // 6. Hydrate live shipments from Cloudflare remote D1 table 'shipments'
       d1Api.getShipments(companyId).then((remoteShipments) => {
-        if (Array.isArray(remoteShipments) && remoteShipments.length > 0) {
+        if (Array.isArray(remoteShipments)) {
+          if (remoteShipments.length === 0) {
+            setData((prev) => {
+              if (!prev) return prev;
+              const updated = {
+                ...prev,
+                shipments: [],
+              };
+              saveCompanyState(companyId, updated);
+              return updated;
+            });
+            return;
+          }
           setData((prev) => {
             if (!prev) return prev;
-            const maxShipmentId = Math.max(...remoteShipments.map((s) => Number(s.id) || 1), prev.nextId?.shipment || 1);
+            const map = new Map();
+            (prev.shipments || []).forEach((s) => {
+              if (s && (s.tracking_number || s.id)) {
+                map.set(s.tracking_number || `id_${s.id}`, s);
+              }
+            });
+            remoteShipments.forEach((s) => {
+              if (s && (s.tracking_number || s.id)) {
+                const k = s.tracking_number || `id_${s.id}`;
+                const existing = map.get(k) || {};
+                map.set(k, { ...existing, ...s });
+              }
+            });
+            const mergedList = Array.from(map.values());
+            const maxShipmentId = Math.max(...mergedList.map((s) => Number(s.id) || 1), prev.nextId?.shipment || 1);
             const updated = {
               ...prev,
-              shipments: remoteShipments,
+              shipments: mergedList,
               nextId: {
                 ...prev.nextId,
                 shipment: maxShipmentId + 1,
@@ -351,6 +416,23 @@ export function CompanyProvider({ children }) {
         }
       }).catch((err) => {
         console.warn('Could not fetch D1 settlements:', err);
+      });
+
+      // 8. Hydrate live COD requests from Cloudflare remote D1 table 'cod_requests'
+      d1Api.getCodRequests(companyId).then((remoteCodReqs) => {
+        if (Array.isArray(remoteCodReqs)) {
+          setData((prev) => {
+            if (!prev) return prev;
+            const updated = {
+              ...prev,
+              codRequests: remoteCodReqs,
+            };
+            saveCompanyState(companyId, updated);
+            return updated;
+          });
+        }
+      }).catch((err) => {
+        console.warn('Could not fetch D1 cod_requests:', err);
       });
     } else {
       setData(null);
@@ -966,6 +1048,25 @@ export function CompanyProvider({ children }) {
     }
   };
 
+  const loadCodRequests = async () => {
+    if (!companyId) return [];
+    try {
+      const res = await d1Api.getCodRequests(companyId);
+      if (Array.isArray(res)) {
+        setData((prev) => {
+          if (!prev) return prev;
+          const updated = { ...prev, codRequests: res };
+          saveCompanyState(companyId, updated);
+          return updated;
+        });
+        return res;
+      }
+    } catch (e) {
+      console.warn('loadCodRequests failed:', e);
+    }
+    return [];
+  };
+
   // Customers (Vendors)
   const addCustomer = (customerPayload) => {
     let tempId;
@@ -1250,6 +1351,40 @@ export function CompanyProvider({ children }) {
     }
   };
 
+  // Toggle single branch active / disabled
+  const toggleBranchActive = (id) => {
+    const existing = (data?.branches || []).find((b) => b.id === Number(id));
+    if (!existing) return;
+    const isCurrentlyActive = existing.status !== 'inactive' && existing.status !== 'disabled';
+    const newStatus = isCurrentlyActive ? 'inactive' : 'active';
+    updateBranch(id, { status: newStatus });
+    return newStatus;
+  };
+
+  // Bulk enable or disable multiple branches
+  const bulkUpdateBranchStatus = async (branchIds, status) => {
+    const ids = Array.isArray(branchIds) ? branchIds.map(Number).filter(Boolean) : [];
+    if (ids.length === 0) return;
+    const normStatus = status === 'inactive' || status === 'disabled' ? 'inactive' : 'active';
+
+    // 1. Optimistic local state update
+    updateData((prev) => ({
+      ...prev,
+      branches: (prev.branches || []).map((b) =>
+        ids.includes(Number(b.id)) ? { ...b, status: normStatus } : b
+      ),
+    }));
+
+    // 2. Persist to Cloudflare D1 table 'branches'
+    if (companyId) {
+      try {
+        await d1Api.bulkUpdateBranchStatus(ids, normStatus, companyId);
+      } catch (err) {
+        console.warn('Failed to bulk update branches in D1:', err);
+      }
+    }
+  };
+
   // Verification approvals / rejections
   const verifyBranch = (id, status = 'verified') => {
     const isApproved = status === 'verified';
@@ -1334,28 +1469,42 @@ export function CompanyProvider({ children }) {
     }
   };
 
-  const saveShipmentStatuses = (settings) => {
+  const saveShipmentStatuses = async (settings) => {
     updateData((prev) => ({
       ...prev,
       shipmentStatusSettings: settings,
     }));
     syncSettingToD1({ shipment_statuses: settings });
+    if (companyId) {
+      try {
+        await d1Api.saveShipmentStatuses(companyId, settings);
+      } catch (err) {
+        console.warn('Failed to save shipment statuses to D1 table:', err);
+      }
+    }
   };
 
-  const addCustomStatus = (label, color) => {
+  const addCustomStatus = async (label, color, description = '') => {
     const key = slugifyStatusLabel(label);
     updateData((prev) => {
       const existing = (prev.customShipmentStatuses || []).filter((s) => s.key !== key);
-      const nextCustom = [...existing, { key, label, color }];
+      const nextCustom = [...existing, { key, label, color, description }];
       syncSettingToD1({ custom_statuses: nextCustom });
       return {
         ...prev,
         customShipmentStatuses: nextCustom,
       };
     });
+    if (companyId) {
+      try {
+        await d1Api.addCustomShipmentStatus(companyId, { label, color, description, key });
+      } catch (err) {
+        console.warn('Failed to add custom status to D1 table:', err);
+      }
+    }
   };
 
-  const deleteCustomStatus = (key) => {
+  const deleteCustomStatus = async (key) => {
     updateData((prev) => {
       const nextCustom = (prev.customShipmentStatuses || []).filter((s) => s.key !== key);
       syncSettingToD1({ custom_statuses: nextCustom });
@@ -1364,6 +1513,50 @@ export function CompanyProvider({ children }) {
         customShipmentStatuses: nextCustom,
       };
     });
+    if (companyId) {
+      try {
+        await d1Api.deleteCustomShipmentStatus(companyId, key);
+      } catch (err) {
+        console.warn('Failed to delete custom status from D1 table:', err);
+      }
+    }
+  };
+
+  const resetShipmentStatuses = async () => {
+    if (companyId) {
+      try {
+        const res = await d1Api.resetShipmentStatuses(companyId);
+        if (res && res.statuses) {
+          const coreMap = {};
+          for (const s of res.statuses) {
+            if (s.is_custom === 0) {
+              coreMap[s.status_key] = {
+                id: s.id,
+                key: s.status_key,
+                label: s.label,
+                color: s.color,
+                bg_color: s.bg_color,
+                fg_color: s.fg_color,
+                is_active: s.is_active === 1,
+              };
+            }
+          }
+          updateData((prev) => ({
+            ...prev,
+            shipmentStatusSettings: coreMap,
+          }));
+          return coreMap;
+        }
+      } catch (err) {
+        console.warn('Failed to reset shipment statuses in D1:', err);
+      }
+    }
+    const def = defaultShipmentStatusSettings();
+    updateData((prev) => ({
+      ...prev,
+      shipmentStatusSettings: def,
+    }));
+    return def;
   };
 
   // Roles & Users
@@ -1728,19 +1921,37 @@ export function CompanyProvider({ children }) {
     });
   };
 
-  const addLandmark = (branchId, name) => {
+  const addLandmark = async (branchId, name) => {
+    const trimmed = (name || '').trim();
+    if (!trimmed) return;
+
+    let realId;
+    try {
+      const res = await d1Api.addLandmark(companyId, { branch_id: Number(branchId), name: trimmed });
+      realId = res?.landmark?.id || res?.id;
+    } catch (e) {
+      console.warn('Failed to add landmark to D1:', e);
+    }
+
     updateData((prev) => {
-      const id = prev.nextId.landmark;
-      const nextLandmarks = [...(prev.landmarks || []), { id, branch_id: Number(branchId), name }];
+      const id = realId || prev.nextId?.landmark || Date.now();
+      const nextLandmarks = [...(prev.landmarks || []), { id, branch_id: Number(branchId), name: trimmed }];
       syncSettingToD1({ landmarks: nextLandmarks });
       return {
         ...prev,
-        nextId: { ...prev.nextId, landmark: id + 1 },
+        nextId: { ...prev.nextId, landmark: (Number(id) || 1) + 1 },
         landmarks: nextLandmarks,
       };
     });
   };
-  const deleteLandmark = (id) => {
+
+  const deleteLandmark = async (id) => {
+    try {
+      await d1Api.deleteLandmark(id, companyId);
+    } catch (e) {
+      console.warn('Failed to delete landmark from D1:', e);
+    }
+
     updateData((prev) => {
       const nextLandmarks = (prev.landmarks || []).filter((l) => l.id !== Number(id));
       syncSettingToD1({ landmarks: nextLandmarks });
@@ -1935,11 +2146,80 @@ export function CompanyProvider({ children }) {
             shipments: Array.from(map.values()),
           };
         });
+      } else {
+        updateData((prev) => {
+          if (!prev) return prev;
+          const filtered = (prev.shipments || []).filter((s) => {
+            if (!s) return false;
+            return Number(s.customer_id) !== Number(vendorId) && Number(s.vendor_id) !== Number(vendorId);
+          });
+          return {
+            ...prev,
+            shipments: filtered,
+          };
+        });
       }
 
       return allVendorShipments;
     } catch (e) {
       console.warn('Failed to load vendor orders from D1:', e);
+      return [];
+    }
+  }, [companyId]);
+
+  const loadAllVendorOrders = useCallback(async () => {
+    if (!companyId) return [];
+    try {
+      const [vendorOrders, allShipments] = await Promise.all([
+        d1Api.getAllVendorOrders(companyId).catch(() => []),
+        d1Api.getShipments(companyId, { client_type: 'vendor' }).catch(() => []),
+      ]);
+
+      const mergedMap = new Map();
+      (allShipments || []).forEach((s) => {
+        if (s && (s.tracking_number || s.id)) {
+          const isVendor = s.client_type === 'vendor' || !!s.customer_id;
+          if (isVendor) {
+            const key = s.tracking_number || `id_${s.id}`;
+            mergedMap.set(key, s);
+          }
+        }
+      });
+      (vendorOrders || []).forEach((o) => {
+        if (o && (o.tracking_number || o.id)) {
+          const key = o.tracking_number || `id_${o.id}`;
+          if (!mergedMap.has(key)) {
+            mergedMap.set(key, o);
+          } else {
+            const existing = mergedMap.get(key);
+            mergedMap.set(key, { ...existing, ...o });
+          }
+        }
+      });
+
+      const list = Array.from(mergedMap.values());
+      if (list.length > 0) {
+        updateData((prev) => {
+          if (!prev) return prev;
+          const prevShipments = prev.shipments || [];
+          const map = new Map();
+          prevShipments.forEach((s) => {
+            if (s) map.set(s.tracking_number || `id_${s.id}`, s);
+          });
+          list.forEach((s) => {
+            const k = s.tracking_number || `id_${s.id}`;
+            const ex = map.get(k) || {};
+            map.set(k, { ...ex, ...s });
+          });
+          return {
+            ...prev,
+            shipments: Array.from(map.values()),
+          };
+        });
+      }
+      return list;
+    } catch (e) {
+      console.warn('Failed to load all vendor orders from D1:', e);
       return [];
     }
   }, [companyId]);
@@ -2001,6 +2281,15 @@ export function CompanyProvider({ children }) {
     (data?.customers || []).filter((v) => v.verification_status === 'pending' || v.verified === false).length
   );
 
+  const allBranches = data?.branches || [];
+  const activeBranches = (data?.branches || []).filter(
+    (b) => b && b.status !== 'inactive' && b.status !== 'disabled'
+  );
+
+  // If in vendor (customer), rider, or branch portal, only expose active (enabled) branches
+  const isCompanyAdmin = session?.type === 'company' || session?.type === 'admin';
+  const portalBranches = isCompanyAdmin ? allBranches : activeBranches;
+
   return (
     <CompanyContext.Provider
       value={{
@@ -2010,12 +2299,16 @@ export function CompanyProvider({ children }) {
         customers: data?.customers || [],
         couriers: data?.couriers || [],
         riders: data?.couriers || [],
-        branches: data?.branches || [],
+        allBranches,
+        activeBranches,
+        branches: portalBranches,
         landmarks: data?.landmarks || [],
         roles: data?.roles || [],
         users: data?.users || [],
         invoices: data?.invoices || [],
         settlements: data?.settlements || [],
+        codRequests: data?.codRequests || [],
+        loadCodRequests,
         orderTypes: data?.orderTypes || [],
         deliveryServiceTypes: data?.deliveryServiceTypes || [],
         productCategories: data?.productCategories || [],
@@ -2063,8 +2356,11 @@ export function CompanyProvider({ children }) {
         toggleRiderActive: toggleCourierActive,
         addBranch,
         updateBranch,
+        toggleBranchActive,
+        bulkUpdateBranchStatus,
         saveDeliveryCharges,
         saveShipmentStatuses,
+        resetShipmentStatuses,
         verifyBranch,
         verifyRider,
         verifyVendor,
@@ -2093,6 +2389,7 @@ export function CompanyProvider({ children }) {
         deleteVendorCustomer,
         loadVendorCustomers,
         loadVendorOrders,
+        loadAllVendorOrders,
         addVendorOrder,
         updateVendorOrder,
         deleteVendorOrder,

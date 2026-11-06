@@ -21,7 +21,7 @@ function getTimeGreeting() {
 export function BranchOverviewPage() {
   const { currentBranch, staffUser } = useOutletContext();
   const { shipments = [], couriers = [], updateShipmentStatus } = useCompany();
-  const { openModal } = useModal();
+  const { openModal, closeModal } = useModal();
   const navigate = useNavigate();
 
   const [period, setPeriod] = useState('Today');
@@ -68,7 +68,12 @@ export function BranchOverviewPage() {
     .reduce((sum, s) => sum + (Number(s.cod_amount) || 0), 0);
 
   const handleOpenDetail = (shipment) => {
-    openModal(`Shipment ${shipment.tracking_number}`, <ShipmentDetailModal shipment={shipment} />, 'wide');
+    openModal(
+      `Shipment ${shipment.tracking_number}`,
+      <ShipmentDetailModal shipment={shipment} onClose={closeModal} />,
+      'xxwide',
+      { hideHeader: true }
+    );
   };
 
   const handleAssignRider = (shipment) => {

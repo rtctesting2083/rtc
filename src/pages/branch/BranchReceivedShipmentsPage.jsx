@@ -134,7 +134,12 @@ export function BranchReceivedShipmentsPage() {
 
   // Actions
   const handleOpenDetail = (shipment) => {
-    openModal(`Shipment ${shipment.tracking_number}`, <ShipmentDetailModal shipment={shipment} />, 'wide');
+    openModal(
+      `Shipment ${shipment.tracking_number}`,
+      <ShipmentDetailModal shipment={shipment} onClose={closeModal} />,
+      'xxwide',
+      { hideHeader: true }
+    );
   };
 
   const handleBulkAssign = () => {

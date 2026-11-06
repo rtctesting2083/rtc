@@ -186,7 +186,7 @@ export function RiderFormModal({ initialRider = null, onDone = null, defaultBran
           Assigned Branch
           <select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
             <option value="">All branches (HQ / Floating)</option>
-            {branches.map((b) => (
+            {(branches || []).filter((b) => b && b.status !== 'inactive' && b.status !== 'disabled').map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
               </option>

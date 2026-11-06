@@ -83,11 +83,453 @@ export async function onRequest(context) {
       });
     }
 
+    // 1c. Display Mode (Night / Day Theme Mode) Endpoint: /api/display-mode
+    if (path === 'display-mode') {
+      try {
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS user_theme_preferences (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_key TEXT NOT NULL UNIQUE,
+            mode TEXT NOT NULL DEFAULT 'day',
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+          )
+        `).run();
+      } catch (e) {}
+
+      try {
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS system_theme (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id INTEGER NOT NULL DEFAULT 1,
+            theme_color TEXT NOT NULL DEFAULT '#dc2626',
+            theme_mode TEXT NOT NULL DEFAULT 'day',
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(company_id)
+          )
+        `).run();
+      } catch (e) {}
+
+      try {
+        await db.prepare("ALTER TABLE system_theme ADD COLUMN theme_mode TEXT DEFAULT 'day'").run();
+      } catch (e) {}
+
+      if (method === 'GET') {
+        const userKey = url.searchParams.get('user_key') || 'global';
+        const companyId = Number(url.searchParams.get('company_id') || 1);
+
+        let mode = 'day';
+        if (userKey) {
+          const pref = await db.prepare('SELECT mode FROM user_theme_preferences WHERE user_key = ?')
+            .bind(userKey)
+            .first()
+            .catch(() => null);
+          if (pref && pref.mode) {
+            mode = pref.mode;
+          }
+        }
+
+        if (mode === 'day') {
+          const sys = await db.prepare('SELECT theme_mode FROM system_theme WHERE company_id = ?')
+            .bind(companyId)
+            .first()
+            .catch(() => null);
+          if (sys && sys.theme_mode) {
+            mode = sys.theme_mode;
+          }
+        }
+
+        return jsonResponse({ success: true, mode });
+      }
+
+      if (method === 'POST') {
+        const body = await request.json().catch(() => ({}));
+        const mode = (body.mode === 'night' || body.mode === 'dark') ? 'night' : 'day';
+        const userKey = body.user_key || 'global';
+        const companyId = Number(body.company_id || 1);
+
+        try {
+          await db.prepare(`
+            INSERT INTO user_theme_preferences (user_key, mode, updated_at)
+            VALUES (?, ?, datetime('now'))
+            ON CONFLICT(user_key) DO UPDATE SET mode = excluded.mode, updated_at = excluded.updated_at
+          `).bind(userKey, mode).run();
+        } catch (e) {
+          await db.prepare('DELETE FROM user_theme_preferences WHERE user_key = ?').bind(userKey).run().catch(() => {});
+          await db.prepare('INSERT INTO user_theme_preferences (user_key, mode, updated_at) VALUES (?, ?, datetime("now"))')
+            .bind(userKey, mode).run().catch(() => {});
+        }
+
+        try {
+          await db.prepare(`
+            INSERT INTO system_theme (company_id, theme_mode, updated_at)
+            VALUES (?, ?, datetime('now'))
+            ON CONFLICT(company_id) DO UPDATE SET theme_mode = excluded.theme_mode, updated_at = excluded.updated_at
+          `).bind(companyId, mode).run();
+        } catch (e) {
+          await db.prepare('UPDATE system_theme SET theme_mode = ?, updated_at = datetime("now") WHERE company_id = ?')
+            .bind(mode, companyId).run().catch(() => {});
+        }
+
+        return jsonResponse({
+          success: true,
+          mode,
+          message: `Display mode saved to Cloudflare D1 database as ${mode} mode`,
+        });
+      }
+    }
+
     // 1b. Next Tracking Number Endpoint: /api/next-tracking-number
     if (path === 'next-tracking-number' || path === 'shipments/next-tracking-number') {
       const cid = Number(url.searchParams.get('company_id') || 1);
       const next = await getNextTrackingNumber(db, cid);
       return jsonResponse({ success: true, ...next });
+    }
+
+    // ─── Notices API (Broadcast to Branch, Rider, Vendor with Image) ───
+    if (path === 'notices' || path.startsWith('notices/')) {
+      // Ensure notices table exists
+      try {
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS notices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id INTEGER NOT NULL DEFAULT 1,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            image_url TEXT,
+            target_audience TEXT NOT NULL DEFAULT 'all',
+            priority TEXT NOT NULL DEFAULT 'normal',
+            status TEXT NOT NULL DEFAULT 'published',
+            created_by TEXT DEFAULT 'Super Administrator',
+            valid_until TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+          )
+        `).run();
+        await db.prepare('CREATE INDEX IF NOT EXISTS idx_notices_comp ON notices(company_id)').run();
+      } catch (e) {}
+
+      // GET /api/notices
+      if (path === 'notices' && method === 'GET') {
+        const companyId = Number(url.searchParams.get('company_id') || 1);
+        const audience = (url.searchParams.get('audience') || url.searchParams.get('target_audience') || '').toLowerCase().trim();
+        const status = url.searchParams.get('status');
+
+        let query = 'SELECT * FROM notices WHERE company_id = ?';
+        const binds = [companyId];
+
+        if (status) {
+          query += ' AND status = ?';
+          binds.push(status);
+        }
+
+        if (audience && audience !== 'all' && audience !== 'admin') {
+          query += " AND (target_audience = 'all' OR target_audience LIKE ?)";
+          binds.push(`%${audience}%`);
+        }
+
+        query += ' ORDER BY id DESC';
+
+        const { results } = await db.prepare(query).bind(...binds).all().catch(() => ({ results: [] }));
+        return jsonResponse(results || []);
+      }
+
+      // POST /api/notices (Create notice)
+      if (path === 'notices' && method === 'POST') {
+        const body = await request.json().catch(() => ({}));
+        const companyId = Number(body.company_id || 1);
+        const title = (body.title || '').trim();
+        const content = (body.content || '').trim();
+        const imageUrl = body.image_url || null;
+        
+        let targetAudience = body.target_audience;
+        if (Array.isArray(targetAudience)) {
+          targetAudience = targetAudience.join(',');
+        }
+        targetAudience = (targetAudience || 'all').trim();
+
+        const priority = body.priority || 'normal';
+        const status = body.status || 'published';
+        const createdBy = body.created_by || 'Super Administrator';
+        const validUntil = body.valid_until || null;
+
+        if (!title || !content) {
+          return jsonResponse({ error: 'Title and description are required to publish a notice.' }, 400);
+        }
+
+        const res = await db.prepare(`
+          INSERT INTO notices (
+            company_id, title, content, image_url, target_audience,
+            priority, status, created_by, valid_until, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        `).bind(
+          companyId, title, content, imageUrl, targetAudience,
+          priority, status, createdBy, validUntil
+        ).run();
+
+        const inserted = await db.prepare('SELECT * FROM notices WHERE id = ?')
+          .bind(res.meta.last_row_id)
+          .first();
+
+        return jsonResponse({
+          success: true,
+          message: 'Notice published successfully to Cloudflare D1.',
+          notice: inserted,
+        });
+      }
+
+      // Single notice routes: /api/notices/:id
+      const noticeMatch = path.match(/^notices\/(\d+)$/);
+      if (noticeMatch) {
+        const noticeId = Number(noticeMatch[1]);
+
+        if (method === 'GET') {
+          const item = await db.prepare('SELECT * FROM notices WHERE id = ?').bind(noticeId).first();
+          if (!item) return jsonResponse({ error: 'Notice not found' }, 404);
+          return jsonResponse(item);
+        }
+
+        if (method === 'PUT' || method === 'PATCH' || method === 'POST') {
+          const body = await request.json().catch(() => ({}));
+          const fields = [];
+          const vals = [];
+
+          if (body.title !== undefined) { fields.push('title = ?'); vals.push(body.title.trim()); }
+          if (body.content !== undefined) { fields.push('content = ?'); vals.push(body.content.trim()); }
+          if (body.image_url !== undefined) { fields.push('image_url = ?'); vals.push(body.image_url); }
+          if (body.target_audience !== undefined) {
+            let aud = body.target_audience;
+            if (Array.isArray(aud)) aud = aud.join(',');
+            fields.push('target_audience = ?');
+            vals.push(aud);
+          }
+          if (body.priority !== undefined) { fields.push('priority = ?'); vals.push(body.priority); }
+          if (body.status !== undefined) { fields.push('status = ?'); vals.push(body.status); }
+          if (body.valid_until !== undefined) { fields.push('valid_until = ?'); vals.push(body.valid_until); }
+
+          fields.push("updated_at = datetime('now')");
+          vals.push(noticeId);
+
+          if (fields.length > 1) {
+            await db.prepare(`UPDATE notices SET ${fields.join(', ')} WHERE id = ?`).bind(...vals).run();
+          }
+
+          const updated = await db.prepare('SELECT * FROM notices WHERE id = ?').bind(noticeId).first();
+          return jsonResponse({ success: true, notice: updated });
+        }
+
+        if (method === 'DELETE') {
+          await db.prepare('DELETE FROM notices WHERE id = ?').bind(noticeId).run();
+          return jsonResponse({ success: true, message: `Notice #${noticeId} deleted.` });
+        }
+      }
+    }
+
+    // ─── Tickets API (Cloudflare D1 Database Table: tickets & ticket_replies) ───
+    if (path === 'tickets' || path.startsWith('tickets/')) {
+      // Ensure tickets and ticket_replies tables exist
+      try {
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS tickets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticket_number TEXT UNIQUE NOT NULL,
+            company_id INTEGER NOT NULL DEFAULT 1,
+            customer_id INTEGER,
+            customer_name TEXT,
+            customer_phone TEXT,
+            branch_id INTEGER,
+            branch_name TEXT,
+            ticket_type TEXT NOT NULL DEFAULT 'Pickup Issue',
+            order_id TEXT,
+            tracking_number TEXT,
+            subject TEXT NOT NULL,
+            description TEXT NOT NULL,
+            priority TEXT NOT NULL DEFAULT 'medium',
+            status TEXT NOT NULL DEFAULT 'open',
+            assigned_to TEXT,
+            resolution TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+          )
+        `).run();
+        await db.prepare('CREATE INDEX IF NOT EXISTS idx_tickets_comp ON tickets(company_id)').run();
+        await db.prepare('CREATE INDEX IF NOT EXISTS idx_tickets_cust ON tickets(customer_id)').run();
+        await db.prepare('CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status)').run();
+
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS ticket_replies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticket_id INTEGER NOT NULL,
+            sender_type TEXT NOT NULL,
+            sender_name TEXT NOT NULL,
+            message TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+          )
+        `).run();
+        await db.prepare('CREATE INDEX IF NOT EXISTS idx_ticket_replies_tid ON ticket_replies(ticket_id)').run();
+      } catch (e) {}
+
+      // GET /api/tickets
+      if (path === 'tickets' && method === 'GET') {
+        const companyId = Number(url.searchParams.get('company_id') || 1);
+        const customerId = url.searchParams.get('customer_id');
+        const status = url.searchParams.get('status');
+        const ticketType = url.searchParams.get('type') || url.searchParams.get('ticket_type');
+        const search = (url.searchParams.get('search') || '').trim();
+
+        let query = 'SELECT * FROM tickets WHERE company_id = ?';
+        const binds = [companyId];
+
+        if (customerId) {
+          query += ' AND customer_id = ?';
+          binds.push(Number(customerId));
+        }
+        if (status && status !== 'all') {
+          query += ' AND status = ?';
+          binds.push(status);
+        }
+        if (ticketType && ticketType !== 'all') {
+          query += ' AND ticket_type = ?';
+          binds.push(ticketType);
+        }
+        if (search) {
+          query += ' AND (ticket_number LIKE ? OR subject LIKE ? OR tracking_number LIKE ?)';
+          binds.push(`%${search}%`, `%${search}%`, `%${search}%`);
+        }
+
+        query += ' ORDER BY id DESC';
+        const { results } = await db.prepare(query).bind(...binds).all().catch(() => ({ results: [] }));
+        return jsonResponse(results || []);
+      }
+
+      // POST /api/tickets (Create ticket)
+      if (path === 'tickets' && method === 'POST') {
+        const body = await request.json().catch(() => ({}));
+        const companyId = Number(body.company_id || 1);
+        const customerId = body.customer_id ? Number(body.customer_id) : null;
+        const customerName = (body.customer_name || 'Vendor Client').trim();
+        const customerPhone = (body.customer_phone || '').trim();
+        const branchId = body.branch_id ? Number(body.branch_id) : null;
+        const branchName = body.branch_name || null;
+        const ticketType = (body.ticket_type || 'Pickup Issue').trim();
+        const orderId = body.order_id || null;
+        const trackingNumber = (body.tracking_number || '').trim() || null;
+        const subject = (body.subject || '').trim();
+        const description = (body.description || '').trim();
+        const priority = body.priority || 'medium';
+        const status = body.status || 'open';
+
+        if (!subject || !description) {
+          return jsonResponse({ error: 'Subject and description are required to submit a ticket.' }, 400);
+        }
+
+        const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+        const ticketNumber = `TK-${todayStr}-${randomSuffix}`;
+
+        const res = await db.prepare(`
+          INSERT INTO tickets (
+            ticket_number, company_id, customer_id, customer_name, customer_phone,
+            branch_id, branch_name, ticket_type, order_id, tracking_number,
+            subject, description, priority, status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        `).bind(
+          ticketNumber, companyId, customerId, customerName, customerPhone,
+          branchId, branchName, ticketType, orderId, trackingNumber,
+          subject, description, priority, status
+        ).run();
+
+        const inserted = await db.prepare('SELECT * FROM tickets WHERE id = ?')
+          .bind(res.meta.last_row_id)
+          .first();
+
+        return jsonResponse({
+          success: true,
+          message: `Ticket ${ticketNumber} registered successfully.`,
+          ticket: inserted,
+        });
+      }
+
+      // Single ticket routes: /api/tickets/:id
+      const ticketMatch = path.match(/^tickets\/(\d+)$/);
+      if (ticketMatch) {
+        const ticketId = Number(ticketMatch[1]);
+
+        if (method === 'GET') {
+          const item = await db.prepare('SELECT * FROM tickets WHERE id = ?').bind(ticketId).first();
+          if (!item) return jsonResponse({ error: 'Ticket not found' }, 404);
+
+          const { results: replies } = await db.prepare(
+            'SELECT * FROM ticket_replies WHERE ticket_id = ? ORDER BY id ASC'
+          ).bind(ticketId).all().catch(() => ({ results: [] }));
+
+          return jsonResponse({ ...item, replies: replies || [] });
+        }
+
+        if (method === 'PATCH' || method === 'PUT') {
+          const body = await request.json().catch(() => ({}));
+          const fields = [];
+          const vals = [];
+
+          if (body.status !== undefined) {
+            fields.push('status = ?');
+            vals.push(body.status);
+          }
+          if (body.priority !== undefined) {
+            fields.push('priority = ?');
+            vals.push(body.priority);
+          }
+          if (body.resolution !== undefined) {
+            fields.push('resolution = ?');
+            vals.push(body.resolution);
+          }
+          if (body.assigned_to !== undefined) {
+            fields.push('assigned_to = ?');
+            vals.push(body.assigned_to);
+          }
+
+          if (fields.length > 0) {
+            fields.push("updated_at = datetime('now')");
+            vals.push(ticketId);
+            await db.prepare(`UPDATE tickets SET ${fields.join(', ')} WHERE id = ?`).bind(...vals).run();
+          }
+
+          const updated = await db.prepare('SELECT * FROM tickets WHERE id = ?').bind(ticketId).first();
+          return jsonResponse({ success: true, ticket: updated });
+        }
+
+        if (method === 'DELETE') {
+          await db.prepare('DELETE FROM ticket_replies WHERE ticket_id = ?').bind(ticketId).run().catch(() => {});
+          await db.prepare('DELETE FROM tickets WHERE id = ?').bind(ticketId).run();
+          return jsonResponse({ success: true, message: `Ticket #${ticketId} deleted.` });
+        }
+      }
+
+      // Add reply: POST /api/tickets/:id/replies
+      const replyMatch = path.match(/^tickets\/(\d+)\/replies$/);
+      if (replyMatch && method === 'POST') {
+        const ticketId = Number(replyMatch[1]);
+        const body = await request.json().catch(() => ({}));
+        const senderType = body.sender_type || 'customer';
+        const senderName = body.sender_name || 'User';
+        const message = (body.message || '').trim();
+
+        if (!message) {
+          return jsonResponse({ error: 'Message cannot be empty.' }, 400);
+        }
+
+        const replyRes = await db.prepare(`
+          INSERT INTO ticket_replies (ticket_id, sender_type, sender_name, message, created_at)
+          VALUES (?, ?, ?, ?, datetime('now'))
+        `).bind(ticketId, senderType, senderName, message).run();
+
+        await db.prepare("UPDATE tickets SET updated_at = datetime('now') WHERE id = ?").bind(ticketId).run();
+
+        return jsonResponse({
+          success: true,
+          reply_id: replyRes.meta.last_row_id,
+          message: 'Reply added successfully.',
+        });
+      }
     }
 
     // 2. Platform / Companies endpoint
@@ -568,6 +1010,7 @@ export async function onRequest(context) {
         settlementsRes,
         companyRes,
         systemThemeRes,
+        landmarksRes,
       ] = await Promise.all([
         db.prepare('SELECT * FROM branches WHERE company_id = ?').bind(companyId).all(),
         db.prepare('SELECT * FROM riders WHERE company_id = ?').bind(companyId).all(),
@@ -578,6 +1021,9 @@ export async function onRequest(context) {
         db.prepare('SELECT * FROM cod_settlements WHERE company_id = ? ORDER BY id DESC').bind(companyId).all().catch(() => ({ results: [] })),
         db.prepare('SELECT * FROM companies WHERE id = ?').bind(companyId).first().catch(() => null),
         db.prepare('SELECT * FROM system_theme WHERE company_id = ?').bind(companyId).first().catch(() => null),
+        db.prepare('SELECT * FROM landmarks WHERE company_id = ? ORDER BY branch_id ASC, id ASC').bind(companyId).all().catch(() => ({ results: [] })),
+        db.prepare('SELECT * FROM cod_requests WHERE company_id = ? ORDER BY id DESC').bind(companyId).all().catch(() => ({ results: [] })),
+        db.prepare('SELECT * FROM credit_notes WHERE company_id = ? ORDER BY id DESC').bind(companyId).all().catch(() => ({ results: [] })),
       ]);
 
       const formatParsed = (row, jsonFields) => {
@@ -597,8 +1043,10 @@ export async function onRequest(context) {
         couriers: (ridersRes.results || []).map((c) => formatParsed(c, ['address_json'])),
         customers: (customersRes.results || []).map((c) => formatParsed(c, ['address_json', 'bank_details_json', 'documents_json', 'staff_roles_json', 'staff_users_json', 'vendor_customers_json'])),
         shipments: (shipmentsRes.results || []).map((s) => formatParsed(s, ['tracking_events_json'])),
-        invoices: invoicesRes.results || [],
         settlements: (settlementsRes?.results || []).map((s) => formatParsed(s, ['bank_details_json', 'shipment_ids_json'])),
+        cod_requests: (codRequestsRes?.results || []).map((r) => formatParsed(r, ['bank_details_json', 'shipment_ids_json', 'tracking_numbers_json'])),
+        invoices: (invoicesRes.results || []).map((inv) => formatParsed(inv, ['items_json', 'shipment_ids_json'])),
+        credit_notes: credit_notesRes?.results || [],
         settings: settingsRes ? formatParsed(settingsRes, [
           'delivery_charges_json',
           'shipment_statuses_json',
@@ -611,6 +1059,7 @@ export async function onRequest(context) {
         ]) : null,
         company: companyRes || null,
         system_theme: systemThemeRes || null,
+        landmarks: landmarksRes?.results || [],
       });
     }
 
@@ -740,7 +1189,7 @@ export async function onRequest(context) {
         });
       }
 
-      // PUT /api/vendors/:id (Update vendor or update verification status)
+      // PUT /api/vendors/:id (Update vendor or update verification status or bank details)
       if (method === 'PUT' || method === 'PATCH') {
         const vendorId = Number(path.split('/')[1] || (await request.json().catch(() => ({}))).id);
         const body = await request.json().catch(() => ({}));
@@ -750,15 +1199,38 @@ export async function onRequest(context) {
         const verification_status = body.verification_status !== undefined ? body.verification_status : (current.verification_status || (verified ? 'verified' : 'pending'));
         const status = body.status !== undefined ? body.status : (verified ? 'active' : (current.status || 'pending_verification'));
 
+        const bankDetails = body.bank_details || {};
+        const bankName = bankDetails.bank_name || body.bank_name || current.bank_name || '';
+        const bankBranch = bankDetails.branch_name || body.bank_branch || current.bank_branch || '';
+        const acHolder = bankDetails.account_holder_name || body.account_holder_name || current.account_holder_name || '';
+        const acNumber = bankDetails.account_number || body.account_number || current.account_number || '';
+
         await db
-          .prepare('UPDATE vendors SET verified = ?, verification_status = ?, status = ?, updated_at = datetime("now") WHERE id = ?')
-          .bind(verified, verification_status, status, vendorId)
+          .prepare(`
+            UPDATE vendors SET 
+              verified = ?, 
+              verification_status = ?, 
+              status = ?, 
+              bank_name = ?,
+              bank_branch = ?,
+              account_holder_name = ?,
+              account_number = ?,
+              updated_at = datetime("now") 
+            WHERE id = ?
+          `)
+          .bind(verified, verification_status, status, bankName, bankBranch, acHolder, acNumber, vendorId)
           .run();
 
         return jsonResponse({
           success: true,
           id: vendorId,
-          message: 'Vendor verification updated successfully',
+          bank_details: {
+            bank_name: bankName,
+            branch_name: bankBranch,
+            account_holder_name: acHolder,
+            account_number: acNumber,
+          },
+          message: 'Vendor updated successfully in D1 database',
         });
       }
     }
@@ -865,6 +1337,569 @@ export async function onRequest(context) {
           id: settlementId,
           settlement_number,
           message: 'COD settlement processed and saved successfully',
+        });
+      }
+    }
+
+    // 4.C COD Settlement Requests endpoint: Vendor Payout Requests & Admin Settlement
+    if (path === 'cod-requests' || path.startsWith('cod-requests/')) {
+      const companyId = Number(url.searchParams.get('company_id') || 1);
+
+      // Ensure table & columns exist
+      try {
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS cod_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id INTEGER NOT NULL DEFAULT 1,
+            request_number TEXT UNIQUE NOT NULL,
+            vendor_id INTEGER NOT NULL,
+            vendor_name TEXT NOT NULL,
+            vendor_phone TEXT,
+            branch_id INTEGER,
+            bank_details_json TEXT,
+            requested_amount REAL NOT NULL DEFAULT 0,
+            gross_cod REAL NOT NULL DEFAULT 0,
+            delivery_charges_deducted REAL NOT NULL DEFAULT 0,
+            parcels_count INTEGER NOT NULL DEFAULT 0,
+            shipment_ids_json TEXT,
+            tracking_numbers_json TEXT,
+            vendor_notes TEXT,
+            status TEXT DEFAULT 'pending',
+            admin_notes TEXT,
+            payment_method TEXT,
+            payment_reference TEXT,
+            settled_at TEXT,
+            settled_by TEXT,
+            settlement_id INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )
+        `).run();
+        await db.prepare('CREATE INDEX IF NOT EXISTS idx_cod_requests_company ON cod_requests(company_id)').run();
+        await db.prepare('CREATE INDEX IF NOT EXISTS idx_cod_requests_vendor ON cod_requests(vendor_id)').run();
+        await db.prepare('CREATE INDEX IF NOT EXISTS idx_cod_requests_status ON cod_requests(status)').run();
+        await db.prepare('ALTER TABLE shipments ADD COLUMN cod_request_id INTEGER').run().catch(() => {});
+      } catch (e) {}
+
+      // GET /api/cod-requests
+      if (path === 'cod-requests' && method === 'GET') {
+        const vendorId = url.searchParams.get('vendor_id');
+        const status = url.searchParams.get('status');
+
+        let query = 'SELECT * FROM cod_requests WHERE company_id = ?';
+        const params = [companyId];
+
+        if (vendorId) {
+          query += ' AND vendor_id = ?';
+          params.push(Number(vendorId));
+        }
+        if (status && status !== 'all') {
+          query += ' AND status = ?';
+          params.push(status);
+        }
+        query += ' ORDER BY id DESC';
+
+        const { results } = await db.prepare(query).bind(...params).all().catch(() => ({ results: [] }));
+        const formatted = (results || []).map((r) => ({
+          ...r,
+          bank_details: r.bank_details_json ? JSON.parse(r.bank_details_json) : {},
+          shipment_ids: r.shipment_ids_json ? JSON.parse(r.shipment_ids_json) : [],
+          tracking_numbers: r.tracking_numbers_json ? JSON.parse(r.tracking_numbers_json) : [],
+        }));
+        return jsonResponse(formatted);
+      }
+
+      // POST /api/cod-requests (Step 1: Vendor creates COD payout request)
+      if (path === 'cod-requests' && method === 'POST') {
+        const body = await request.json();
+        const cid = Number(body.company_id || companyId);
+        const vId = Number(body.vendor_id);
+        const vName = body.vendor_name || 'Vendor';
+        const vPhone = body.vendor_phone || '';
+        const bId = body.branch_id ? Number(body.branch_id) : null;
+        const bankJson = typeof body.bank_details === 'object' ? JSON.stringify(body.bank_details) : (body.bank_details_json || '{}');
+        const reqAmt = Number(body.requested_amount || 0);
+        const grossCod = Number(body.gross_cod || 0);
+        const feeDeducted = Number(body.delivery_charges_deducted || 0);
+        const parcelsCount = Number(body.parcels_count || (body.shipment_ids || []).length);
+        const sIdsJson = typeof body.shipment_ids === 'object' ? JSON.stringify(body.shipment_ids) : (body.shipment_ids_json || '[]');
+        const trksJson = typeof body.tracking_numbers === 'object' ? JSON.stringify(body.tracking_numbers) : (body.tracking_numbers_json || '[]');
+        const vNotes = body.vendor_notes || body.notes || '';
+
+        // Generate sequential request number: COD-REQ-YYYYMMDD-COUNT
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const d = String(now.getDate()).padStart(2, '0');
+        const datePrefix = `${y}${m}${d}`;
+
+        const lastRow = await db.prepare(
+          "SELECT request_number FROM cod_requests WHERE company_id = ? AND request_number LIKE ? ORDER BY id DESC LIMIT 1"
+        ).bind(cid, `COD-REQ-${datePrefix}-%`).first().catch(() => null);
+
+        let seq = 1;
+        if (lastRow?.request_number) {
+          const match = lastRow.request_number.match(/-(\d+)$/);
+          if (match) seq = parseInt(match[1], 10) + 1;
+        }
+        const reqNumber = `COD-REQ-${datePrefix}-${String(seq).padStart(3, '0')}`;
+
+        const insertRes = await db.prepare(`
+          INSERT INTO cod_requests (
+            company_id, request_number, vendor_id, vendor_name, vendor_phone,
+            branch_id, bank_details_json, requested_amount, gross_cod,
+            delivery_charges_deducted, parcels_count, shipment_ids_json,
+            tracking_numbers_json, vendor_notes, status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'), datetime('now'))
+        `).bind(
+          cid, reqNumber, vId, vName, vPhone,
+          bId, bankJson, reqAmt, grossCod,
+          feeDeducted, parcelsCount, sIdsJson,
+          trksJson, vNotes
+        ).run();
+
+        const reqId = insertRes.meta.last_row_id;
+
+        // Mark included shipments as 'requested'
+        let sIds = [];
+        try { sIds = JSON.parse(sIdsJson); } catch (e) {}
+        if (Array.isArray(sIds) && sIds.length > 0) {
+          for (const sId of sIds) {
+            await db.prepare(`
+              UPDATE shipments SET
+                cod_settlement_status = 'requested',
+                cod_request_id = ?,
+                updated_at = datetime('now')
+              WHERE id = ?
+            `).bind(reqId, Number(sId)).run().catch(() => {});
+          }
+        }
+
+        // Notify Admin of new COD request
+        try {
+          await db.prepare(`
+            INSERT INTO notifications (
+              company_id, target_type, target_id, title, message, link, is_read, created_at
+            ) VALUES (?, 'admin', 0, ?, ?, '/company/cod-settlement?tab=requests', 0, datetime('now'))
+          `).bind(
+            cid,
+            'New COD Payout Request',
+            `Vendor "${vName}" submitted COD payout request ${reqNumber} for NPR ${reqAmt.toLocaleString()} (${parcelsCount} parcels).`
+          ).run();
+        } catch (e) {}
+
+        return jsonResponse({
+          success: true,
+          id: reqId,
+          request_number: reqNumber,
+          message: 'COD settlement request submitted successfully to Admin.',
+        });
+      }
+
+      // POST /api/cod-requests/:id/settle (Step 2: Admin settles COD request)
+      const settleMatch = path.match(/^cod-requests\/(\d+)\/settle$/);
+      if (settleMatch && method === 'POST') {
+        const reqId = Number(settleMatch[1]);
+        const body = await request.json();
+        const payMethod = body.payment_method || 'Bank Transfer';
+        const payRef = (body.payment_reference || `TXN-${Date.now().toString().slice(-6)}`).trim();
+        const adminNotes = body.admin_notes || body.notes || 'Settlement disbursed by Admin';
+        const settledBy = body.settled_by || 'Admin';
+        const nowIso = new Date().toISOString();
+
+        const req = await db.prepare('SELECT * FROM cod_requests WHERE id = ?').bind(reqId).first();
+        if (!req) return jsonResponse({ error: 'COD request not found' }, 404);
+
+        if (req.status === 'settled') {
+          return jsonResponse({ error: 'This COD request has already been settled.' }, 400);
+        }
+
+        // Generate formal settlement voucher number: SETTLE-YYYYMMDD-COUNT
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const d = String(now.getDate()).padStart(2, '0');
+        const datePrefix = `${y}${m}${d}`;
+        const settleNumber = `SETTLE-${datePrefix}-${String(reqId).padStart(4, '0')}`;
+
+        // 1. Insert formal record into cod_settlements table
+        const insertSettleRes = await db.prepare(`
+          INSERT INTO cod_settlements (
+            company_id, settlement_number, customer_id, branch_id,
+            vendor_name, vendor_phone, bank_details_json, total_cod,
+            delivery_charges_deducted, other_deductions, net_payable,
+            parcels_count, shipment_ids_json, payment_method,
+            payment_reference, notes, status, settled_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, 'completed', ?)
+        `).bind(
+          req.company_id, settleNumber, req.vendor_id, req.branch_id,
+          req.vendor_name, req.vendor_phone || '', req.bank_details_json || '{}',
+          Number(req.gross_cod), Number(req.delivery_charges_deducted), Number(req.requested_amount),
+          Number(req.parcels_count), req.shipment_ids_json || '[]',
+          payMethod, payRef, adminNotes, nowIso
+        ).run();
+
+        const settleId = insertSettleRes.meta.last_row_id;
+
+        // 2. Update cod_requests table status to settled
+        await db.prepare(`
+          UPDATE cod_requests SET
+            status = 'settled',
+            settlement_id = ?,
+            payment_method = ?,
+            payment_reference = ?,
+            admin_notes = ?,
+            settled_by = ?,
+            settled_at = ?,
+            updated_at = datetime('now')
+          WHERE id = ?
+        `).bind(settleId, payMethod, payRef, adminNotes, settledBy, nowIso, reqId).run();
+
+        // 3. Mark all included shipments as fully settled
+        let sIds = [];
+        try { sIds = JSON.parse(req.shipment_ids_json); } catch (e) {}
+        if (Array.isArray(sIds) && sIds.length > 0) {
+          for (const sId of sIds) {
+            await db.prepare(`
+              UPDATE shipments SET
+                cod_settled = 1,
+                cod_settlement_status = 'settled',
+                cod_settlement_ref = ?,
+                cod_settlement_method = ?,
+                cod_settled_at = ?,
+                cod_settlement_id = ?,
+                updated_at = datetime('now')
+              WHERE id = ?
+            `).bind(settleNumber, payMethod, nowIso, settleId, Number(sId)).run().catch(() => {});
+          }
+        }
+
+        // 4. Notify Vendor that COD request was settled
+        try {
+          await db.prepare(`
+            INSERT INTO notifications (
+              company_id, target_type, target_id, title, message, link, is_read, created_at
+            ) VALUES (?, 'vendor', ?, ?, ?, '/customer/orders/cod-settlement?tab=statements', 0, datetime('now'))
+          `).bind(
+            req.company_id,
+            req.vendor_id,
+            'COD Payout Settled',
+            `Your COD request ${req.request_number} for NPR ${Number(req.requested_amount).toLocaleString()} has been settled by Admin via ${payMethod} (Ref: ${payRef}).`
+          ).run();
+        } catch (e) {}
+
+        return jsonResponse({
+          success: true,
+          settlement_id: settleId,
+          settlement_number: settleNumber,
+          message: `COD request ${req.request_number} settled successfully.`,
+        });
+      }
+
+      // POST /api/cod-requests/:id/reject (Admin declines COD request)
+      const rejectMatch = path.match(/^cod-requests\/(\d+)\/reject$/);
+      if (rejectMatch && method === 'POST') {
+        const reqId = Number(rejectMatch[1]);
+        const body = await request.json();
+        const reason = body.reason || body.admin_notes || 'Declined by Admin';
+
+        const req = await db.prepare('SELECT * FROM cod_requests WHERE id = ?').bind(reqId).first();
+        if (!req) return jsonResponse({ error: 'COD request not found' }, 404);
+
+        await db.prepare(`
+          UPDATE cod_requests SET
+            status = 'rejected',
+            admin_notes = ?,
+            updated_at = datetime('now')
+          WHERE id = ?
+        `).bind(reason, reqId).run();
+
+        // Release shipments back to unsettled
+        let sIds = [];
+        try { sIds = JSON.parse(req.shipment_ids_json); } catch (e) {}
+        if (Array.isArray(sIds) && sIds.length > 0) {
+          for (const sId of sIds) {
+            await db.prepare(`
+              UPDATE shipments SET
+                cod_settlement_status = 'unsettled',
+                cod_request_id = NULL,
+                updated_at = datetime('now')
+              WHERE id = ?
+            `).bind(Number(sId)).run().catch(() => {});
+          }
+        }
+
+        // Notify Vendor
+        try {
+          await db.prepare(`
+            INSERT INTO notifications (
+              company_id, target_type, target_id, title, message, link, is_read, created_at
+            ) VALUES (?, 'vendor', ?, ?, ?, '/customer/orders/cod-settlement?tab=requests', 0, datetime('now'))
+          `).bind(
+            req.company_id,
+            req.vendor_id,
+            'COD Request Declined',
+            `Your COD request ${req.request_number} was declined by Admin. Reason: ${reason}`
+          ).run();
+        } catch (e) {}
+
+        return jsonResponse({
+          success: true,
+          message: `COD request ${req.request_number} declined and parcels released.`,
+        });
+      }
+    }
+
+    // 4.D Inland Revenue Department (IRD Nepal) Electronic Billing System Endpoints
+    // VAT Rules 2053 (Rule 23, Schedule 5 Tax Invoice, Schedule 8 Sales Book, Schedule 10 Credit Notes)
+    if (path === 'invoices' || path.startsWith('invoices/') || path === 'credit-notes' || path === 'ebilling/sales-register') {
+      const companyId = Number(url.searchParams.get('company_id') || 1);
+
+      // GET /api/ebilling/sales-register (Annex 8 - बिक्री खाता)
+      if (path === 'ebilling/sales-register' && method === 'GET') {
+        const fiscalYear = url.searchParams.get('fiscal_year');
+        let query = 'SELECT * FROM invoices WHERE company_id = ?';
+        const params = [companyId];
+        if (fiscalYear) {
+          query += ' AND fiscal_year = ?';
+          params.push(fiscalYear);
+        }
+        query += ' ORDER BY id ASC';
+
+        const { results } = await db.prepare(query).bind(...params).all().catch(() => ({ results: [] }));
+        const formatted = (results || []).map((inv) => ({
+          ...inv,
+          items: inv.items_json ? JSON.parse(inv.items_json) : [],
+          shipment_ids: inv.shipment_ids_json ? JSON.parse(inv.shipment_ids_json) : [],
+        }));
+        return jsonResponse(formatted);
+      }
+
+      // GET /api/credit-notes (Annex 10 - ऋणपत्रहरू)
+      if (path === 'credit-notes' && method === 'GET') {
+        const { results } = await db.prepare('SELECT * FROM credit_notes WHERE company_id = ? ORDER BY id DESC').bind(companyId).all().catch(() => ({ results: [] }));
+        return jsonResponse(results || []);
+      }
+
+      // GET /api/invoices
+      if (path === 'invoices' && method === 'GET') {
+        const customerId = url.searchParams.get('customer_id');
+        const status = url.searchParams.get('status');
+        const fiscalYear = url.searchParams.get('fiscal_year');
+
+        let query = 'SELECT * FROM invoices WHERE company_id = ?';
+        const params = [companyId];
+        if (customerId) {
+          query += ' AND customer_id = ?';
+          params.push(Number(customerId));
+        }
+        if (status && status !== 'all') {
+          query += ' AND status = ?';
+          params.push(status);
+        }
+        if (fiscalYear) {
+          query += ' AND fiscal_year = ?';
+          params.push(fiscalYear);
+        }
+        query += ' ORDER BY id DESC';
+
+        const { results } = await db.prepare(query).bind(...params).all().catch(() => ({ results: [] }));
+        const formatted = (results || []).map((inv) => ({
+          ...inv,
+          items: inv.items_json ? JSON.parse(inv.items_json) : [],
+          shipment_ids: inv.shipment_ids_json ? JSON.parse(inv.shipment_ids_json) : [],
+        }));
+        return jsonResponse(formatted);
+      }
+
+      // POST /api/invoices (Generate IRD Tax Invoice pursuant to Schedule 5)
+      if (path === 'invoices' && method === 'POST') {
+        const body = await request.json();
+        const cid = Number(body.company_id || companyId);
+        const custId = body.customer_id ? Number(body.customer_id) : null;
+        const buyerName = body.buyer_name || 'Walk-in Customer';
+        const buyerPan = (body.buyer_pan || '').trim();
+        const buyerAddr = body.buyer_address || 'Nepal';
+        const buyerPhone = body.buyer_phone || '';
+        const buyerEmail = body.buyer_email || '';
+        const bId = body.branch_id ? Number(body.branch_id) : null;
+        const bName = body.branch_name || 'Butwal Hub';
+        const payMethod = body.payment_method || 'Cash';
+        const payRef = body.payment_reference || '';
+        const billType = body.bill_type || 'tax_invoice';
+        const issuedBy = body.issued_by || 'Admin';
+
+        const subtotal = Number(body.subtotal || 0);
+        const discountAmt = Number(body.discount_amount || 0);
+        const nonTaxableAmt = Number(body.non_taxable_amount || 0);
+        const taxableAmt = Number(body.taxable_amount || (subtotal - discountAmt - nonTaxableAmt));
+        const vatRate = Number(body.vat_rate || 13.0);
+        const vatAmt = Number(body.vat_amount || Math.round(taxableAmt * (vatRate / 100) * 100) / 100);
+        const totalAmt = Number(body.total_amount || Math.round((taxableAmt + vatAmt + nonTaxableAmt) * 100) / 100);
+        const words = body.amount_in_words || `NPR ${totalAmt.toLocaleString()} Only`;
+
+        const itemsJson = typeof body.items === 'object' ? JSON.stringify(body.items) : (body.items_json || '[]');
+        const shipmentIdsJson = typeof body.shipment_ids === 'object' ? JSON.stringify(body.shipment_ids) : (body.shipment_ids_json || '[]');
+
+        // Fiscal year calculation (e.g. 2083/84)
+        const now = new Date();
+        const fy = body.fiscal_year || '2083/84';
+        const dateAd = body.invoice_date_ad || now.toISOString().slice(0, 10);
+        const dateBs = body.invoice_date_bs || '2083-07-20';
+        const timeStr = body.invoice_time || now.toTimeString().slice(0, 8);
+
+        // Sequential IRD invoice number: RTC-INV-208384-XXXXX
+        const fyClean = fy.replace('/', '');
+        const lastInv = await db.prepare(
+          "SELECT invoice_number FROM invoices WHERE company_id = ? AND invoice_number LIKE ? ORDER BY id DESC LIMIT 1"
+        ).bind(cid, `RTC-INV-${fyClean}-%`).first().catch(() => null);
+
+        let seq = 1;
+        if (lastInv?.invoice_number) {
+          const match = lastInv.invoice_number.match(/-(\d+)$/);
+          if (match) seq = parseInt(match[1], 10) + 1;
+        }
+        const invNumber = body.invoice_number || `RTC-INV-${fyClean}-${String(seq).padStart(5, '0')}`;
+        const ackCode = `CBMS-RTC-${Date.now().toString().slice(-4)}-${Math.floor(100000 + Math.random() * 900000)}`;
+
+        const insertRes = await db.prepare(`
+          INSERT INTO invoices (
+            company_id, invoice_number, fiscal_year, invoice_date_ad, invoice_date_bs, invoice_time,
+            bill_type, seller_name, seller_pan, seller_address, seller_phone,
+            customer_id, buyer_name, buyer_pan, buyer_address, buyer_phone, buyer_email,
+            branch_id, branch_name, subtotal, tax_amount, discount_amount, non_taxable_amount,
+            taxable_amount, vat_rate, vat_amount, total_amount, amount_in_words,
+            payment_method, payment_reference, status, items_json, shipment_ids_json,
+            is_realtime_synced, ird_sync_at, ird_ack_code, issued_by, created_at, updated_at
+          ) VALUES (
+            ?, ?, ?, ?, ?, ?,
+            ?, 'R.T.C. COURIER PVT. LTD.', '609812345', 'Milanchowk, Butwal-8, Rupandehi, Nepal', '071-532176',
+            ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?,
+            ?, ?, 'paid', ?, ?,
+            1, datetime('now'), ?, ?, datetime('now'), datetime('now')
+          )
+        `).bind(
+          cid, invNumber, fy, dateAd, dateBs, timeStr,
+          billType,
+          (custId || 0), buyerName, buyerPan, buyerAddr, buyerPhone, buyerEmail,
+          bId, bName, subtotal, vatAmt, discountAmt, nonTaxableAmt,
+          taxableAmt, vatRate, vatAmt, totalAmt, words,
+          payMethod, payRef, itemsJson, shipmentIdsJson,
+          ackCode, issuedBy
+        ).run();
+
+        const invId = insertRes.meta.last_row_id;
+
+        // Link shipments to invoice
+        let sIds = [];
+        try { sIds = JSON.parse(shipmentIdsJson); } catch (e) {}
+        if (Array.isArray(sIds) && sIds.length > 0) {
+          for (const sId of sIds) {
+            await db.prepare("UPDATE shipments SET invoice_id = ?, updated_at = datetime('now') WHERE id = ?")
+              .bind(invId, Number(sId)).run().catch(() => {});
+          }
+        }
+
+        return jsonResponse({
+          success: true,
+          id: invId,
+          invoice_number: invNumber,
+          ird_ack_code: ackCode,
+          fiscal_year: fy,
+          total_amount: totalAmt,
+          vat_amount: vatAmt,
+          message: 'IRD Tax Invoice generated and recorded in D1 database',
+        });
+      }
+
+      // POST /api/invoices/:id/pay
+      const payMatch = path.match(/^invoices\/(\d+)\/pay$/);
+      if (payMatch && method === 'POST') {
+        const invId = Number(payMatch[1]);
+        const body = await request.json().catch(() => ({}));
+        const payMethod = body.payment_method || 'Cash';
+        const payRef = body.payment_reference || '';
+
+        await db.prepare(`
+          UPDATE invoices SET
+            status = 'paid',
+            paid_at = datetime('now'),
+            payment_method = ?,
+            payment_reference = ?,
+            updated_at = datetime('now')
+          WHERE id = ?
+        `).bind(payMethod, payRef, invId).run();
+
+        return jsonResponse({ success: true, message: 'Invoice marked as paid in D1 database' });
+      }
+
+      // POST /api/invoices/:id/cancel (Issue Credit Note / रद्द बिजक - Annex 10)
+      const cancelMatch = path.match(/^invoices\/(\d+)\/cancel$/);
+      if (cancelMatch && method === 'POST') {
+        const invId = Number(cancelMatch[1]);
+        const body = await request.json();
+        const reason = body.reason || 'Service cancelled / return adjustment';
+
+        const inv = await db.prepare('SELECT * FROM invoices WHERE id = ?').bind(invId).first();
+        if (!inv) return jsonResponse({ error: 'Invoice not found' }, 404);
+        if (inv.is_cancelled === 1) return jsonResponse({ error: 'Invoice is already cancelled / credit note issued' }, 400);
+
+        // Generate Credit Note number: RTC-CN-208384-XXXX
+        const fyClean = (inv.fiscal_year || '2083/84').replace('/', '');
+        const lastCn = await db.prepare(
+          "SELECT credit_note_number FROM credit_notes WHERE company_id = ? AND credit_note_number LIKE ? ORDER BY id DESC LIMIT 1"
+        ).bind(inv.company_id, `RTC-CN-${fyClean}-%`).first().catch(() => null);
+
+        let cnSeq = 1;
+        if (lastCn?.credit_note_number) {
+          const m = lastCn.credit_note_number.match(/-(\d+)$/);
+          if (m) cnSeq = parseInt(m[1], 10) + 1;
+        }
+        const cnNumber = `RTC-CN-${fyClean}-${String(cnSeq).padStart(4, '0')}`;
+        const nowIso = new Date().toISOString();
+
+        // 1. Insert into credit_notes table
+        await db.prepare(`
+          INSERT INTO credit_notes (
+            company_id, credit_note_number, fiscal_year, ref_invoice_number, ref_invoice_id,
+            date_ad, date_bs, buyer_name, buyer_pan, taxable_amount, vat_amount,
+            total_amount, reason, issued_by, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Admin', datetime('now'))
+        `).bind(
+          inv.company_id, cnNumber, inv.fiscal_year || '2083/84', inv.invoice_number, inv.id,
+          nowIso.slice(0, 10), inv.invoice_date_bs || '2083-07-20', inv.buyer_name, inv.buyer_pan || '',
+          Number(inv.taxable_amount || inv.subtotal), Number(inv.vat_amount || 0),
+          Number(inv.total_amount), reason
+        ).run();
+
+        // 2. Mark invoice as cancelled
+        await db.prepare(`
+          UPDATE invoices SET
+            is_cancelled = 1,
+            status = 'cancelled',
+            cancel_reason = ?,
+            credit_note_number = ?,
+            cancelled_at = datetime('now'),
+            updated_at = datetime('now')
+          WHERE id = ?
+        `).bind(reason, cnNumber, invId).run();
+
+        // 3. Release shipments
+        let sIds = [];
+        try { sIds = JSON.parse(inv.shipment_ids_json); } catch (e) {}
+        if (Array.isArray(sIds) && sIds.length > 0) {
+          for (const sId of sIds) {
+            await db.prepare("UPDATE shipments SET invoice_id = NULL, updated_at = datetime('now') WHERE id = ?")
+              .bind(Number(sId)).run().catch(() => {});
+          }
+        }
+
+        return jsonResponse({
+          success: true,
+          credit_note_number: cnNumber,
+          message: `Credit Note ${cnNumber} issued successfully pursuant to IRD Annex 10.`,
         });
       }
     }
@@ -1665,6 +2700,560 @@ export async function onRequest(context) {
       }
     }
 
+    // 5g. Shipment Status Settings CRUD on dedicated D1 table 'shipment_status_settings'
+    if (path === 'shipment-statuses' || path.startsWith('shipment-statuses/') || path === 'shipment-status-settings' || path.startsWith('shipment-status-settings/')) {
+      const companyId = Number(url.searchParams.get('company_id') || 1);
+      const idMatch = path.match(/^shipment-statuses\/(\d+)$/) || path.match(/^shipment-status-settings\/(\d+)$/);
+      const paramId = idMatch ? Number(idMatch[1]) : (url.searchParams.get('id') ? Number(url.searchParams.get('id')) : null);
+
+      const ensureStatusTable = async () => {
+        try {
+          await db.prepare(`
+            CREATE TABLE IF NOT EXISTS shipment_status_settings (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              company_id INTEGER NOT NULL DEFAULT 1,
+              status_key TEXT NOT NULL,
+              label TEXT NOT NULL,
+              color TEXT NOT NULL DEFAULT 'blue',
+              bg_color TEXT,
+              fg_color TEXT,
+              is_custom INTEGER NOT NULL DEFAULT 0,
+              is_active INTEGER NOT NULL DEFAULT 1,
+              sort_order INTEGER NOT NULL DEFAULT 0,
+              description TEXT,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+            )
+          `).run();
+        } catch (e) {
+          console.warn('Table create error:', e);
+        }
+
+        try {
+          await db.prepare(`
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_status_company_key ON shipment_status_settings(company_id, status_key)
+          `).run();
+        } catch (e) {}
+
+        // Auto-seed default pipeline statuses if empty
+        const countRes = await db.prepare('SELECT count(*) as count FROM shipment_status_settings WHERE company_id = ?').bind(companyId).first().catch(() => null);
+        if (!countRes || Number(countRes.count) === 0) {
+          const defaultCoreStatuses = [
+            { key: 'pending', label: 'Pending', color: 'amber', bg: '#fdf0d2', fg: '#8a5f13', sort: 1 },
+            { key: 'pickup_requested', label: 'Pickup Requested', color: 'amber', bg: '#fdf0d2', fg: '#8a5f13', sort: 2 },
+            { key: 'assigned', label: 'Pickup Assigned', color: 'blue', bg: '#e6edfd', fg: '#2050c4', sort: 3 },
+            { key: 'picked_up', label: 'Picked Up', color: 'blue', bg: '#e6edfd', fg: '#2050c4', sort: 4 },
+            { key: 'received_at_branch', label: 'Received At Branch', color: 'blue', bg: '#e6edfd', fg: '#2050c4', sort: 5 },
+            { key: 'in_transit', label: 'In Transit', color: 'blue', bg: '#e6edfd', fg: '#2050c4', sort: 6 },
+            { key: 'out_for_delivery', label: 'Out For Delivery', color: 'blue', bg: '#e6edfd', fg: '#2050c4', sort: 7 },
+            { key: 'delivered', label: 'Delivered', color: 'green', bg: '#e2f5e9', fg: '#1f7a46', sort: 8 },
+            { key: 'failed', label: 'Failed', color: 'red', bg: '#fbe7e5', fg: '#c0392b', sort: 9 },
+            { key: 'cancelled', label: 'Cancelled', color: 'red', bg: '#fbe7e5', fg: '#c0392b', sort: 10 },
+            { key: 'returned', label: 'Returned', color: 'tan', bg: '#f3ebdf', fg: '#8a6a3e', sort: 11 },
+          ];
+
+          for (const s of defaultCoreStatuses) {
+            try {
+              await db.prepare(`
+                INSERT OR IGNORE INTO shipment_status_settings (
+                  company_id, status_key, label, color, bg_color, fg_color, is_custom, is_active, sort_order, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 0, 1, ?, datetime('now'), datetime('now'))
+              `).bind(companyId, s.key, s.label, s.color, s.bg, s.fg, s.sort).run();
+            } catch (err) {}
+          }
+        }
+      };
+
+      await ensureStatusTable();
+
+      // GET: Read status settings from D1 table 'shipment_status_settings'
+      if (method === 'GET') {
+        const { results } = await db.prepare(
+          'SELECT * FROM shipment_status_settings WHERE company_id = ? ORDER BY is_custom ASC, sort_order ASC, id ASC'
+        ).bind(companyId).all();
+
+        const allStatuses = results || [];
+        const coreMap = {};
+        const customList = [];
+
+        for (const row of allStatuses) {
+          if (row.is_custom === 1) {
+            customList.push({
+              id: row.id,
+              key: row.status_key,
+              label: row.label,
+              color: row.color,
+              bg_color: row.bg_color,
+              fg_color: row.fg_color,
+              is_active: row.is_active === 1,
+              sort_order: row.sort_order,
+              description: row.description || '',
+            });
+          } else {
+            coreMap[row.status_key] = {
+              id: row.id,
+              key: row.status_key,
+              label: row.label,
+              color: row.color,
+              bg_color: row.bg_color,
+              fg_color: row.fg_color,
+              is_active: row.is_active === 1,
+              sort_order: row.sort_order,
+            };
+          }
+        }
+
+        return jsonResponse({
+          success: true,
+          company_id: companyId,
+          statuses: allStatuses,
+          core_statuses: coreMap,
+          custom_statuses: customList,
+        });
+      }
+
+      // POST: Save or Create status
+      if (method === 'POST') {
+        const body = await request.json().catch(() => ({}));
+        const cid = Number(body.company_id || companyId);
+
+        // Reset to default action: /api/shipment-statuses/reset
+        if (path.endsWith('/reset')) {
+          await db.prepare('DELETE FROM shipment_status_settings WHERE company_id = ? AND is_custom = 0').bind(cid).run();
+          await ensureStatusTable();
+          const { results } = await db.prepare(
+            'SELECT * FROM shipment_status_settings WHERE company_id = ? ORDER BY is_custom ASC, sort_order ASC, id ASC'
+          ).bind(cid).all();
+          return jsonResponse({
+            success: true,
+            message: 'Status settings reset to defaults successfully',
+            statuses: results || [],
+          });
+        }
+
+        // Bulk Save core status settings
+        if (body.statuses || body.core_statuses || body.settings) {
+          const statusesToSave = body.statuses || body.core_statuses || body.settings;
+          const colorPresets = {
+            amber: { bg: '#fdf0d2', fg: '#8a5f13' },
+            blue: { bg: '#e6edfd', fg: '#2050c4' },
+            green: { bg: '#e2f5e9', fg: '#1f7a46' },
+            red: { bg: '#fbe7e5', fg: '#c0392b' },
+            tan: { bg: '#f3ebdf', fg: '#8a6a3e' },
+            gray: { bg: '#efe9e3', fg: '#6b6258' },
+            purple: { bg: '#f3e8ff', fg: '#6b21a8' },
+            teal: { bg: '#ccfbf1', fg: '#0f766e' },
+          };
+
+          for (const [key, val] of Object.entries(statusesToSave)) {
+            if (!val || typeof val !== 'object') continue;
+            const label = (val.label || key).trim();
+            const color = (val.color || 'blue').toLowerCase();
+            const preset = colorPresets[color] || { bg: '#e6edfd', fg: '#2050c4' };
+            const isActive = val.is_active === false || val.active === false ? 0 : 1;
+
+            await db.prepare(`
+              INSERT INTO shipment_status_settings (
+                company_id, status_key, label, color, bg_color, fg_color, is_custom, is_active, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, datetime('now'))
+              ON CONFLICT(company_id, status_key) DO UPDATE SET
+                label = excluded.label,
+                color = excluded.color,
+                bg_color = excluded.bg_color,
+                fg_color = excluded.fg_color,
+                is_active = excluded.is_active,
+                updated_at = datetime('now')
+            `).bind(cid, key, label, color, preset.bg, preset.fg, isActive).run();
+          }
+
+          // Sync to setting table column for compatibility
+          try {
+            await db.prepare(`
+              UPDATE setting SET shipment_statuses = ?, updated_at = datetime('now') WHERE company_id = ?
+            `).bind(JSON.stringify(statusesToSave), cid).run();
+          } catch (e) {}
+
+          const { results } = await db.prepare(
+            'SELECT * FROM shipment_status_settings WHERE company_id = ? ORDER BY is_custom ASC, sort_order ASC, id ASC'
+          ).bind(cid).all();
+
+          return jsonResponse({
+            success: true,
+            company_id: cid,
+            message: 'Shipment status settings saved successfully to D1 database',
+            statuses: results || [],
+          });
+        }
+
+        // Add Single Custom Status Tag
+        const label = (body.label || '').trim();
+        if (!label) {
+          return jsonResponse({ error: 'Status label is required' }, 400);
+        }
+
+        const rawKey = body.key || body.status_key || label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+        const key = rawKey || `status_${Date.now()}`;
+        const color = (body.color || 'amber').toLowerCase();
+        const colorPresets = {
+          amber: { bg: '#fdf0d2', fg: '#8a5f13' },
+          blue: { bg: '#e6edfd', fg: '#2050c4' },
+          green: { bg: '#e2f5e9', fg: '#1f7a46' },
+          red: { bg: '#fbe7e5', fg: '#c0392b' },
+          tan: { bg: '#f3ebdf', fg: '#8a6a3e' },
+          gray: { bg: '#efe9e3', fg: '#6b6258' },
+          purple: { bg: '#f3e8ff', fg: '#6b21a8' },
+          teal: { bg: '#ccfbf1', fg: '#0f766e' },
+        };
+        const preset = colorPresets[color] || { bg: '#fdf0d2', fg: '#8a5f13' };
+        const desc = (body.description || '').trim();
+
+        const insertRes = await db.prepare(`
+          INSERT INTO shipment_status_settings (
+            company_id, status_key, label, color, bg_color, fg_color, is_custom, is_active, description, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?, datetime('now'), datetime('now'))
+          ON CONFLICT(company_id, status_key) DO UPDATE SET
+            label = excluded.label,
+            color = excluded.color,
+            bg_color = excluded.bg_color,
+            fg_color = excluded.fg_color,
+            description = excluded.description,
+            updated_at = datetime('now')
+        `).bind(cid, key, label, color, preset.bg, preset.fg, desc).run();
+
+        return jsonResponse({
+          success: true,
+          id: insertRes.meta?.last_row_id,
+          key,
+          label,
+          color,
+          bg_color: preset.bg,
+          fg_color: preset.fg,
+          is_custom: 1,
+          is_active: 1,
+          message: `Custom status tag "${label}" added successfully to D1 database`,
+        });
+      }
+
+      // PUT: Update single status by id or status_key
+      if (method === 'PUT') {
+        const body = await request.json().catch(() => ({}));
+        const targetId = paramId || body.id;
+        const targetKey = body.status_key || body.key;
+
+        if (!targetId && !targetKey) {
+          return jsonResponse({ error: 'Status ID or key is required for update' }, 400);
+        }
+
+        const label = (body.label || '').trim();
+        const color = (body.color || 'blue').toLowerCase();
+        const isActive = body.is_active === false || body.active === false ? 0 : 1;
+
+        await db.prepare(`
+          UPDATE shipment_status_settings
+          SET label = COALESCE(NULLIF(?, ''), label),
+              color = COALESCE(NULLIF(?, ''), color),
+              is_active = ?,
+              updated_at = datetime('now')
+          WHERE company_id = ? AND (id = ? OR status_key = ?)
+        `).bind(label, color, isActive, companyId, targetId || 0, targetKey || '').run();
+
+        return jsonResponse({ success: true, message: 'Status updated successfully in D1 database' });
+      }
+
+      // DELETE: Delete custom status
+      if (method === 'DELETE') {
+        const targetKey = url.searchParams.get('key') || url.searchParams.get('status_key');
+        const targetId = paramId || url.searchParams.get('id');
+
+        if (!targetId && !targetKey) {
+          return jsonResponse({ error: 'Status ID or key is required' }, 400);
+        }
+
+        await db.prepare(`
+          DELETE FROM shipment_status_settings
+          WHERE company_id = ? AND is_custom = 1 AND (id = ? OR status_key = ?)
+        `).bind(companyId, targetId || 0, targetKey || '').run();
+
+        return jsonResponse({ success: true, message: 'Custom status deleted successfully from D1 database' });
+      }
+    }
+
+    // 5.B Landmarks / Address/Landmark Settings endpoint: read & write on D1 table 'landmarks'
+    if (
+      path === 'landmarks' ||
+      path.startsWith('landmarks/') ||
+      path === 'address-landmarks' ||
+      path.startsWith('address-landmarks/') ||
+      path === 'coverage-areas' ||
+      path.startsWith('coverage-areas/')
+    ) {
+      const companyId = Number(url.searchParams.get('company_id') || 1);
+      const branchIdParam = url.searchParams.get('branch_id');
+      const idMatch = path.match(/^landmarks\/(\d+)$/) || path.match(/^address-landmarks\/(\d+)$/);
+      const paramId = idMatch ? Number(idMatch[1]) : (url.searchParams.get('id') ? Number(url.searchParams.get('id')) : null);
+
+      const ensureLandmarksTable = async () => {
+        try {
+          await db.prepare(`
+            CREATE TABLE IF NOT EXISTS landmarks (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              company_id INTEGER NOT NULL DEFAULT 1,
+              branch_id INTEGER NOT NULL,
+              name TEXT NOT NULL,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+            )
+          `).run();
+        } catch (e) {
+          console.warn('Landmarks table create error:', e);
+        }
+
+        try {
+          await db.prepare(`
+            CREATE INDEX IF NOT EXISTS idx_landmarks_branch ON landmarks(company_id, branch_id)
+          `).run();
+        } catch (e) {}
+
+        // Auto-seed initial landmarks if table is empty
+        try {
+          const countRes = await db.prepare('SELECT count(*) as count FROM landmarks WHERE company_id = ?').bind(companyId).first().catch(() => null);
+          if (!countRes || Number(countRes.count) === 0) {
+            // Seed Butwal landmarks for branch 1
+            const defaultLm = [
+              'Traffic Chowk',
+              'Milanchowk',
+              'Golpark',
+              'Belbas',
+              'Kalikanagar',
+              'Hospital Line',
+            ];
+            for (const name of defaultLm) {
+              await db.prepare(`
+                INSERT INTO landmarks (company_id, branch_id, name, created_at, updated_at)
+                VALUES (?, 1, ?, datetime('now'), datetime('now'))
+              `).bind(companyId, name).run().catch(() => {});
+            }
+
+            // Find Aurahi / Mahottari branches and seed their coverage areas
+            const aurahiBranches = await db.prepare(`
+              SELECT id, name FROM branches WHERE name LIKE '%Aurahi%' OR name LIKE '%Aaurahi%' OR (district LIKE '%Mahottari%' AND (name LIKE '%Aurahi%' OR name LIKE '%Aaurahi%'))
+            `).all().catch(() => ({ results: [] }));
+
+            const aurahiCoverage = [
+              'Aaurahi Mahottari',
+              'Aurahi Mahorati',
+              'Aurahi Bazar',
+            ];
+
+            if (aurahiBranches?.results?.length) {
+              for (const br of aurahiBranches.results) {
+                for (const lm of aurahiCoverage) {
+                  await db.prepare(`
+                    INSERT INTO landmarks (company_id, branch_id, name, created_at, updated_at)
+                    VALUES (?, ?, ?, datetime('now'), datetime('now'))
+                  `).bind(companyId, Number(br.id), lm).run().catch(() => {});
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Landmarks seed error:', e);
+        }
+      };
+
+      await ensureLandmarksTable();
+
+      // Coverage areas helper endpoint
+      if (path === 'coverage-areas' || path.startsWith('coverage-areas/')) {
+        const bId = Number(branchIdParam || path.split('/')[1] || 0);
+        if (!bId) {
+          return jsonResponse({ success: false, coverage_areas: [], message: 'branch_id required' });
+        }
+
+        let { results } = await db.prepare(
+          'SELECT * FROM landmarks WHERE company_id = ? AND branch_id = ? ORDER BY id ASC'
+        ).bind(companyId, bId).all();
+
+        // If empty, check branch name and auto-seed if it matches Aurahi
+        if (!results || results.length === 0) {
+          const br = await db.prepare('SELECT id, name FROM branches WHERE id = ?').bind(bId).first().catch(() => null);
+          const brName = (br?.name || '').toLowerCase();
+          if (brName.includes('aurahi') || brName.includes('aaurahi')) {
+            const aurahiDefaults = ['Aaurahi Mahottari', 'Aurahi Mahorati', 'Aurahi Bazar'];
+            for (const name of aurahiDefaults) {
+              await db.prepare(`
+                INSERT INTO landmarks (company_id, branch_id, name, created_at, updated_at)
+                VALUES (?, ?, ?, datetime('now'), datetime('now'))
+              `).bind(companyId, bId, name).run().catch(() => {});
+            }
+            const recheck = await db.prepare(
+              'SELECT * FROM landmarks WHERE company_id = ? AND branch_id = ? ORDER BY id ASC'
+            ).bind(companyId, bId).all();
+            results = recheck.results || [];
+          }
+        }
+
+        const coverageNames = (results || []).map((l) => l.name);
+        return jsonResponse({
+          success: true,
+          branch_id: bId,
+          coverage_areas: coverageNames,
+          landmarks: results || [],
+        });
+      }
+
+      // GET: Read landmarks
+      if (method === 'GET') {
+        let query = 'SELECT * FROM landmarks WHERE company_id = ?';
+        const params = [companyId];
+        if (branchIdParam) {
+          query += ' AND branch_id = ?';
+          params.push(Number(branchIdParam));
+        }
+        query += ' ORDER BY branch_id ASC, id ASC';
+
+        const { results } = await db.prepare(query).bind(...params).all();
+
+        return jsonResponse({
+          success: true,
+          landmarks: results || [],
+          count: (results || []).length,
+        });
+      }
+
+      // POST: Create new landmark
+      if (method === 'POST') {
+        const body = await request.json();
+        const cid = Number(body.company_id || companyId);
+        const branchId = Number(body.branch_id || branchIdParam || 0);
+        const name = (body.name || '').trim();
+
+        if (!branchId) {
+          return jsonResponse({ error: 'Branch is required' }, 400);
+        }
+        if (!name) {
+          return jsonResponse({ error: 'Landmark name is required' }, 400);
+        }
+
+        const res = await db.prepare(`
+          INSERT INTO landmarks (company_id, branch_id, name, created_at, updated_at)
+          VALUES (?, ?, ?, datetime('now'), datetime('now'))
+        `).bind(cid, branchId, name).run();
+
+        const insertedId = res.meta.last_row_id;
+        const inserted = await db.prepare('SELECT * FROM landmarks WHERE id = ?').bind(insertedId).first();
+
+        return jsonResponse({
+          success: true,
+          id: insertedId,
+          landmark: inserted || { id: insertedId, company_id: cid, branch_id: branchId, name },
+          message: 'Landmark created successfully in D1 database table landmarks',
+        });
+      }
+
+      // PUT: Update landmark
+      if (method === 'PUT' || method === 'PATCH') {
+        const body = await request.json();
+        const landmarkId = paramId || Number(body.id);
+        if (!landmarkId) {
+          return jsonResponse({ error: 'Landmark ID is required' }, 400);
+        }
+
+        const current = (await db.prepare('SELECT * FROM landmarks WHERE id = ?').bind(landmarkId).first()) || {};
+        const branchId = body.branch_id !== undefined ? Number(body.branch_id) : current.branch_id;
+        const name = body.name !== undefined ? (body.name || '').trim() : current.name;
+
+        await db.prepare(`
+          UPDATE landmarks
+          SET branch_id = ?, name = ?, updated_at = datetime('now')
+          WHERE id = ? AND company_id = ?
+        `).bind(branchId, name, landmarkId, companyId).run();
+
+        const updated = await db.prepare('SELECT * FROM landmarks WHERE id = ?').bind(landmarkId).first();
+
+        return jsonResponse({
+          success: true,
+          id: landmarkId,
+          landmark: updated,
+          message: 'Landmark updated successfully in D1 database table landmarks',
+        });
+      }
+
+      // DELETE: Delete landmark
+      if (method === 'DELETE') {
+        const landmarkId = paramId || Number(url.searchParams.get('id'));
+        if (!landmarkId) {
+          return jsonResponse({ error: 'Landmark ID is required' }, 400);
+        }
+
+        await db.prepare('DELETE FROM landmarks WHERE id = ? AND company_id = ?').bind(landmarkId, companyId).run();
+
+        return jsonResponse({
+          success: true,
+          id: landmarkId,
+          message: 'Landmark deleted successfully from D1 database table landmarks',
+        });
+      }
+    }
+
+    // 5.C Address Book (Hub & Landmark Coverage Directory) - joins D1 tables 'branches' & 'landmarks'
+    if (path === 'address-book' || path === 'branches/address-book') {
+      const companyId = Number(url.searchParams.get('company_id') || 1);
+      const province = url.searchParams.get('province');
+      const district = url.searchParams.get('district');
+
+      let sql = `
+        SELECT 
+          b.id,
+          b.company_id,
+          b.name,
+          b.phone,
+          b.email,
+          b.contact_person,
+          b.province,
+          b.district,
+          b.municipality,
+          b.branch_type,
+          b.tier,
+          GROUP_CONCAT(l.name, ', ') AS coverage_areas
+        FROM branches b
+        LEFT JOIN landmarks l ON l.branch_id = b.id AND l.company_id = b.company_id
+        WHERE b.company_id = ?
+      `;
+      const binds = [companyId];
+
+      if (province) {
+        sql += ' AND b.province = ?';
+        binds.push(province);
+      }
+      if (district) {
+        sql += ' AND b.district = ?';
+        binds.push(district);
+      }
+
+      sql += `
+        GROUP BY b.id
+        ORDER BY 
+          CASE WHEN b.province = 'Bagmati' THEN 1 ELSE 2 END,
+          b.province ASC,
+          b.district ASC,
+          b.name ASC
+      `;
+
+      try {
+        const { results } = await db.prepare(sql).bind(...binds).all();
+        return jsonResponse({
+          success: true,
+          count: (results || []).length,
+          data: results || [],
+        });
+      } catch (err) {
+        return jsonResponse({ success: false, error: err.message, data: [] }, 500);
+      }
+    }
+
     // 6. Branches endpoint: read and write on D1 table 'branches'
     if (path === 'branches' || path.startsWith('branches/')) {
       const companyId = url.searchParams.get('company_id') || 1;
@@ -2194,7 +3783,496 @@ export async function onRequest(context) {
       }
     }
 
-    // 8. Shipments endpoint: read and write on D1 table 'shipments'
+        // 7b. Pickup Requests API (D1 table: pickup_requests) - End-to-end 5-step parcel lifecycle
+    
+    // Notifications API: Read and mark read on D1 table 'notifications'
+    if (path === 'notifications' || path.startsWith('notifications/')) {
+      const companyId = Number(url.searchParams.get('company_id') || 1);
+      const targetType = url.searchParams.get('target_type');
+      const targetId = url.searchParams.get('target_id');
+
+      try {
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id INTEGER NOT NULL DEFAULT 1,
+            target_type TEXT NOT NULL,
+            target_id INTEGER,
+            title TEXT NOT NULL,
+            message TEXT NOT NULL,
+            link TEXT,
+            is_read INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+        `).run();
+      } catch (e) {}
+
+      if (method === 'GET') {
+        let query = 'SELECT * FROM notifications WHERE company_id = ?';
+        const params = [companyId];
+        if (targetType) {
+          query += ' AND target_type = ?';
+          params.push(targetType);
+        }
+        if (targetId) {
+          query += ' AND target_id = ?';
+          params.push(Number(targetId));
+        }
+        query += ' ORDER BY id DESC LIMIT 50';
+
+        const { results = [] } = await db.prepare(query).bind(...params).all();
+        const unreadCount = results.filter((n) => !n.is_read || n.is_read === 0).length;
+        return jsonResponse({ success: true, notifications: results, unread_count: unreadCount });
+      }
+
+      if (method === 'POST') {
+        const body = await request.json().catch(() => ({}));
+        if (body.id) {
+          await db.prepare('UPDATE notifications SET is_read = 1 WHERE id = ?').bind(Number(body.id)).run();
+        } else if (body.target_type && body.target_id) {
+          await db.prepare('UPDATE notifications SET is_read = 1 WHERE company_id = ? AND target_type = ? AND target_id = ?')
+            .bind(companyId, body.target_type, Number(body.target_id)).run();
+        }
+        return jsonResponse({ success: true });
+      }
+    }
+
+    if (path === 'pickup-requests' || path.startsWith('pickup-requests/')) {
+      // Ensure pickup_requests table and indexes exist
+      try {
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS pickup_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id INTEGER NOT NULL DEFAULT 1,
+            vendor_id INTEGER NOT NULL,
+            vendor_name TEXT,
+            branch_id INTEGER,
+            branch_name TEXT,
+            order_ids_json TEXT,
+            tracking_numbers_json TEXT,
+            pickup_address TEXT NOT NULL,
+            contact_person TEXT,
+            contact_phone TEXT,
+            package_count INTEGER DEFAULT 1,
+            total_weight_kg REAL DEFAULT 1,
+            preferred_date TEXT,
+            preferred_time TEXT,
+            notes TEXT,
+            status TEXT DEFAULT 'pending',
+            assigned_courier_id INTEGER,
+            assigned_courier_name TEXT,
+            assigned_courier_phone TEXT,
+            picked_up_at TEXT,
+            received_at_branch_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT
+          );
+        `).run();
+        await db.prepare("CREATE INDEX IF NOT EXISTS idx_pickup_req_company ON pickup_requests(company_id)").run();
+        await db.prepare("CREATE INDEX IF NOT EXISTS idx_pickup_req_branch ON pickup_requests(branch_id)").run();
+        await db.prepare("CREATE INDEX IF NOT EXISTS idx_pickup_req_vendor ON pickup_requests(vendor_id)").run();
+        await db.prepare("CREATE INDEX IF NOT EXISTS idx_pickup_req_courier ON pickup_requests(assigned_courier_id)").run();
+        await db.prepare("CREATE INDEX IF NOT EXISTS idx_pickup_req_status ON pickup_requests(status)").run();
+      } catch (e) {}
+
+      try {
+        await db.prepare("ALTER TABLE vendor_order ADD COLUMN courier_id INTEGER").run();
+      } catch (e) {}
+      try {
+        await db.prepare("ALTER TABLE vendor_order ADD COLUMN pickup_request_id INTEGER").run();
+      } catch (e) {}
+      try {
+        await db.prepare("ALTER TABLE shipments ADD COLUMN pickup_request_id INTEGER").run();
+      } catch (e) {}
+
+      // GET /api/pickup-requests
+      if (method === 'GET') {
+        const companyId = Number(url.searchParams.get('company_id') || 1);
+        const vendorId = url.searchParams.get('vendor_id');
+        const branchId = url.searchParams.get('branch_id');
+        const courierId = url.searchParams.get('courier_id');
+        const status = url.searchParams.get('status');
+
+        let sql = 'SELECT * FROM pickup_requests WHERE company_id = ?';
+        const params = [companyId];
+
+        if (vendorId) {
+          sql += ' AND vendor_id = ?';
+          params.push(Number(vendorId));
+        }
+        if (branchId) {
+          sql += ' AND branch_id = ?';
+          params.push(Number(branchId));
+        }
+        if (courierId) {
+          sql += ' AND assigned_courier_id = ?';
+          params.push(Number(courierId));
+        }
+        if (status && status !== 'all') {
+          sql += ' AND status = ?';
+          params.push(status);
+        }
+
+        sql += ' ORDER BY id DESC';
+
+        const { results = [] } = await db.prepare(sql).bind(...params).all();
+        const formatted = results.map((row) => {
+          let orderIds = [];
+          let trackingNumbers = [];
+          try { if (row.order_ids_json) orderIds = JSON.parse(row.order_ids_json); } catch (e) {}
+          try { if (row.tracking_numbers_json) trackingNumbers = JSON.parse(row.tracking_numbers_json); } catch (e) {}
+          return {
+            ...row,
+            order_ids: orderIds,
+            tracking_numbers: trackingNumbers,
+          };
+        });
+        return jsonResponse(formatted);
+      }
+
+      // POST /api/pickup-requests (Step 1: Vendor creates pickup request)
+      if (method === 'POST') {
+        const body = await request.json();
+        const cid = Number(body.company_id || 1);
+        const vId = Number(body.vendor_id);
+        const vName = body.vendor_name || '';
+        const bId = body.branch_id ? Number(body.branch_id) : null;
+        const bName = body.branch_name || '';
+        const orderIds = Array.isArray(body.order_ids) ? body.order_ids : [];
+        const trackingNumbers = Array.isArray(body.tracking_numbers) ? body.tracking_numbers : [];
+        const pickupAddr = body.pickup_address || '';
+        const contactPerson = body.contact_person || '';
+        const contactPhone = body.contact_phone || '';
+        const pkgCount = Number(body.package_count || (orderIds.length || 1));
+        const totalWeight = parseFloat(body.total_weight_kg || 1);
+        const prefDate = body.preferred_date || '';
+        const prefTime = body.preferred_time || '';
+        const notes = body.notes || '';
+        const now = new Date().toISOString();
+
+        if (!vId || !pickupAddr) {
+          return jsonResponse({ error: 'Vendor ID and pickup address are required.' }, 400);
+        }
+
+        const insertRes = await db.prepare(`
+          INSERT INTO pickup_requests (
+            company_id, vendor_id, vendor_name, branch_id, branch_name,
+            order_ids_json, tracking_numbers_json, pickup_address,
+            contact_person, contact_phone, package_count, total_weight_kg,
+            preferred_date, preferred_time, notes, status,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'), datetime('now'))
+        `).bind(
+          cid, vId, vName, bId, bName,
+          JSON.stringify(orderIds), JSON.stringify(trackingNumbers), pickupAddr,
+          contactPerson, contactPhone, pkgCount, totalWeight,
+          prefDate, prefTime, notes
+        ).run();
+
+        const newReqId = insertRes.meta?.last_row_id;
+
+        // Step 1: Update status of included orders to 'pickup_requested'
+        // and append tracking timeline event
+        for (const trk of trackingNumbers) {
+          if (!trk) continue;
+          try {
+            // Update vendor_order
+            const vo = await db.prepare('SELECT * FROM vendor_order WHERE tracking_number = ?').bind(trk).first();
+            if (vo) {
+              let events = [];
+              try { if (vo.tracking_events_json) events = JSON.parse(vo.tracking_events_json); } catch (e) {}
+              events.push({
+                status: 'pickup_requested',
+                location: bName || pickupAddr,
+                notes: `Pickup requested by vendor: ${vName || 'Merchant'}. (${pkgCount} parcel${pkgCount > 1 ? 's' : ''})`,
+                at: now,
+              });
+              await db.prepare(`
+                UPDATE vendor_order SET
+                  status = 'pickup_requested',
+                  pickup_request_id = ?,
+                  tracking_events_json = ?,
+                  updated_at = datetime('now')
+                WHERE tracking_number = ?
+              `).bind(newReqId, JSON.stringify(events), trk).run();
+            }
+
+            // Update shipments
+            const s = await db.prepare('SELECT * FROM shipments WHERE tracking_number = ?').bind(trk).first();
+            if (s) {
+              let events = [];
+              try { if (s.tracking_events_json) events = JSON.parse(s.tracking_events_json); } catch (e) {}
+              events.push({
+                status: 'pickup_requested',
+                location: bName || pickupAddr,
+                notes: `Pickup requested by vendor: ${vName || 'Merchant'}.`,
+                at: now,
+              });
+              await db.prepare(`
+                UPDATE shipments SET
+                  status = 'pickup_requested',
+                  pickup_request_id = ?,
+                  tracking_events_json = ?,
+                  updated_at = datetime('now')
+                WHERE tracking_number = ?
+              `).bind(newReqId, JSON.stringify(events), trk).run();
+            }
+          } catch (err) {
+            console.warn('Failed to update order tracking for pickup request:', err);
+          }
+        }
+
+        return jsonResponse({
+          success: true,
+          id: newReqId,
+          message: 'Pickup request created successfully in Cloudflare D1',
+        });
+      }
+
+      // Step 2: Assign Pickup Rider - PUT/POST /api/pickup-requests/:id/assign
+      const assignMatch = path.match(/^pickup-requests\/(\d+)\/assign$/);
+      if (assignMatch && (method === 'POST' || method === 'PUT')) {
+        const reqId = Number(assignMatch[1]);
+        const body = await request.json();
+        const courierId = Number(body.courier_id);
+        const courierName = body.courier_name || '';
+        const courierPhone = body.courier_phone || '';
+        const branchName = body.branch_name || '';
+        const now = new Date().toISOString();
+
+        if (!courierId) {
+          return jsonResponse({ error: 'Courier ID is required' }, 400);
+        }
+
+        const currentReq = await db.prepare('SELECT * FROM pickup_requests WHERE id = ?').bind(reqId).first();
+        if (!currentReq) return jsonResponse({ error: 'Pickup request not found' }, 404);
+
+        await db.prepare(`
+          UPDATE pickup_requests SET
+            status = 'assigned',
+            assigned_courier_id = ?,
+            assigned_courier_name = ?,
+            assigned_courier_phone = ?,
+            updated_at = datetime('now')
+          WHERE id = ?
+        `).bind(courierId, courierName, courierPhone, reqId).run();
+
+        let trkList = [];
+        try { if (currentReq.tracking_numbers_json) trkList = JSON.parse(currentReq.tracking_numbers_json); } catch (e) {}
+
+        for (const trk of trkList) {
+          if (!trk) continue;
+          try {
+            // Update vendor_order
+            const vo = await db.prepare('SELECT * FROM vendor_order WHERE tracking_number = ?').bind(trk).first();
+            if (vo) {
+              let events = [];
+              try { if (vo.tracking_events_json) events = JSON.parse(vo.tracking_events_json); } catch (e) {}
+              events.push({
+                status: 'assigned',
+                location: branchName || currentReq.branch_name || 'Branch Hub',
+                notes: `Pickup assigned to rider ${courierName}${courierPhone ? ` (${courierPhone})` : ''}.`,
+                at: now,
+              });
+              await db.prepare(`
+                UPDATE vendor_order SET
+                  status = 'assigned',
+                  courier_id = ?,
+                  tracking_events_json = ?,
+                  updated_at = datetime('now')
+                WHERE tracking_number = ?
+              `).bind(courierId, JSON.stringify(events), trk).run();
+            }
+
+            // Update shipments
+            const s = await db.prepare('SELECT * FROM shipments WHERE tracking_number = ?').bind(trk).first();
+            if (s) {
+              let events = [];
+              try { if (s.tracking_events_json) events = JSON.parse(s.tracking_events_json); } catch (e) {}
+              events.push({
+                status: 'assigned',
+                location: branchName || currentReq.branch_name || 'Branch Hub',
+                notes: `Pickup assigned to rider ${courierName}${courierPhone ? ` (${courierPhone})` : ''}.`,
+                at: now,
+              });
+              await db.prepare(`
+                UPDATE shipments SET
+                  status = 'assigned',
+                  courier_id = ?,
+                  tracking_events_json = ?,
+                  updated_at = datetime('now')
+                WHERE tracking_number = ?
+              `).bind(courierId, JSON.stringify(events), trk).run();
+            }
+          } catch (e) {}
+        }
+
+        return jsonResponse({
+          success: true,
+          id: reqId,
+          message: `Pickup assigned to rider ${courierName} successfully`,
+        });
+      }
+
+      // Step 3: Assigned Rider confirms pickup from vendor - PUT/POST /api/pickup-requests/:id/pickup
+      const pickupMatch = path.match(/^pickup-requests\/(\d+)\/pickup$/);
+      if (pickupMatch && (method === 'POST' || method === 'PUT')) {
+        const reqId = Number(pickupMatch[1]);
+        const body = await request.json();
+        const riderName = body.rider_name || '';
+        const notes = body.notes || '';
+        const now = new Date().toISOString();
+
+        const currentReq = await db.prepare('SELECT * FROM pickup_requests WHERE id = ?').bind(reqId).first();
+        if (!currentReq) return jsonResponse({ error: 'Pickup request not found' }, 404);
+
+        await db.prepare(`
+          UPDATE pickup_requests SET
+            status = 'picked_up',
+            picked_up_at = datetime('now'),
+            notes = COALESCE(?, notes),
+            updated_at = datetime('now')
+          WHERE id = ?
+        `).bind(notes || null, reqId).run();
+
+        let trkList = [];
+        try { if (currentReq.tracking_numbers_json) trkList = JSON.parse(currentReq.tracking_numbers_json); } catch (e) {}
+
+        const effectiveRider = riderName || currentReq.assigned_courier_name || 'Assigned Rider';
+        for (const trk of trkList) {
+          if (!trk) continue;
+          try {
+            // Update vendor_order
+            const vo = await db.prepare('SELECT * FROM vendor_order WHERE tracking_number = ?').bind(trk).first();
+            if (vo) {
+              let events = [];
+              try { if (vo.tracking_events_json) events = JSON.parse(vo.tracking_events_json); } catch (e) {}
+              events.push({
+                status: 'picked_up',
+                location: currentReq.pickup_address,
+                notes: `Order picked up from vendor ${currentReq.vendor_name || 'Store'} by rider ${effectiveRider}.`,
+                at: now,
+              });
+              await db.prepare(`
+                UPDATE vendor_order SET
+                  status = 'picked_up',
+                  tracking_events_json = ?,
+                  updated_at = datetime('now')
+                WHERE tracking_number = ?
+              `).bind(JSON.stringify(events), trk).run();
+            }
+
+            // Update shipments
+            const s = await db.prepare('SELECT * FROM shipments WHERE tracking_number = ?').bind(trk).first();
+            if (s) {
+              let events = [];
+              try { if (s.tracking_events_json) events = JSON.parse(s.tracking_events_json); } catch (e) {}
+              events.push({
+                status: 'picked_up',
+                location: currentReq.pickup_address,
+                notes: `Order picked up from vendor ${currentReq.vendor_name || 'Store'} by rider ${effectiveRider}.`,
+                at: now,
+              });
+              await db.prepare(`
+                UPDATE shipments SET
+                  status = 'picked_up',
+                  tracking_events_json = ?,
+                  updated_at = datetime('now')
+                WHERE tracking_number = ?
+              `).bind(JSON.stringify(events), trk).run();
+            }
+          } catch (e) {}
+        }
+
+        return jsonResponse({
+          success: true,
+          id: reqId,
+          message: 'Order marked as picked up from vendor successfully',
+        });
+      }
+
+      // Step 4: Branch or Admin receives order from rider (Hub Inbound Receipt) - PUT/POST /api/pickup-requests/:id/receive
+      const receiveMatch = path.match(/^pickup-requests\/(\d+)\/receive$/);
+      if (receiveMatch && (method === 'POST' || method === 'PUT')) {
+        const reqId = Number(receiveMatch[1]);
+        const body = await request.json();
+        const branchId = body.branch_id ? Number(body.branch_id) : null;
+        const branchName = body.branch_name || 'Branch Hub';
+        const now = new Date().toISOString();
+
+        const currentReq = await db.prepare('SELECT * FROM pickup_requests WHERE id = ?').bind(reqId).first();
+        if (!currentReq) return jsonResponse({ error: 'Pickup request not found' }, 404);
+
+        await db.prepare(`
+          UPDATE pickup_requests SET
+            status = 'received_at_branch',
+            received_at_branch_at = datetime('now'),
+            updated_at = datetime('now')
+          WHERE id = ?
+        `).bind(reqId).run();
+
+        let trkList = [];
+        try { if (currentReq.tracking_numbers_json) trkList = JSON.parse(currentReq.tracking_numbers_json); } catch (e) {}
+
+        const effectiveRider = currentReq.assigned_courier_name || 'Rider';
+        for (const trk of trkList) {
+          if (!trk) continue;
+          try {
+            // Update vendor_order
+            const vo = await db.prepare('SELECT * FROM vendor_order WHERE tracking_number = ?').bind(trk).first();
+            if (vo) {
+              let events = [];
+              try { if (vo.tracking_events_json) events = JSON.parse(vo.tracking_events_json); } catch (e) {}
+              events.push({
+                status: 'received_at_branch',
+                location: branchName,
+                notes: `Received at ${branchName} from rider ${effectiveRider}. Ready for dispatch or last-mile delivery.`,
+                at: now,
+              });
+              await db.prepare(`
+                UPDATE vendor_order SET
+                  status = 'received_at_branch',
+                  branch_id = COALESCE(?, branch_id),
+                  courier_id = null,
+                  tracking_events_json = ?,
+                  updated_at = datetime('now')
+                WHERE tracking_number = ?
+              `).bind(branchId, JSON.stringify(events), trk).run();
+            }
+
+            // Update shipments
+            const s = await db.prepare('SELECT * FROM shipments WHERE tracking_number = ?').bind(trk).first();
+            if (s) {
+              let events = [];
+              try { if (s.tracking_events_json) events = JSON.parse(s.tracking_events_json); } catch (e) {}
+              events.push({
+                status: 'received_at_branch',
+                location: branchName,
+                notes: `Received at ${branchName} from rider ${effectiveRider}. Ready for dispatch or last-mile delivery.`,
+                at: now,
+              });
+              await db.prepare(`
+                UPDATE shipments SET
+                  status = 'received_at_branch',
+                  current_branch_id = COALESCE(?, current_branch_id),
+                  courier_id = null,
+                  tracking_events_json = ?,
+                  updated_at = datetime('now')
+                WHERE tracking_number = ?
+              `).bind(branchId, JSON.stringify(events), trk).run();
+            }
+          } catch (e) {}
+        }
+
+        return jsonResponse({
+          success: true,
+          id: reqId,
+          message: `Orders received successfully at ${branchName}`,
+        });
+      }
+    }
+
+// 8. Shipments endpoint: read and write on D1 table 'shipments'
     if (path === 'shipments' || path.startsWith('shipments/')) {
         const companyId = url.searchParams.get('company_id') || 1;
         const branchId = url.searchParams.get('branch_id');
@@ -2443,6 +4521,25 @@ export async function onRequest(context) {
             )
             .run();
 
+          // Mirror status, courier, branch and tracking events to vendor_order table
+          if (current.tracking_number) {
+            try {
+              const syncFields = [];
+              const syncVals = [];
+              if (newStatus !== undefined) { syncFields.push('status = ?'); syncVals.push(newStatus); }
+              if (notes !== undefined) { syncFields.push('notes = ?'); syncVals.push(notes); }
+              if (courier_id !== undefined) { syncFields.push('courier_id = ?'); syncVals.push(courier_id); }
+              if (destination_branch_id !== undefined) { syncFields.push('destination_branch_id = ?'); syncVals.push(destination_branch_id); }
+              if (branch_id !== undefined) { syncFields.push('branch_id = ?'); syncVals.push(branch_id); }
+              if (currentEvents && currentEvents.length > 0) { syncFields.push('tracking_events_json = ?'); syncVals.push(JSON.stringify(currentEvents)); }
+              if (syncFields.length > 0) {
+                syncFields.push("updated_at = datetime('now')");
+                syncVals.push(current.tracking_number);
+                await db.prepare(`UPDATE vendor_order SET ${syncFields.join(', ')} WHERE tracking_number = ?`).bind(...syncVals).run();
+              }
+            } catch (e) {}
+          }
+
           return jsonResponse({
             success: true,
             id: sId,
@@ -2647,6 +4744,8 @@ export async function onRequest(context) {
             return jsonResponse(row);
           }
 
+          const search = (url.searchParams.get('search') || url.searchParams.get('keyword') || url.searchParams.get('q') || '').trim();
+
           let query = 'SELECT * FROM vendor_customers WHERE company_id = ?';
           const params = [Number(companyId)];
           if (vendorId) {
@@ -2657,10 +4756,36 @@ export async function onRequest(context) {
             query += ' AND phone = ?';
             params.push(phone.trim());
           }
-          query += ' ORDER BY id DESC';
+          if (search) {
+            query += ' AND (name LIKE ? OR phone LIKE ? OR address LIKE ? OR city LIKE ?)';
+            params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+          }
+          query += ' ORDER BY total_orders DESC, id DESC';
 
           const { results } = await db.prepare(query).bind(...params).all();
-          return jsonResponse(results || []);
+
+          // Augment with live counts from shipments table if available
+          const augmented = await Promise.all((results || []).map(async (vc) => {
+            if (!vc.phone) return vc;
+            const p = vc.phone.trim();
+            const shipStats = await db.prepare(`
+              SELECT 
+                COUNT(*) as total_orders,
+                SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) as delivered_orders,
+                SUM(CASE WHEN status IN ('returned', 'rto', 'failed') THEN 1 ELSE 0 END) as return_orders
+              FROM shipments
+              WHERE company_id = ? AND (receiver_phone = ? OR sender_phone = ?)
+            `).bind(Number(companyId), p, p).first().catch(() => null);
+
+            return {
+              ...vc,
+              total_orders: Math.max(Number(vc.total_orders) || 0, Number(shipStats?.total_orders) || 0),
+              delivered_orders: Math.max(Number(vc.delivered_orders) || 0, Number(shipStats?.delivered_orders) || 0),
+              return_orders: Math.max(Number(vc.return_orders) || 0, Number(shipStats?.return_orders) || 0),
+            };
+          }));
+
+          return jsonResponse(augmented || []);
         }
 
         // POST /api/vendor-customers

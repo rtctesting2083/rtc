@@ -14,26 +14,45 @@ import {
   Plus,
   Database,
   Loader2,
+  Edit2,
+  FileText,
+  X,
+  Truck,
 } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
+import { useAuth } from '../../context/AuthContext';
 import { useModal } from '../../context/ModalContext';
 import { ShipmentDetailModal } from '../../components/common/ShipmentDetailModal';
 import { OrderCommentsModal } from '../../components/common/OrderCommentsSection';
+import { VendorPickupRequestModal } from '../../components/customer/VendorPickupRequestModal';
 import { printShipmentLabel } from '../../utils/print';
 import { fmtMoney, fmtDate } from '../../utils/helpers';
+import { d1Api } from '../../utils/d1Api';
 
 export function CustomerOrdersPage() {
+  const { session } = useAuth() || {};
   const { currentCustomer, handleOpenCreateOrder } = useOutletContext() || {};
+  const effectiveCustId = currentCustomer?.id || session?.customerId;
   const {
     company,
     shipments = [],
     branches = [],
+    orderTypes = [],
     findBranch,
     loadVendorOrders,
+    updateVendorOrder,
+    updateShipment,
     chargeSettings,
   } = useCompany() || {};
   const { openModal, closeModal } = useModal();
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // Active order types only
+  const activeOrderTypes = useMemo(() => {
+    return (orderTypes || []).filter(
+      (ot) => ot && ot.status !== 'inactive' && ot.status !== 'disabled' && ot.active !== false
+    );
+  }, [orderTypes]);
 
   // Filters state
   const [dateRange, setDateRange] = useState('');
@@ -49,7 +68,52 @@ export function CustomerOrdersPage() {
 
   const [selectedOrderIds, setSelectedOrderIds] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [directOrders, setDirectOrders] = useState([]);
   const fetchedCustIdRef = React.useRef(null);
+
+  // Inline Product Description Editing State
+  const [editingOrderId, setEditingOrderId] = useState(null);
+  const [editDescText, setEditDescText] = useState('');
+  const [savingOrderId, setSavingOrderId] = useState(null);
+  const [savedOrderId, setSavedOrderId] = useState(null);
+
+  const handleStartEditDesc = (order) => {
+    setEditingOrderId(order.id);
+    setEditDescText(order.package_description || (order.product_description !== '—' ? order.product_description : ''));
+  };
+
+  const handleCancelEditDesc = () => {
+    setEditingOrderId(null);
+    setEditDescText('');
+  };
+
+  const handleSaveEditDesc = async (orderId) => {
+    const trimmed = (editDescText || '').trim();
+    setSavingOrderId(orderId);
+    try {
+      if (typeof updateVendorOrder === 'function') {
+        await updateVendorOrder(orderId, { package_description: trimmed });
+      }
+      if (typeof updateShipment === 'function') {
+        await updateShipment(orderId, { package_description: trimmed });
+      }
+      // Direct remote update call via d1Api
+      await d1Api.updateVendorOrder(orderId, { package_description: trimmed });
+
+      // Update locally in directOrders
+      setDirectOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, package_description: trimmed, product_description: trimmed || '—' } : o))
+      );
+
+      setEditingOrderId(null);
+      setSavedOrderId(orderId);
+      setTimeout(() => setSavedOrderId(null), 2500);
+    } catch (err) {
+      console.warn('Failed to save product description to D1:', err);
+    } finally {
+      setSavingOrderId(null);
+    }
+  };
 
   // Auto-open modal if ?create=1 in query params
   useEffect(() => {
@@ -65,74 +129,128 @@ export function CustomerOrdersPage() {
     }
   }, [searchParams, handleOpenCreateOrder, setSearchParams]);
 
-  // Load from D1 vendor_order on mount or customer change
+  // Robust loader for vendor orders from Cloudflare D1
+  const fetchOrders = React.useCallback(async (targetCustId) => {
+    const custId = targetCustId || effectiveCustId;
+    if (!custId) return;
+
+    setLoading(true);
+    const safetyTimer = setTimeout(() => {
+      setLoading(false);
+    }, 4000);
+
+    try {
+      const [voList, sList] = await Promise.all([
+        d1Api.getVendorOrders(custId, company?.id || 1).catch(() => []),
+        d1Api.getShipments(company?.id || 1, { customer_id: custId }).catch(() => []),
+      ]);
+
+      if (typeof loadVendorOrders === 'function') {
+        loadVendorOrders(custId).catch(() => {});
+      }
+
+      const map = new Map();
+      (sList || []).forEach((s) => {
+        if (s && (s.tracking_number || s.id)) {
+          const k = s.tracking_number || `id_${s.id}`;
+          map.set(k, { ...s, customer_id: Number(custId), vendor_id: Number(custId) });
+        }
+      });
+      (voList || []).forEach((o) => {
+        if (o && (o.tracking_number || o.id)) {
+          const k = o.tracking_number || `id_${o.id}`;
+          const existing = map.get(k) || {};
+          map.set(k, { ...o, ...existing, customer_id: Number(custId), vendor_id: Number(custId) });
+        }
+      });
+
+      const combined = Array.from(map.values());
+      setDirectOrders(combined);
+    } catch (err) {
+      console.warn('Failed to load vendor orders from D1:', err);
+    } finally {
+      clearTimeout(safetyTimer);
+      setLoading(false);
+    }
+  }, [effectiveCustId, company?.id, loadVendorOrders]);
+
+  // Load on mount or when customer changes
   useEffect(() => {
-    const custId = currentCustomer?.id;
-    if (!custId || typeof loadVendorOrders !== 'function') return;
+    const custId = effectiveCustId;
+    if (!custId) return;
     if (fetchedCustIdRef.current === custId) return;
     fetchedCustIdRef.current = custId;
 
-    let isMounted = true;
-    setLoading(true);
-
-    loadVendorOrders(custId)
-      .catch((err) => {
-        console.warn('Failed to load vendor orders from D1:', err);
-      })
-      .finally(() => {
-        if (isMounted) setLoading(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [currentCustomer?.id, loadVendorOrders]);
+    fetchOrders(custId);
+  }, [effectiveCustId, fetchOrders]);
 
   // Manual reload from Cloudflare D1
   const handleRefreshOrders = async () => {
-    if (currentCustomer?.id && typeof loadVendorOrders === 'function') {
-      setLoading(true);
-      try {
-        await loadVendorOrders(currentCustomer.id);
-      } catch (err) {
-        console.warn('Failed to refresh vendor orders from D1:', err);
-      } finally {
-        setLoading(false);
-      }
+    const custId = effectiveCustId;
+    if (custId) {
+      await fetchOrders(custId);
     }
   };
 
   // Map live shipments for this customer into the unified format directly from Cloudflare D1
   const liveCustomerOrders = useMemo(() => {
-    const custId = Number(currentCustomer?.id);
+    const custId = Number(effectiveCustId);
     const custPhone = String(currentCustomer?.phone || '').trim();
     const custName = String(currentCustomer?.name || '').trim().toLowerCase();
 
-    return (shipments || [])
-      .filter((s) => {
-        if (!s) return false;
-        if (custId && (Number(s.customer_id) === custId || Number(s.vendor_id) === custId)) return true;
-        if (custPhone && (String(s.sender_phone || '').trim() === custPhone || String(s.customer_phone || '').trim() === custPhone)) return true;
-        if (custName && (String(s.sender_name || '').trim().toLowerCase() === custName || String(s.customer_name || '').trim().toLowerCase() === custName)) return true;
-        return false;
-      })
+    const mergedMap = new Map();
+
+    // From context shipments
+    (shipments || []).forEach((s) => {
+      if (!s) return;
+      const isMatch =
+        (custId && (Number(s.customer_id) === custId || Number(s.vendor_id) === custId)) ||
+        (custPhone && (String(s.sender_phone || '').trim() === custPhone || String(s.customer_phone || '').trim() === custPhone)) ||
+        (custName && (String(s.sender_name || '').trim().toLowerCase() === custName || String(s.customer_name || '').trim().toLowerCase() === custName));
+      if (isMatch) {
+        const k = s.tracking_number || `id_${s.id}`;
+        mergedMap.set(k, s);
+      }
+    });
+
+    // From direct orders fetched from D1
+    (directOrders || []).forEach((o) => {
+      if (!o) return;
+      const k = o.tracking_number || `id_${o.id}`;
+      const existing = mergedMap.get(k) || {};
+      mergedMap.set(k, { ...existing, ...o });
+    });
+
+    return Array.from(mergedMap.values())
       .map((s) => {
         const destB = s.destination_branch_id
           ? typeof findBranch === 'function' ? findBranch(s.destination_branch_id) : null
           : null;
         const destHubName = destB?.name || s.dest_branch_name || s.city || 'Kathmandu Hub';
 
-        let statusLabel = 'Pickup Process';
-        let statusType = 'pickup-process';
+        let statusLabel = 'Pending';
+        let statusType = 'pending';
         if (s.status === 'delivered') {
           statusLabel = 'Delivered';
           statusType = 'delivered';
-        } else if (s.status === 'in_transit' || s.status === 'out_for_delivery') {
-          statusLabel = 'At Destination Hub';
+        } else if (s.status === 'out_for_delivery') {
+          statusLabel = 'Out for Delivery';
           statusType = 'at-destination-hub';
-        } else if (s.status === 'dispatched') {
-          statusLabel = 'Dispatched To Destination Hub';
+        } else if (s.status === 'in_transit') {
+          statusLabel = 'Dispatched (In Transit)';
           statusType = 'dispatched';
+        } else if (s.status === 'received_at_branch' || s.status === 'at_branch') {
+          statusLabel = 'Received At Hub';
+          statusType = 'at-destination-hub';
+        } else if (s.status === 'picked_up') {
+          statusLabel = 'Picked Up by Rider';
+          statusType = 'pickup-process';
+        } else if (s.status === 'assigned') {
+          statusLabel = 'Pickup Assigned';
+          statusType = 'pickup-process';
+        } else if (s.status === 'pickup_requested') {
+          statusLabel = 'Pickup Requested';
+          statusType = 'pickup-process';
         } else if (s.status === 'returned' || s.status === 'failed') {
           statusLabel = 'Follow Up for Return';
           statusType = 'follow-up-return';
@@ -163,7 +281,8 @@ export function CustomerOrdersPage() {
           receiver_name: s.receiver_name || 'Customer',
           receiver_phone: s.receiver_phone || '',
           delivery_address: s.delivery_address || s.city || '—',
-          product_description: s.package_description || s.item_description || `Sender ${currentCustomer?.name || 'Vendor'}`,
+          product_description: (s.package_description || s.item_description || '').trim() || '—',
+          package_description: (s.package_description || s.item_description || '').trim(),
           order_type: s.order_type || 'Delivery Order',
           order_type_kind: String(s.order_type || '').toLowerCase().includes('return') ? 'return' : 'forward',
           destination_hub: destHubName,
@@ -174,7 +293,7 @@ export function CustomerOrdersPage() {
           rawShipment: s,
         };
       });
-  }, [shipments, currentCustomer?.id, currentCustomer?.phone, currentCustomer?.name, findBranch]);
+  }, [shipments, directOrders, effectiveCustId, currentCustomer?.phone, currentCustomer?.name, findBranch]);
 
   // Pure live orders directly from Cloudflare D1 (Zero static dummy data)
   const allOrders = liveCustomerOrders;
@@ -306,6 +425,31 @@ export function CustomerOrdersPage() {
     targets.forEach((ord) => handlePrintSingle(ord));
   };
 
+  // Open Vendor Pickup Request Modal
+  const handleOpenPickupRequest = (singleOrder = null) => {
+    const preselected = singleOrder
+      ? [singleOrder]
+      : selectedOrderIds.length > 0
+      ? displayOrders.filter((o) => selectedOrderIds.includes(o.id))
+      : [];
+
+    openModal(
+      'Request Parcel Pickup from Store',
+      <VendorPickupRequestModal
+        currentCustomer={currentCustomer}
+        selectedOrders={preselected}
+        allVendorOrders={displayOrders}
+        onClose={closeModal}
+        onSuccess={() => {
+          setSelectedOrderIds([]);
+          handleRefreshOrders();
+        }}
+      />,
+      'wide',
+      { hideHeader: true }
+    );
+  };
+
   // CSV Export
   const handleExport = () => {
     const headers = [
@@ -357,6 +501,215 @@ export function CustomerOrdersPage() {
     document.body.removeChild(link);
   };
 
+  // Print / PDF Order List Report
+  const handlePrintReport = () => {
+    if (displayOrders.length === 0) {
+      alert('No orders available to generate report.');
+      return;
+    }
+
+    const win = window.open('', '_blank');
+    if (!win) {
+      alert('Please allow popups to view and print the Order List Report.');
+      return;
+    }
+
+    const totalCod = displayOrders.reduce((sum, o) => sum + (Number(o.cod_amount) || 0), 0);
+    const totalFee = displayOrders.reduce((sum, o) => sum + (Number(o.delivery_fee) || 0), 0);
+    const reportDate = new Date().toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+
+    const rowsHtml = displayOrders
+      .map(
+        (o, idx) => `
+      <tr>
+        <td style="text-align: center;">${idx + 1}</td>
+        <td>
+          <strong>${o.tracking_number}</strong><br/>
+          <span style="font-size: 10px; color: #64748b;">${o.vendor_reference_id || '—'}</span>
+        </td>
+        <td>
+          <span style="display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; background: #e0f2fe; color: #0369a1;">
+            ${o.status_label || 'Pending'}
+          </span>
+        </td>
+        <td>
+          <strong>${o.receiver_name}</strong><br/>
+          <span style="font-size: 10.5px; color: #475569;">${o.receiver_phone || ''}</span><br/>
+          <span style="font-size: 10px; color: #64748b;">${o.delivery_address || '—'}</span>
+        </td>
+        <td style="max-width: 180px;">
+          <strong style="color: #0f172a;">${o.product_description || '—'}</strong>
+        </td>
+        <td>${o.order_type || 'Delivery Order'}</td>
+        <td>${o.destination_hub || '—'}</td>
+        <td style="text-align: right; font-weight: 600;">Rs. ${Number(o.cod_amount).toLocaleString()}</td>
+        <td style="text-align: right; color: #475569;">Rs. ${Number(o.delivery_fee).toLocaleString()}</td>
+        <td style="text-align: center; font-size: 10.5px;">${o.created_display || '—'}</td>
+      </tr>
+    `
+      )
+      .join('');
+
+    win.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Order List Report — ${currentCustomer?.name || 'Vendor'}</title>
+          <meta charset="utf-8" />
+          <style>
+            @page {
+              size: A4 landscape;
+              margin: 8mm;
+            }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+              color: #1e293b;
+              margin: 0;
+              padding: 16px;
+              font-size: 11px;
+            }
+            .report-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              border-bottom: 2px solid #dc2626;
+              padding-bottom: 12px;
+              margin-bottom: 14px;
+            }
+            .brand-title {
+              font-size: 18px;
+              font-weight: 700;
+              color: #dc2626;
+              letter-spacing: -0.5px;
+            }
+            .report-title {
+              font-size: 14px;
+              font-weight: 600;
+              color: #0f172a;
+              margin-top: 2px;
+            }
+            .meta-box {
+              text-align: right;
+              font-size: 11px;
+              line-height: 1.5;
+            }
+            .report-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 8px;
+            }
+            .report-table th {
+              background: #f1f5f9;
+              color: #334155;
+              font-size: 10px;
+              font-weight: 700;
+              text-transform: uppercase;
+              padding: 7px 5px;
+              border: 1px solid #cbd5e1;
+              text-align: left;
+            }
+            .report-table td {
+              padding: 6px 5px;
+              border: 1px solid #e2e8f0;
+              vertical-align: top;
+            }
+            .report-summary-strip {
+              display: flex;
+              justify-content: flex-end;
+              gap: 24px;
+              margin-top: 14px;
+              padding: 10px 14px;
+              background: #f8fafc;
+              border: 1px solid #e2e8f0;
+              border-radius: 6px;
+              font-size: 12px;
+              font-weight: 600;
+            }
+            .signature-row {
+              margin-top: 36px;
+              display: flex;
+              justify-content: space-between;
+              padding: 0 20px;
+            }
+            .sig-line {
+              border-top: 1px solid #94a3b8;
+              width: 180px;
+              text-align: center;
+              padding-top: 4px;
+              font-size: 11px;
+              color: #64748b;
+            }
+            @media print {
+              .no-print { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="report-header">
+            <div>
+              <div class="brand-title">R.T.C. COURIER PVT. LTD.</div>
+              <div class="report-title">Vendor Order List Report</div>
+              <div style="color: #64748b; font-size: 11px; margin-top: 2px;">
+                Vendor: <strong>${currentCustomer?.name || 'Anee Collection'}</strong> | Phone: ${currentCustomer?.phone || '—'}
+              </div>
+            </div>
+            <div class="meta-box">
+              <div><strong>Generated:</strong> ${reportDate}</div>
+              <div><strong>Total Orders:</strong> ${displayOrders.length}</div>
+              <div><strong>Active Filter:</strong> ${appliedFilters.status !== 'all' ? appliedFilters.status : 'All Statuses'}</div>
+            </div>
+          </div>
+
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th style="width: 25px; text-align: center;">#</th>
+                <th>Order ID</th>
+                <th>Status</th>
+                <th>Customer / Receiver</th>
+                <th>Product Description</th>
+                <th>Order Type</th>
+                <th>Destination</th>
+                <th style="text-align: right;">COD Amount</th>
+                <th style="text-align: right;">Delivery Fee</th>
+                <th style="text-align: center;">Booked Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+
+          <div class="report-summary-strip">
+            <div>Total Orders: <span style="color: #dc2626;">${displayOrders.length}</span></div>
+            <div>Total COD Amount: <span style="color: #059669;">Rs. ${totalCod.toLocaleString()}</span></div>
+            <div>Total Delivery Charges: <span>Rs. ${totalFee.toLocaleString()}</span></div>
+          </div>
+
+          <div class="signature-row">
+            <div class="sig-line">Prepared By (Vendor)</div>
+            <div class="sig-line">Received By (RTC Dispatcher)</div>
+            <div class="sig-line">Authorized Signature</div>
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    win.document.close();
+  };
+
   // Comment Modal (Connected to Cloudflare D1 Database)
   const handleOpenCommentModal = (order) => {
     openModal(
@@ -398,9 +751,19 @@ export function CustomerOrdersPage() {
               onChange={(e) => setSelectedOrderType(e.target.value)}
             >
               <option value="all">Select Order Type</option>
-              <option value="Delivery Order">Delivery Order</option>
-              <option value="Return Order">Return Order</option>
-              <option value="Exchange Order">Exchange Order</option>
+              {activeOrderTypes.length > 0 ? (
+                activeOrderTypes.map((ot) => (
+                  <option key={ot.id || ot.name} value={ot.name}>
+                    {ot.name}
+                  </option>
+                ))
+              ) : (
+                <>
+                  <option value="Delivery Order">Delivery Order</option>
+                  <option value="Return Order">Return Order</option>
+                  <option value="Exchange Order">Exchange Order</option>
+                </>
+              )}
             </select>
           </div>
 
@@ -413,18 +776,13 @@ export function CustomerOrdersPage() {
               onChange={(e) => setSelectedHub(e.target.value)}
             >
               <option value="all">Select Hub</option>
-              <option value="Kathmandu Hub">Kathmandu Hub</option>
-              <option value="Sainamaina Hub">Sainamaina Hub</option>
-              <option value="Sunuwal Hub">Sunuwal Hub</option>
-              <option value="Banepa Hub">Banepa Hub</option>
-              <option value="Chitwan Hub">Chitwan Hub</option>
-              <option value="Dipayal Hub">Dipayal Hub</option>
-              <option value="Hatiya Hub">Hatiya Hub</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.name}>
-                  {b.name}
-                </option>
-              ))}
+              {(branches || [])
+                .filter((b) => b && b.status !== 'inactive' && b.status !== 'disabled')
+                .map((b) => (
+                  <option key={b.id} value={b.name}>
+                    {b.name}
+                  </option>
+                ))}
             </select>
           </div>
 
@@ -437,10 +795,14 @@ export function CustomerOrdersPage() {
               onChange={(e) => setSelectedStatus(e.target.value)}
             >
               <option value="all">Select Status</option>
-              <option value="Pickup Process">Pickup Process</option>
-              <option value="At Destination Hub">At Destination Hub</option>
+              <option value="Pending">Pending</option>
+              <option value="Pickup Requested">Pickup Requested</option>
+              <option value="Pickup Assigned">Pickup Assigned</option>
+              <option value="Picked Up by Rider">Picked Up by Rider</option>
+              <option value="Received At Hub">Received At Hub</option>
+              <option value="Dispatched (In Transit)">Dispatched (In Transit)</option>
+              <option value="Out for Delivery">Out for Delivery</option>
               <option value="Delivered">Delivered</option>
-              <option value="Dispatched To Destination Hub">Dispatched To Destination Hub</option>
               <option value="Follow Up for Return">Follow Up for Return</option>
               <option value="Cancelled">Cancelled</option>
             </select>
@@ -514,7 +876,7 @@ export function CustomerOrdersPage() {
               }}
             >
               <Plus size={14} />
-              <span>+ Create Order</span>
+              <span>Create Order</span>
             </button>
           )}
 
@@ -548,6 +910,17 @@ export function CustomerOrdersPage() {
           >
             <Download size={15} />
             <span>Export</span>
+          </button>
+
+          <button
+            type="button"
+            className="btn-export"
+            onClick={handlePrintReport}
+            title="Print or Save Order List Report as PDF"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+          >
+            <FileText size={15} />
+            <span>Print Report</span>
           </button>
         </div>
       </div>
@@ -619,9 +992,119 @@ export function CustomerOrdersPage() {
                     <div className="customer-address">{order.delivery_address}</div>
                   </td>
 
-                  {/* 5. Product Description */}
-                  <td>
-                    <div className="product-desc-text">{order.product_description}</div>
+                  {/* 5. Product Description (Connected to D1 with Inline Edit) */}
+                  <td style={{ minWidth: '150px', maxWidth: '220px' }}>
+                    {editingOrderId === order.id ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <textarea
+                          className="filter-input"
+                          rows={2}
+                          value={editDescText}
+                          onChange={(e) => setEditDescText(e.target.value)}
+                          placeholder="Enter product description..."
+                          style={{
+                            fontSize: '11.5px',
+                            padding: '4px 6px',
+                            resize: 'vertical',
+                            width: '100%',
+                            boxSizing: 'border-box',
+                            border: '1px solid #3b82f6',
+                            borderRadius: '4px',
+                          }}
+                          autoFocus
+                        />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveEditDesc(order.id)}
+                            disabled={savingOrderId === order.id}
+                            style={{
+                              padding: '2px 8px',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              background: '#059669',
+                              color: '#ffffff',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                            }}
+                          >
+                            <Check size={11} />
+                            {savingOrderId === order.id ? 'Saving...' : 'Save'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCancelEditDesc}
+                            style={{
+                              padding: '2px 8px',
+                              fontSize: '11px',
+                              background: '#f1f5f9',
+                              color: '#475569',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                            }}
+                          >
+                            <X size={11} />
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          justifyContent: 'space-between',
+                          gap: '6px',
+                          group: 'relative',
+                        }}
+                      >
+                        <div style={{ flex: 1 }}>
+                          <div className="product-desc-text" style={{ fontSize: '12px', color: '#1e293b', fontWeight: 500 }}>
+                            {order.product_description}
+                          </div>
+                          {savedOrderId === order.id && (
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                fontSize: '10px',
+                                color: '#059669',
+                                fontWeight: 600,
+                                marginTop: '2px',
+                              }}
+                            >
+                              ✓ Saved to D1
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleStartEditDesc(order)}
+                          title="Edit Product Description"
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: '#94a3b8',
+                            padding: '2px',
+                            borderRadius: '3px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.color = '#2563eb')}
+                          onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
+                        >
+                          <Edit2 size={12} />
+                        </button>
+                      </div>
+                    )}
                   </td>
 
                   {/* 6. Order Type */}
@@ -670,6 +1153,17 @@ export function CustomerOrdersPage() {
                       >
                         <MessageSquare size={14} />
                       </button>
+                      {(!order.status || order.status === 'pending' || order.status === 'order_created') && (
+                        <button
+                          type="button"
+                          className="action-icon-btn"
+                          onClick={() => handleOpenPickupRequest(order)}
+                          title="Request Pickup for this Order"
+                          style={{ color: '#dc2626' }}
+                        >
+                          <Truck size={14} />
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="action-icon-btn"

@@ -333,6 +333,9 @@ export function AuthProvider({ children }) {
     const branch = (companyData.branches || []).find((b) => b.phone === p);
     if (!branch) throw new Error('No branch found with that phone number.');
     if (branch.password !== password) throw new Error('Incorrect password.');
+    if (branch.status === 'inactive' || branch.status === 'disabled') {
+      throw new Error('This branch account has been disabled.');
+    }
 
     const newSession = {
       type: 'branch',

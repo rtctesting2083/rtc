@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   Home,
   Package,
@@ -46,6 +46,7 @@ import { useModal } from '../../context/ModalContext';
 import { initialsFor } from '../../utils/helpers';
 import { AdminProfileModal } from '../company/AdminProfileModal';
 import { CompanyThemeCard } from '../../pages/company/settings/CompanyThemeCard';
+import { ThemeToggleBtn } from '../common/ThemeToggleBtn';
 import logoImg from '../../assets/logo-transparent.png';
 import '../../pages/company/AdminDashboard.css';
 
@@ -144,26 +145,53 @@ export function CompanyLayout() {
     ? `${currentUser.name} · ${currentRole?.name || 'Staff'}`
     : 'RTC';
 
-  // Navigation matching the screenshot and brand guidelines
-  const navItems = [
-    { key: 'overview', label: 'Overview', Icon: Home, path: '/company/overview' },
-    { key: 'shipments', label: 'Shipments', Icon: Package, path: '/company/shipments' },
-    { key: 'shipment-report', label: 'Shipment Report', Icon: FileText, path: '/company/shipment-reports' },
-    { key: 'status-comments', label: 'Status Comments', Icon: MessageSquare, path: '/company/shipments', badge: 1 },
-    { key: 'pickup-requests', label: 'Pickup Requests', Icon: MapPin, path: '/company/shipments' },
-    { key: 'exchange-orders', label: 'Exchange Orders', Icon: Repeat, path: '/company/shipments' },
-    { key: 'returns', label: 'Returns (RTV)', Icon: RotateCcw, path: '/company/shipments' },
-    { key: 'couriers', label: 'Riders', Icon: Bike, path: '/company/couriers' },
-    { key: 'customers', label: 'Vendors', Icon: Users, path: '/company/customers' },
-    { key: 'verification', label: 'Vendor Verification', Icon: ShieldCheck, path: '/company/verification', badge: pendingVerificationsCount },
-    { key: 'invoices', label: 'Billing', Icon: Receipt, path: '/company/invoices' },
-    { key: 'cod-settlement', label: 'COD Settlement', Icon: Banknote, path: '/company/cod-settlement' },
-    { key: 'track', label: 'Track a package', Icon: Search, path: '/company/track' },
-    { key: 'branches', label: 'Branch Settings', Icon: Building2, path: '/company/branches' },
-    { key: 'branch-reports', label: 'Branch Reports', Icon: BarChart3, path: '/company/branch-reports' },
-    { key: 'sales-report', label: 'Sales Report', Icon: TrendingUp, path: '/company/shipment-reports' },
-    { key: 'revenue-report', label: 'Revenue Report', Icon: CircleDollarSign, path: '/company/invoices' },
-    { key: 'location-report', label: 'Location-Order Analysis', Icon: Map, path: '/company/shipment-reports' },
+  // Structured navigation with separated sections
+  const navSections = [
+    {
+      title: 'Operations',
+      items: [
+        { key: 'overview', label: 'Overview', Icon: Home, path: '/company/overview' },
+        { key: 'notices', label: 'Notice Board', Icon: Bell, path: '/company/notices' },
+        { key: 'shipments', label: 'Shipments', Icon: Package, path: '/company/shipments' },
+        { key: 'pickup-requests', label: 'Pickup Requests', Icon: MapPin, path: '/company/pickup-requests' },
+        { key: 'exchange-orders', label: 'Exchange Orders', Icon: Repeat, path: '/company/exchange-orders' },
+        { key: 'returns', label: 'Returns (RTV)', Icon: RotateCcw, path: '/company/returns' },
+        { key: 'status-comments', label: 'Status Comments', Icon: MessageSquare, path: '/company/status-comments', badge: 1 },
+        { key: 'track', label: 'Track a package', Icon: Search, path: '/company/track' },
+      ],
+    },
+    {
+      title: 'Stakeholders',
+      items: [
+        { key: 'couriers', label: 'Riders', Icon: Bike, path: '/company/couriers' },
+        { key: 'customers', label: 'Vendors', Icon: Users, path: '/company/customers' },
+        { key: 'verification', label: 'Vendor Verification', Icon: ShieldCheck, path: '/company/verification', badge: pendingVerificationsCount },
+      ],
+    },
+    {
+      title: 'Finance & Billing',
+      items: [
+        { key: 'invoices', label: 'Billing (Tax Invoices)', Icon: Receipt, path: '/company/invoices' },
+        { key: 'cod-settlement', label: 'COD Settlement', Icon: Banknote, path: '/company/cod-settlement' },
+      ],
+    },
+    {
+      title: 'Network & Branches',
+      items: [
+        { key: 'branches', label: 'Branch Settings', Icon: Building2, path: '/company/branches' },
+        { key: 'branch-reports', label: 'Branch Reports', Icon: BarChart3, path: '/company/branch-reports' },
+      ],
+    },
+    {
+      title: 'Reports & Analytics',
+      items: [
+        { key: 'vendor-orders-report', label: 'Vendor Orders Report', Icon: FileText, path: '/company/vendor-orders' },
+        { key: 'shipment-report', label: 'All Shipment Report', Icon: BarChart3, path: '/company/shipment-reports' },
+        { key: 'sales-report', label: 'Sales Report', Icon: TrendingUp, path: '/company/sales-report' },
+        { key: 'revenue-report', label: 'Revenue Report', Icon: CircleDollarSign, path: '/company/revenue-report' },
+        { key: 'location-report', label: 'Location-Order Analysis', Icon: Map, path: '/company/location-report' },
+      ],
+    },
   ];
 
   const settingsNavItems = [
@@ -173,13 +201,8 @@ export function CompanyLayout() {
     { key: 'delivery-service-types', label: 'Delivery Service Type', Icon: Zap, path: '/company/settings/delivery-service-types' },
     { key: 'product-categories', label: 'Product/Package Category', Icon: Boxes, path: '/company/settings/product-categories' },
     { key: 'landmarks', label: 'Address/Landmark Names', Icon: Flag, path: '/company/settings/landmarks' },
-    { key: 'address-book', label: 'Branch List', Icon: GitFork, path: '/company/branches' },
-    { key: 'network', label: 'Courier Network', Icon: Network, path: '/company/branches' },
-    { key: 'network-reports', label: 'Network Reports', Icon: PieChart, path: '/company/branch-reports' },
-    { key: 'notices', label: 'Notices', Icon: Bell, path: '/company/shipments' },
     { key: 'delivery-charge-settings', label: 'Delivery Charge Setting', Icon: Sliders, path: '/company/settings/delivery-charges' },
     { key: 'shipment-status-settings', label: 'Shipment Status Setting', Icon: CheckCircle2, path: '/company/settings/shipment-statuses' },
-    { key: 'data-backup', label: 'Data Backup', Icon: Database, path: '/company/settings/users' },
     { key: 'user-management', label: 'User Management', Icon: Users, path: '/company/settings/users' },
   ];
 
@@ -213,53 +236,82 @@ export function CompanyLayout() {
             <p>{subtitle}</p>
           </div>
 
-          <nav className="admin-nav">
-            {navItems.map((item) => {
-              const IconComp = item.Icon;
-              return (
-                <NavLink
-                  key={item.key}
-                  to={item.path}
-                  onClick={closeMobileMenu}
-                  className={({ isActive }) => `admin-nav-link ${isActive ? 'active' : ''}`}
+          <nav className="admin-nav" style={{ padding: '8px 10px 24px' }}>
+            {navSections.map((section, idx) => (
+              <div
+                key={section.title}
+                className="admin-nav-section"
+                style={{
+                  marginBottom: '10px',
+                  paddingTop: idx > 0 ? '10px' : '2px',
+                  borderTop: idx > 0 ? '1px solid #f1f5f9' : 'none',
+                }}
+              >
+                <div
+                  style={{
+                    padding: '4px 10px 6px',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    color: '#94a3b8',
+                  }}
                 >
-                  <span className="admin-nav-icon">
-                    <IconComp size={16} strokeWidth={2} />
-                  </span>
-                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                    <span>{item.label}</span>
-                    {item.badge > 0 && (
-                      <span className="admin-nav-badge">{item.badge}</span>
-                    )}
-                  </span>
-                </NavLink>
-              );
-            })}
+                  {section.title}
+                </div>
 
-            <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #f3f4f6' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  {section.items.map((item) => {
+                    const IconComp = item.Icon;
+                    return (
+                      <NavLink
+                        key={item.key}
+                        to={item.path}
+                        onClick={closeMobileMenu}
+                        className={({ isActive }) => `admin-nav-link ${isActive ? 'active' : ''}`}
+                      >
+                        <span className="admin-nav-icon">
+                          <IconComp size={16} strokeWidth={2} />
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                          <span>{item.label}</span>
+                          {item.badge > 0 && (
+                            <span className="admin-nav-badge">{item.badge}</span>
+                          )}
+                        </span>
+                      </NavLink>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f1f5f9' }}>
               <div
                 style={{
-                  padding: '6px 12px',
-                  fontSize: '11px',
+                  padding: '6px 10px',
+                  fontSize: '10px',
                   fontWeight: 700,
                   textTransform: 'uppercase',
-                  color: '#9ca3af',
+                  letterSpacing: '0.06em',
+                  color: '#94a3b8',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
                   cursor: 'pointer',
+                  userSelect: 'none',
                 }}
                 onClick={() => setSettingsOpen(!settingsOpen)}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Settings size={14} strokeWidth={2} style={{ color: 'var(--admin-red, #dc2626)' }} />
+                  <Settings size={13} strokeWidth={2} style={{ color: 'var(--admin-red, #dc2626)' }} />
                   <span>System Settings</span>
                 </span>
-                <span style={{ fontSize: '9px' }}>{settingsOpen ? '▲' : '▼'}</span>
+                <span style={{ fontSize: '9px', color: '#94a3b8' }}>{settingsOpen ? '▲' : '▼'}</span>
               </div>
 
               {settingsOpen && (
-                <div style={{ paddingLeft: '4px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '4px' }}>
                   {settingsNavItems.map((sub) => {
                     const SubIcon = sub.Icon;
                     return (
@@ -268,7 +320,7 @@ export function CompanyLayout() {
                         to={sub.path}
                         onClick={closeMobileMenu}
                         className={({ isActive }) => `admin-nav-link ${isActive ? 'active' : ''}`}
-                        style={{ fontSize: '12px', padding: '7px 12px' }}
+                        style={{ fontSize: '12px', padding: '7px 10px' }}
                       >
                         <span className="admin-nav-icon">
                           <SubIcon size={15} strokeWidth={2} />
@@ -414,6 +466,7 @@ export function CompanyLayout() {
           </div>
 
           <div className="admin-topbar-right">
+            <ThemeToggleBtn variant="pill" style={{ marginRight: '6px' }} />
             <button
               type="button"
               className="admin-topbar-bell"
@@ -423,7 +476,12 @@ export function CompanyLayout() {
             >
               <Palette size={16} />
             </button>
-            <button type="button" className="admin-topbar-bell" title="Notifications">
+            <button
+              type="button"
+              className="admin-topbar-bell"
+              title="Notice Board & Announcements"
+              onClick={() => navigate('/company/notices')}
+            >
               🔔
               <span className="admin-topbar-badge">1</span>
             </button>

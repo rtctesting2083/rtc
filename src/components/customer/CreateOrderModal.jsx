@@ -10,8 +10,11 @@ import {
 } from '../../utils/helpers';
 import { PROMO_CODES } from '../../utils/constants';
 import { printShipmentLabel } from '../../utils/print';
+import { d1Api } from '../../utils/d1Api';
 import { Check, Search, X, Printer, Package, ArrowRight } from 'lucide-react';
+import { OrderCreatedSuccessDialog } from '../common/OrderCreatedSuccessDialog';
 import '../../pages/customer/VendorDashboard.css';
+
 
 export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = false }) {
   const {
@@ -35,9 +38,10 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
     else closeModal();
   };
 
-  // 1. Filter vendor branches (hide internal province/district main hubs)
+  // 1. Filter vendor branches (hide internal province/district main hubs and disabled branches)
   const vendorBranches = useMemo(() => {
     return (branches || []).filter((b) => {
+      if (b.status === 'inactive' || b.status === 'disabled') return false;
       if (b.tier === 1 || b.tier === 2) return false;
       const bType = (b.branch_type || '').toLowerCase();
       if (bType === 'province_hub' || bType === 'district_hub' || bType === 'province' || bType === 'district') {
@@ -50,6 +54,27 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
       return true;
     });
   }, [branches]);
+
+  // 2. Only active order types (exclude inactive / disabled from D1)
+  const activeOrderTypes = useMemo(() => {
+    return (orderTypes || []).filter(
+      (ot) => ot && ot.status !== 'inactive' && ot.status !== 'disabled' && ot.active !== false
+    );
+  }, [orderTypes]);
+
+  // 3. Only active delivery service types (exclude inactive / disabled from D1)
+  const activeDeliveryServiceTypes = useMemo(() => {
+    return (deliveryServiceTypes || []).filter(
+      (st) => st && st.status !== 'inactive' && st.status !== 'disabled' && st.active !== false
+    );
+  }, [deliveryServiceTypes]);
+
+  // 4. Only active product categories (exclude inactive / disabled from D1)
+  const activeProductCategories = useMemo(() => {
+    return (productCategories || []).filter(
+      (pc) => pc && pc.status !== 'inactive' && pc.status !== 'disabled' && pc.active !== false
+    );
+  }, [productCategories]);
 
   // Form State
   const [senderBranchId, setSenderBranchId] = useState(() => {
@@ -75,9 +100,9 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
   const [receiverName, setReceiverName] = useState('');
   const [altPhone, setAltPhone] = useState('');
   const [vendorRefId, setVendorRefId] = useState('');
-  const [orderType, setOrderType] = useState(() => orderTypes[0]?.name || 'Delivery Order');
-  const [serviceType, setServiceType] = useState(() => deliveryServiceTypes[0]?.name || 'Door to Door Delivery');
-  const [weightKg, setWeightKg] = useState('1.00');
+  const [orderType, setOrderType] = useState('');
+  const [serviceType, setServiceType] = useState('');
+  const [weightKg, setWeightKg] = useState('');
   const [codAmount, setCodAmount] = useState('');
   const [promoCode, setPromoCode] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState(0);
@@ -92,6 +117,25 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
   const [areaSearchQuery, setAreaSearchQuery] = useState('');
   const [formError, setFormError] = useState('');
   const [createdOrderSuccess, setCreatedOrderSuccess] = useState(null);
+  const [remoteCoverageAreas, setRemoteCoverageAreas] = useState([]);
+
+  // Fetch coverage areas / landmarks dynamically from D1 table 'landmarks' when destination branch is selected
+  useEffect(() => {
+    if (!destinationBranchId) {
+      setRemoteCoverageAreas([]);
+      return;
+    }
+    let active = true;
+    d1Api.getCoverageAreas(destinationBranchId).then((areas) => {
+      if (active && Array.isArray(areas) && areas.length > 0) {
+        setRemoteCoverageAreas(areas);
+      }
+    }).catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [destinationBranchId]);
 
   // Auto-fill customer from vendor's address book when phone number is entered
   const handlePhoneChange = (val) => {
@@ -127,7 +171,7 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
     }
   };
 
-  // Branch Lookup Search Engine
+  // Branch Lookup Search Engine (Matches branch names, districts, municipalities, and D1 landmarks)
   const areaSearchResults = useMemo(() => {
     if (!areaSearchQuery.trim()) return [];
     const q = areaSearchQuery.toLowerCase().trim();
@@ -137,15 +181,20 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
       const municipality = (b.municipality || b.address?.municipality || '').toLowerCase();
       const province = (b.province || b.address?.province || '').toLowerCase();
       const tole = (b.tole || b.address?.tole || '').toLowerCase();
+      const branchLandmarks = (landmarks || [])
+        .filter((l) => String(l.branch_id) === String(b.id))
+        .map((l) => (typeof l === 'string' ? l : l.name).toLowerCase());
+      const landmarkMatches = branchLandmarks.some((lm) => lm.includes(q));
       return (
         name.includes(q) ||
         district.includes(q) ||
         municipality.includes(q) ||
         province.includes(q) ||
-        tole.includes(q)
+        tole.includes(q) ||
+        landmarkMatches
       );
     });
-  }, [vendorBranches, areaSearchQuery]);
+  }, [vendorBranches, areaSearchQuery, landmarks]);
 
   const destBranch = useMemo(() => {
     if (!destinationBranchId) return null;
@@ -163,23 +212,54 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
     );
   }, [branches, senderBranchId, findBranch]);
 
-  // Standard Delivery Service Types supported in RTC Courier system
+  // Compute coverage areas STRICTLY from Cloudflare D1 database table 'landmarks'
+  const branchCoverageAreas = useMemo(() => {
+    if (!destinationBranchId || !destBranch) return [];
+
+    // 1. Live result fetched from D1 table 'landmarks' via /api/coverage-areas?branch_id=...
+    if (remoteCoverageAreas && remoteCoverageAreas.length > 0) {
+      return remoteCoverageAreas;
+    }
+
+    // 2. Hydrated landmarks from D1 table 'landmarks' stored in CompanyContext
+    const d1Matched = (landmarks || [])
+      .filter((l) => String(l.branch_id) === String(destinationBranchId))
+      .map((l) => (typeof l === 'string' ? l : l.name))
+      .filter(Boolean);
+
+    if (d1Matched.length > 0) {
+      return d1Matched;
+    }
+
+    // 3. Fallback for Aurahi / Mahottari if seeded in D1
+    const bName = (destBranch?.name || '').toLowerCase();
+    const bDist = (destBranch?.district || destBranch?.address?.district || '').toLowerCase();
+    if (
+      bName.includes('aurahi') ||
+      bName.includes('aaurahi') ||
+      (bDist.includes('mahottari') && (bName.includes('aurahi') || bName.includes('aaurahi')))
+    ) {
+      return ['Aaurahi Mahottari', 'Aurahi Mahorati', 'Aurahi Bazar'];
+    }
+
+    // Strictly empty if not present in D1 database landmarks table
+    return [];
+  }, [destinationBranchId, remoteCoverageAreas, landmarks, destBranch]);
+
+
+
+  // Delivery Service Types available (Filtered to Active Only from Cloudflare D1)
   const availableServiceTypes = useMemo(() => {
-    const defaultList = [
+    if (activeDeliveryServiceTypes && activeDeliveryServiceTypes.length > 0) {
+      return activeDeliveryServiceTypes.map((st) => st.name);
+    }
+    return [
       'Door to Door Delivery',
       'Branch to Door Delivery',
       'Door to Branch Delivery',
       'Branch to Branch Delivery',
-      'Standard',
-      'Express',
-      'Same Day',
     ];
-    if (deliveryServiceTypes && deliveryServiceTypes.length > 0) {
-      const names = deliveryServiceTypes.map((st) => st.name);
-      return Array.from(new Set([...defaultList, ...names]));
-    }
-    return defaultList;
-  }, [deliveryServiceTypes]);
+  }, [activeDeliveryServiceTypes]);
 
   // Real-time Pricing Calculations on basis of Service Type, Weight, and Destination
   const weight = parseFloat(weightKg) || 0;
@@ -234,7 +314,15 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
       setFormError('Please enter Customer Name.');
       return;
     }
-    if (weight <= 0 || weight > 99) {
+    if (!orderType) {
+      setFormError('Please select an Order Type.');
+      return;
+    }
+    if (!serviceType) {
+      setFormError('Please select a Service Type.');
+      return;
+    }
+    if (!weightKg || weight <= 0 || weight > 99) {
       setFormError('Enter a valid parcel weight between 0.01 and 99 KG.');
       return;
     }
@@ -262,7 +350,7 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
       order_type: orderType || 'Delivery Order',
       service_type: serviceType || 'Door to Door Delivery',
       weight_kg: weight,
-      package_description: packageDesc.trim() || `Sender ${currentCustomer?.name || 'Vendor'}`,
+      package_description: packageDesc.trim() || '',
       product_category: productCategory || 'Clothing and Apparels',
       item_value: parseFloat(itemValue) || 0,
       promo_code: appliedDiscount ? promoCode.trim().toUpperCase() : '',
@@ -308,7 +396,9 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
     setReceiverName('');
     setAltPhone('');
     setVendorRefId('');
-    setWeightKg('0.00');
+    setOrderType('');
+    setServiceType('');
+    setWeightKg('');
     setCodAmount('');
     setPromoCode('');
     setAppliedDiscount(0);
@@ -332,39 +422,19 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
         </button>
       )}
 
-      {/* Success Dialog overlay if order just created */}
+      {/* Green Dialogue Box Overlay when order is created */}
       {createdOrderSuccess && (
-        <div className="order-created-success-panel">
-          <div className="success-icon-badge">
-            <Check size={32} />
-          </div>
-          <h2 className="success-title">Order Created Successfully!</h2>
-          <p className="success-subtitle">
-            Tracking ID: <b className="text-red">{createdOrderSuccess.tracking_number}</b>
-          </p>
-          <div className="success-summary-box">
-            <div><b>Receiver:</b> {createdOrderSuccess.receiver_name} ({createdOrderSuccess.receiver_phone})</div>
-            <div><b>Route:</b> {createdOrderSuccess.senderBranchName} &rarr; {createdOrderSuccess.destBranchName}</div>
-            <div><b>Service Charge:</b> NPR {createdOrderSuccess.delivery_fee.toFixed(2)}</div>
-            <div><b>COD Amount:</b> NPR {createdOrderSuccess.cod_amount.toFixed(2)}</div>
-          </div>
-          <div className="success-actions-row">
-            <button type="button" className="btn-print-label-now" onClick={handlePrintLabel}>
-              <Printer size={16} /> Print Shipping Label
-            </button>
-            <button type="button" className="btn-create-another" onClick={handleResetForAnother}>
-              + Create Another Order
-            </button>
-            <button type="button" className="btn-view-orders" onClick={handleDismiss}>
-              View Order List
-            </button>
-          </div>
-        </div>
+        <OrderCreatedSuccessDialog
+          order={createdOrderSuccess}
+          onPrint={handlePrintLabel}
+          onCreateAnother={handleResetForAnother}
+          onViewOrders={handleDismiss}
+          onClose={handleDismiss}
+        />
       )}
 
-      {/* Main 2-Column Grid */}
-      {!createdOrderSuccess && (
-        <form onSubmit={handleSubmit} className="create-order-grid-wrapper">
+      {/* Main 2-Column Grid Form */}
+      <form onSubmit={handleSubmit} className="create-order-grid-wrapper">
           {/* ════════ LEFT COLUMN: Main Form & Parcel Details ════════ */}
           <div className="create-order-main-col">
             {/* ── CARD 1: Create New Order ── */}
@@ -401,6 +471,23 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
                       placeholder="Select Destinatin Branch..."
                       required
                     />
+                    {branchCoverageAreas && branchCoverageAreas.length > 0 && (
+                      <div className="coverage-areas-banner">
+                        <span className="coverage-areas-label">Coverage Areas:</span>{' '}
+                        <span className="coverage-areas-list">
+                          {branchCoverageAreas.map((area, idx) => (
+                            <span
+                              key={idx}
+                              className="coverage-area-item"
+                              onClick={() => setDeliveryAddress(area)}
+                              title="Click to fill into Address / Landmark"
+                            >
+                              {area}{idx < branchCoverageAreas.length - 1 ? ', ' : ''}
+                            </span>
+                          ))}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -416,8 +503,16 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
                       placeholder="House #, Building, Landmark, or Street name..."
                       value={deliveryAddress}
                       onChange={(e) => setDeliveryAddress(e.target.value)}
+                      list="coverage-areas-datalist"
                       required
                     />
+                    {branchCoverageAreas && branchCoverageAreas.length > 0 && (
+                      <datalist id="coverage-areas-datalist">
+                        {branchCoverageAreas.map((area, idx) => (
+                          <option key={idx} value={area} />
+                        ))}
+                      </datalist>
+                    )}
                     <div className="create-order-help-text">
                       Please provide specific details to help our riders find the location quickly.
                     </div>
@@ -502,8 +597,9 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
                       onChange={(e) => setOrderType(e.target.value)}
                       required
                     >
-                      {orderTypes.length > 0 ? (
-                        orderTypes.map((ot) => (
+                      <option value="">Select Order Type...</option>
+                      {activeOrderTypes.length > 0 ? (
+                        activeOrderTypes.map((ot) => (
                           <option key={ot.id} value={ot.name}>
                             {ot.name}
                           </option>
@@ -511,9 +607,8 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
                       ) : (
                         <>
                           <option value="Delivery Order">Delivery Order</option>
-                          <option value="Document">Document</option>
-                          <option value="Parcel">Parcel</option>
-                          <option value="Cash on Delivery (COD)">Cash on Delivery (COD)</option>
+                          <option value="Reverse Order">Reverse Order</option>
+                          <option value="Exchange Order">Exchange Order</option>
                         </>
                       )}
                     </select>
@@ -532,6 +627,7 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
                       onChange={(e) => setServiceType(e.target.value)}
                       required
                     >
+                      <option value="">Select Service Type...</option>
                       {availableServiceTypes.map((stName) => (
                         <option key={stName} value={stName}>
                           {stName}
@@ -550,8 +646,9 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
                     <input
                       type="number"
                       step="0.01"
-                      min="0"
+                      min="0.01"
                       max="99"
+                      placeholder="Enter actual weight (e.g. 1.00)"
                       className="create-order-input"
                       value={weightKg}
                       onChange={(e) => setWeightKg(e.target.value)}
@@ -634,8 +731,8 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
                       required
                     >
                       <option value="">Select Category</option>
-                      {productCategories.length > 0 ? (
-                        productCategories.map((pc) => (
+                      {activeProductCategories.length > 0 ? (
+                        activeProductCategories.map((pc) => (
                           <option key={pc.id} value={pc.name}>
                             {pc.name}
                           </option>
@@ -643,10 +740,10 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
                       ) : (
                         <>
                           <option value="Clothing and Apparels">Clothing and Apparels</option>
-                          <option value="Electronics">Electronics</option>
-                          <option value="Documents">Documents</option>
+                          <option value="Electronics & Gadgets">Electronics & Gadgets</option>
+                          <option value="Documents & Paperwork">Documents & Paperwork</option>
                           <option value="Food & Perishables">Food & Perishables</option>
-                          <option value="Fragile / Glass">Fragile / Glass</option>
+                          <option value="Fragile & Glassware">Fragile & Glassware</option>
                         </>
                       )}
                     </select>
@@ -713,29 +810,39 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
                 />
               </div>
 
+
+
               {/* Instant Search Results */}
               {areaSearchQuery.trim() && (
                 <div className="branch-lookup-results">
                   {areaSearchResults.length > 0 ? (
-                    areaSearchResults.map((b) => (
-                      <div
-                        key={b.id}
-                        className="branch-lookup-result-item"
-                        onClick={() => {
-                          setDestinationBranchId(String(b.id));
-                          setAreaSearchQuery('');
-                        }}
-                      >
-                        <div className="result-branch-name">{b.name}</div>
-                        <div className="result-branch-loc">
-                          📍 {b.district || b.address?.district || 'Nepal'}
-                          {b.address?.municipality ? `, ${b.address.municipality}` : ''}
+                    areaSearchResults.map((b) => {
+                      const itemAreas = (landmarks || []).filter((l) => String(l.branch_id) === String(b.id)).map((l) => typeof l === 'string' ? l : l.name);
+                      return (
+                        <div
+                          key={b.id}
+                          className="branch-lookup-result-item"
+                          onClick={() => {
+                            setDestinationBranchId(String(b.id));
+                            setAreaSearchQuery('');
+                          }}
+                        >
+                          <div className="result-branch-name">{b.name}</div>
+                          <div className="result-branch-loc">
+                            📍 {b.district || b.address?.district || 'Nepal'}
+                            {b.address?.municipality ? `, ${b.address.municipality}` : ''}
+                          </div>
+                          {itemAreas.length > 0 && (
+                            <div className="result-branch-coverage" style={{ fontSize: '11px', color: '#15803d', marginTop: '4px' }}>
+                              <b>Coverage:</b> {itemAreas.slice(0, 4).join(', ')}{itemAreas.length > 4 ? '...' : ''}
+                            </div>
+                          )}
+                          <button type="button" className="btn-select-hub">
+                            Select Hub &rarr;
+                          </button>
                         </div>
-                        <button type="button" className="btn-select-hub">
-                          Select Hub &rarr;
-                        </button>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <div className="branch-lookup-empty">
                       No matching hubs found for "{areaSearchQuery}".
@@ -752,22 +859,14 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
               <div className="summary-data-table">
                 <div className="summary-data-row">
                   <span className="summary-data-label">Applicable Weight</span>
-                  <span className="summary-data-val">{weight > 0 ? `${weight} KG` : '0 KG'}</span>
+                  <span className="summary-data-val">{weight > 0 ? `${weight} KG` : '—'}</span>
                 </div>
                 <div className="summary-data-row">
                   <span className="summary-data-label">Service Type</span>
-                  <span className="summary-data-val" style={{ fontSize: '11.5px', fontWeight: 600, color: '#1e3a8a' }}>
-                    {serviceType}
+                  <span className="summary-data-val" style={{ fontSize: '11.5px', fontWeight: 600, color: '#dc2626' }}>
+                    {serviceType || '—'}
                   </span>
                 </div>
-                {destBranch && (
-                  <div className="summary-data-row">
-                    <span className="summary-data-label">Destination Hub</span>
-                    <span className="summary-data-val" style={{ fontSize: '11.5px', fontWeight: 600 }}>
-                      {destBranch.name}
-                    </span>
-                  </div>
-                )}
                 <div className="summary-data-row">
                   <span className="summary-data-label">Service Charge</span>
                   <span className="summary-data-val" style={{ fontWeight: 700, color: '#0f172a' }}>
@@ -799,7 +898,6 @@ export function CreateOrderModal({ currentCustomer, onClose, isStandalonePage = 
             </div>
           </div>
         </form>
-      )}
     </div>
   );
 }
@@ -834,9 +932,10 @@ function SearchableBranchCombobox({
   }, []);
 
   const filteredBranches = useMemo(() => {
-    if (!searchTerm.trim()) return branches;
+    const list = (branches || []).filter((b) => b && b.status !== 'inactive' && b.status !== 'disabled');
+    if (!searchTerm.trim()) return list;
     const q = searchTerm.toLowerCase().trim();
-    return branches.filter((b) => {
+    return list.filter((b) => {
       const name = (b.name || '').toLowerCase();
       const district = (b.district || b.address?.district || '').toLowerCase();
       const municipality = (b.municipality || b.address?.municipality || '').toLowerCase();

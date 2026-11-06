@@ -25,14 +25,31 @@ export function LandmarksSettingsPage() {
   return (
     <div>
       <div className="view-head">
-        <h1>Address / Landmark Names</h1>
+        <h1>
+          Address / Landmark Names{' '}
+          <span
+            style={{
+              fontSize: '11px',
+              padding: '2px 8px',
+              borderRadius: '12px',
+              background: '#dcfce7',
+              color: '#15803d',
+              border: '1px solid #86efac',
+              fontWeight: 600,
+              verticalAlign: 'middle',
+              marginLeft: '8px',
+            }}
+          >
+            ● D1 Database Table: landmarks
+          </span>
+        </h1>
         <button type="button" className="btn-primary" onClick={handleOpenAdd}>
           + Add landmark
         </button>
       </div>
 
       <div className="banner">
-        Group common landmark names under each branch so vendors can pick recognizable locations quickly when booking orders.
+        Group common landmark names under each branch so vendors can view coverage areas and pick recognizable locations quickly when booking orders.
       </div>
 
       <div className="filters">

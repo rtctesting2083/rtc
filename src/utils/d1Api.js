@@ -45,6 +45,33 @@ export const d1Api = {
     }
   },
 
+  // Read display mode (night / day mode) from Cloudflare D1
+  getDisplayMode: async (userKey = 'global', companyId = 1) => {
+    try {
+      const res = await fetch(`/api/display-mode?user_key=${encodeURIComponent(userKey)}&company_id=${companyId}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data?.mode || null;
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Save display mode (night / day mode) to Cloudflare D1
+  saveDisplayMode: async (mode, userKey = 'global', companyId = 1) => {
+    try {
+      const res = await fetch('/api/display-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode, user_key: userKey, company_id: companyId }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
   // Save whole system theme to dedicated Cloudflare D1 table 'system_theme'
   saveSystemTheme: async (companyId = 1, themePayload = {}) => {
     try {
@@ -57,6 +84,165 @@ export const d1Api = {
       return await res.json();
     } catch (e) {
       return null;
+    }
+  },
+
+  // ─── Notices API (Cloudflare D1 Table: notices) ─────────────────────────────
+  getNotices: async (companyId = 1, audience = null, status = null) => {
+    try {
+      const params = new URLSearchParams();
+      params.set('company_id', companyId);
+      if (audience) params.set('audience', audience);
+      if (status) params.set('status', status);
+      const res = await fetch(`/api/notices?${params.toString()}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch (e) {
+      console.warn('Failed to fetch notices from D1:', e);
+      return [];
+    }
+  },
+
+  createNotice: async (payload) => {
+    try {
+      const res = await fetch('/api/notices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to create notice');
+      }
+      return await res.json();
+    } catch (e) {
+      console.error('Error creating notice in D1:', e);
+      throw e;
+    }
+  },
+
+  updateNotice: async (id, payload) => {
+    try {
+      const res = await fetch(`/api/notices/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to update notice');
+      }
+      return await res.json();
+    } catch (e) {
+      console.error('Error updating notice in D1:', e);
+      throw e;
+    }
+  },
+
+  deleteNotice: async (id) => {
+    try {
+      const res = await fetch(`/api/notices/${id}`, { method: 'DELETE' });
+      if (!res.ok) return false;
+      return true;
+    } catch (e) {
+      console.error('Error deleting notice in D1:', e);
+      return false;
+    }
+  },
+
+  // ─── Tickets API (Cloudflare D1 Table: tickets) ─────────────────────────────
+  getTickets: async (companyId = 1, customerId = null, status = null, ticketType = null, search = '') => {
+    try {
+      const params = new URLSearchParams();
+      params.set('company_id', companyId);
+      if (customerId) params.set('customer_id', customerId);
+      if (status && status !== 'all') params.set('status', status);
+      if (ticketType && ticketType !== 'all') params.set('type', ticketType);
+      if (search) params.set('search', search);
+
+      const res = await fetch(`/api/tickets?${params.toString()}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch (e) {
+      console.warn('Failed to fetch tickets from D1:', e);
+      return [];
+    }
+  },
+
+  createTicket: async (payload) => {
+    try {
+      const res = await fetch('/api/tickets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to create ticket');
+      }
+      return await res.json();
+    } catch (e) {
+      console.error('Error creating ticket in D1:', e);
+      throw e;
+    }
+  },
+
+  getTicketById: async (id) => {
+    try {
+      const res = await fetch(`/api/tickets/${id}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      console.error('Error fetching ticket from D1:', e);
+      return null;
+    }
+  },
+
+  updateTicket: async (id, payload) => {
+    try {
+      const res = await fetch(`/api/tickets/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to update ticket');
+      }
+      return await res.json();
+    } catch (e) {
+      console.error('Error updating ticket in D1:', e);
+      throw e;
+    }
+  },
+
+  addTicketReply: async (id, payload) => {
+    try {
+      const res = await fetch(`/api/tickets/${id}/replies`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to add reply');
+      }
+      return await res.json();
+    } catch (e) {
+      console.error('Error adding ticket reply in D1:', e);
+      throw e;
+    }
+  },
+
+  deleteTicket: async (id) => {
+    try {
+      const res = await fetch(`/api/tickets/${id}`, { method: 'DELETE' });
+      return res.ok;
+    } catch (e) {
+      console.error('Error deleting ticket in D1:', e);
+      return false;
     }
   },
 
@@ -261,6 +447,151 @@ export const d1Api = {
     }
   },
 
+  // COD Settlement Requests: Vendor Payout Requests & Admin Settlement
+  getCodRequests: async (companyId = 1, params = {}) => {
+    try {
+      const sp = new URLSearchParams({ company_id: String(companyId), ...params });
+      const res = await fetch(`/api/cod-requests?${sp.toString()}`);
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (e) {
+      return [];
+    }
+  },
+
+  createCodRequest: async (payload = {}) => {
+    try {
+      const res = await fetch('/api/cod-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to submit COD request');
+      }
+      return await res.json();
+    } catch (e) {
+      throw e;
+    }
+  },
+
+  settleCodRequest: async (requestId, payload = {}) => {
+    try {
+      const res = await fetch(`/api/cod-requests/${requestId}/settle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to settle COD request');
+      }
+      return await res.json();
+    } catch (e) {
+      throw e;
+    }
+  },
+
+  rejectCodRequest: async (requestId, payload = {}) => {
+    try {
+      const res = await fetch(`/api/cod-requests/${requestId}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(typeof payload === 'string' ? { reason: payload } : payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to decline COD request');
+      }
+      return await res.json();
+    } catch (e) {
+      throw e;
+    }
+  },
+
+  // ════════ IRD E-BILLING (TAX INVOICES & ANNEX 8 / 10) ════════
+  getInvoices: async (companyId = 1, params = {}) => {
+    try {
+      const sp = new URLSearchParams({ company_id: String(companyId), ...params });
+      const res = await fetch(`/api/invoices?${sp.toString()}`);
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (e) {
+      return [];
+    }
+  },
+
+  createInvoice: async (payload = {}) => {
+    try {
+      const res = await fetch('/api/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to generate IRD Tax Invoice');
+      }
+      return await res.json();
+    } catch (e) {
+      throw e;
+    }
+  },
+
+  payInvoice: async (invoiceId, payload = {}) => {
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}/pay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  cancelInvoice: async (invoiceId, reason = 'Returned / Cancelled') => {
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to issue Credit Note');
+      }
+      return await res.json();
+    } catch (e) {
+      throw e;
+    }
+  },
+
+  getCreditNotes: async (companyId = 1) => {
+    try {
+      const res = await fetch(`/api/credit-notes?company_id=${companyId}`);
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (e) {
+      return [];
+    }
+  },
+
+  getSalesRegister: async (companyId = 1, fiscalYear = '') => {
+    try {
+      const sp = new URLSearchParams({ company_id: String(companyId) });
+      if (fiscalYear) sp.append('fiscal_year', fiscalYear);
+      const res = await fetch(`/api/ebilling/sales-register?${sp.toString()}`);
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (e) {
+      return [];
+    }
+  },
+
   // Read company settings from D1 table 'setting'
   getSettings: async (companyId) => {
     try {
@@ -349,6 +680,158 @@ export const d1Api = {
       return await res.json();
     } catch (e) {
       return null;
+    }
+  },
+
+  // Read shipment status settings from dedicated D1 table 'shipment_status_settings'
+  getShipmentStatuses: async (companyId = 1) => {
+    try {
+      const res = await fetch(`/api/shipment-statuses?company_id=${companyId}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Save shipment status settings to dedicated D1 table 'shipment_status_settings'
+  saveShipmentStatuses: async (companyId = 1, statuses = {}) => {
+    try {
+      const res = await fetch(`/api/shipment-statuses?company_id=${companyId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: Number(companyId), statuses }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Add custom status tag to dedicated D1 table 'shipment_status_settings'
+  addCustomShipmentStatus: async (companyId = 1, payload = {}) => {
+    try {
+      const res = await fetch(`/api/shipment-statuses?company_id=${companyId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: Number(companyId), ...payload }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Update a single status in D1 table 'shipment_status_settings'
+  updateShipmentStatusSetting: async (companyId = 1, payload = {}) => {
+    try {
+      const res = await fetch(`/api/shipment-statuses?company_id=${companyId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: Number(companyId), ...payload }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Delete custom status from dedicated D1 table 'shipment_status_settings'
+  deleteCustomShipmentStatus: async (companyId = 1, keyOrId) => {
+    try {
+      const param = typeof keyOrId === 'number' ? `id=${keyOrId}` : `key=${encodeURIComponent(keyOrId)}`;
+      const res = await fetch(`/api/shipment-statuses?company_id=${companyId}&${param}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Reset core shipment status settings to defaults in D1 table 'shipment_status_settings'
+  resetShipmentStatuses: async (companyId = 1) => {
+    try {
+      const res = await fetch(`/api/shipment-statuses/reset?company_id=${companyId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: Number(companyId) }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Fetch joined branches and landmarks for Address Book coverage directory
+  getAddressBook: async (companyId = 1, params = {}) => {
+    try {
+      const qs = new URLSearchParams({ company_id: companyId, ...params }).toString();
+      const res = await fetch(`/api/address-book?${qs}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Read landmarks / address landmarks from dedicated Cloudflare D1 table 'landmarks'
+  getLandmarks: async (companyId = 1, branchId = null) => {
+    try {
+      const branchParam = branchId ? `&branch_id=${branchId}` : '';
+      const res = await fetch(`/api/landmarks?company_id=${companyId}${branchParam}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return Array.isArray(data?.landmarks) ? data.landmarks : [];
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Add landmark to dedicated Cloudflare D1 table 'landmarks'
+  addLandmark: async (companyId = 1, { branch_id, name }) => {
+    try {
+      const res = await fetch(`/api/landmarks?company_id=${companyId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: Number(companyId), branch_id: Number(branch_id), name: (name || '').trim() }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Delete landmark from dedicated Cloudflare D1 table 'landmarks'
+  deleteLandmark: async (id, companyId = 1) => {
+    try {
+      const res = await fetch(`/api/landmarks/${id}?company_id=${companyId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // Get coverage areas for a specific branch from D1 table 'landmarks'
+  getCoverageAreas: async (branchId, companyId = 1) => {
+    try {
+      if (!branchId) return [];
+      const res = await fetch(`/api/coverage-areas?branch_id=${branchId}&company_id=${companyId}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data?.coverage_areas) ? data.coverage_areas : [];
+    } catch (e) {
+      return [];
     }
   },
 
@@ -557,6 +1040,26 @@ export const d1Api = {
       if (!res.ok) return null;
       return await res.json();
     } catch (e) {
+      return null;
+    }
+  },
+
+  // Bulk update branch status in D1 table 'branches'
+  bulkUpdateBranchStatus: async (branchIds, status, companyId = 1) => {
+    try {
+      const res = await fetch('/api/branches/bulk-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          branch_ids: branchIds,
+          status,
+          company_id: Number(companyId || 1),
+        }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      console.warn('Failed to bulk update branches in D1:', e);
       return null;
     }
   },
@@ -876,12 +1379,13 @@ export const d1Api = {
   },
 
   // 10. Vendor Customers API (D1 table: vendor_customers)
-  getVendorCustomers: async (vendorId, companyId = 1) => {
+  getVendorCustomers: async (vendorId, companyId = 1, search = '') => {
     try {
       const params = new URLSearchParams({
         company_id: String(companyId || 1),
         vendor_id: String(vendorId),
       });
+      if (search && search.trim()) params.append('search', search.trim());
       const res = await fetch(`/api/vendor-customers?${params.toString()}`);
       if (!res.ok) return [];
       return await res.json();
@@ -935,12 +1439,12 @@ export const d1Api = {
   },
 
   // 11. Vendor Orders API (D1 table: vendor_order)
-  getVendorOrders: async (vendorId, companyId = 1, filters = {}) => {
+  getVendorOrders: async (vendorId = null, companyId = 1, filters = {}) => {
     try {
       const params = new URLSearchParams({
         company_id: String(companyId || 1),
-        vendor_id: String(vendorId),
       });
+      if (vendorId) params.append('vendor_id', String(vendorId));
       if (filters.status && filters.status !== 'all') params.append('status', filters.status);
       if (filters.tracking_number) params.append('tracking_number', filters.tracking_number);
       const res = await fetch(`/api/vendor-orders?${params.toString()}`);
@@ -953,6 +1457,10 @@ export const d1Api = {
       console.warn('Failed to fetch vendor orders from D1:', e);
       return [];
     }
+  },
+
+  getAllVendorOrders: async (companyId = 1, filters = {}) => {
+    return d1Api.getVendorOrders(null, companyId, filters);
   },
 
   addVendorOrder: async (payload) => {
@@ -997,5 +1505,125 @@ export const d1Api = {
       return null;
     }
   },
+
+  // 12. Pickup Requests API (D1 table: pickup_requests) - 5-Step Lifecycle
+  getPickupRequests: async (companyId = 1, filters = {}) => {
+    try {
+      const params = new URLSearchParams({
+        company_id: String(companyId || 1),
+      });
+      if (filters.vendor_id) params.append('vendor_id', String(filters.vendor_id));
+      if (filters.branch_id) params.append('branch_id', String(filters.branch_id));
+      if (filters.courier_id) params.append('courier_id', String(filters.courier_id));
+      if (filters.status && filters.status !== 'all') params.append('status', filters.status);
+
+      const res = await fetch(`/api/pickup-requests?${params.toString()}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch (e) {
+      console.warn('Failed to fetch pickup requests from D1:', e);
+      return [];
+    }
+  },
+
+  createPickupRequest: async (payload) => {
+    try {
+      const res = await fetch('/api/pickup-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to create pickup request');
+      }
+      return await res.json();
+    } catch (e) {
+      console.warn('Failed to create pickup request on D1:', e);
+      throw e;
+    }
+  },
+
+  assignPickupRider: async (requestId, courierId, riderName = '', riderPhone = '', branchName = '') => {
+    try {
+      const res = await fetch(`/api/pickup-requests/${requestId}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courier_id: Number(courierId),
+          courier_name: riderName,
+          courier_phone: riderPhone,
+          branch_name: branchName,
+        }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      console.warn('Failed to assign pickup rider on D1:', e);
+      return null;
+    }
+  },
+
+  confirmRiderPickup: async (requestId, notes = '', riderName = '') => {
+    try {
+      const res = await fetch(`/api/pickup-requests/${requestId}/pickup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          notes,
+          rider_name: riderName,
+        }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      console.warn('Failed to mark pickup on D1:', e);
+      return null;
+    }
+  },
+
+  receivePickupAtBranch: async (requestId, branchId, branchName = '') => {
+    try {
+      const res = await fetch(`/api/pickup-requests/${requestId}/receive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          branch_id: branchId ? Number(branchId) : null,
+          branch_name: branchName,
+        }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      console.warn('Failed to receive pickup at branch on D1:', e);
+      return null;
+    }
+  },
+
+  // 13. Notifications API (D1 table: notifications)
+  getNotifications: async (companyId = 1, targetType = 'admin', targetId = null) => {
+    try {
+      const params = new URLSearchParams({ company_id: String(companyId || 1), target_type: targetType });
+      if (targetId) params.append('target_id', String(targetId));
+      const res = await fetch(`/api/notifications?${params.toString()}`);
+      if (!res.ok) return { notifications: [], unread_count: 0 };
+      return await res.json();
+    } catch (e) {
+      return { notifications: [], unread_count: 0 };
+    }
+  },
+
+  markNotificationRead: async (companyId = 1, notificationId = null, targetType = null, targetId = null) => {
+    try {
+      await fetch('/api/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: companyId, id: notificationId, target_type: targetType, target_id: targetId }),
+      });
+    } catch (e) {}
+  },
 };
+
+export default d1Api;
 

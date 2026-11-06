@@ -14,6 +14,7 @@ import {
   BarChart3,
   Sliders,
   UserCheck,
+  FileText,
 } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
@@ -74,7 +75,7 @@ function DonutChart({ total, segments, size = 130 }) {
 
 export function CompanyOverviewPage() {
   const { shipments = [], couriers = [], invoices = [], branches = [], customers = [], updateShipmentStatus } = useCompany();
-  const { openModal } = useModal();
+  const { openModal, closeModal } = useModal();
   const navigate = useNavigate();
 
   const [overviewPeriod, setOverviewPeriod] = useState('Today');
@@ -178,7 +179,12 @@ export function CompanyOverviewPage() {
 
   // Handlers
   const handleOpenDetail = (shipment) => {
-    openModal(`Shipment ${shipment.tracking_number}`, <ShipmentDetailModal shipment={shipment} />, 'wide');
+    openModal(
+      `Shipment ${shipment.tracking_number}`,
+      <ShipmentDetailModal shipment={shipment} onClose={closeModal} />,
+      'xxwide',
+      { hideHeader: true }
+    );
   };
 
   const handleAssignRider = (shipment) => {
@@ -668,6 +674,13 @@ export function CompanyOverviewPage() {
           <div className="admin-card" style={{ padding: '14px 16px' }}>
             <div className="admin-card-head" style={{ marginBottom: '10px' }}>
               <h3 className="admin-card-title">Top Vendors</h3>
+              <span
+                className="admin-card-link"
+                style={{ cursor: 'pointer', color: 'var(--admin-red, #dc2626)', fontWeight: 600 }}
+                onClick={() => navigate('/company/vendor-orders')}
+              >
+                Orders Report &rarr;
+              </span>
             </div>
             <div className="admin-vendor-list">
               {vendorCounts.map(([name, count], idx) => {
@@ -779,6 +792,7 @@ export function CompanyOverviewPage() {
 
         <div className="admin-modules-grid">
           {[
+            { label: 'Vendor Orders Report', sub: 'Orders & COD stats', Icon: FileText, path: '/company/vendor-orders' },
             { label: 'Shipments', sub: `${totalShipments} orders`, Icon: Package, path: '/company/shipments' },
             { label: 'Pickup Requests', sub: '0 open', Icon: Clock, path: '/company/shipments' },
             { label: 'Riders', sub: `${totalRiders} riders`, Icon: Bike, path: '/company/couriers' },

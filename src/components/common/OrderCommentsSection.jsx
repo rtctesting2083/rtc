@@ -57,6 +57,7 @@ export function OrderCommentsSection({
   shipmentId = null,
   order = null,
   compact = false,
+  variant = 'default',
   onCommentAdded = null,
 }) {
   const { session } = useAuth();
@@ -68,6 +69,7 @@ export function OrderCommentsSection({
   const [newCommentText, setNewCommentText] = useState('');
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState('');
+  const [showAddForm, setShowAddForm] = useState(false);
   const chatStreamRef = useRef(null);
 
   const tNumber = trackingNumber || order?.tracking_number || '';
@@ -190,6 +192,183 @@ export function OrderCommentsSection({
       setPosting(false);
     }
   };
+
+  // Formatter matching screenshot: DD-MMM-YYYY HH:mm:ss (e.g. 03-Nov-2026 14:29:35)
+  const formatCommentTime = (dateInput) => {
+    if (!dateInput) return '—';
+    const d = new Date(dateInput);
+    if (isNaN(d.getTime())) return String(dateInput);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const day = String(d.getDate()).padStart(2, '0');
+    const mon = months[d.getMonth()];
+    const y = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${day}-${mon}-${y} ${hh}:${mm}:${ss}`;
+  };
+
+  if (variant === 'reference') {
+    return (
+      <div className="order-comments-reference-container">
+        {/* Header matching reference image: Title on left, + Comment button on right */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+          <h3 className="order-detail-section-heading" style={{ margin: 0, padding: 0, border: 'none' }}>
+            Order Comments
+          </h3>
+          <button
+            type="button"
+            className="order-add-comment-btn"
+            onClick={() => setShowAddForm((prev) => !prev)}
+            title="Add a new comment or delivery note"
+          >
+            + Comment
+          </button>
+        </div>
+
+        {/* Collapsible Add Comment Box */}
+        {showAddForm && (
+          <form
+            onSubmit={handlePostComment}
+            style={{
+              marginBottom: '12px',
+              background: '#f8fafc',
+              padding: '10px',
+              borderRadius: '6px',
+              border: '1px solid #e2e8f0',
+            }}
+          >
+            {postError && (
+              <div
+                style={{
+                  padding: '4px 8px',
+                  background: '#fef2f2',
+                  color: '#dc2626',
+                  fontSize: '11px',
+                  borderRadius: '4px',
+                  marginBottom: '6px',
+                }}
+              >
+                {postError}
+              </div>
+            )}
+            <textarea
+              rows={2}
+              value={newCommentText}
+              onChange={(e) => setNewCommentText(e.target.value)}
+              placeholder={`Write a comment as ${detectedName}...`}
+              style={{
+                width: '100%',
+                padding: '6px 8px',
+                fontSize: '12px',
+                border: '1px solid #cbd5e1',
+                borderRadius: '4px',
+                boxSizing: 'border-box',
+                fontFamily: 'inherit',
+                resize: 'vertical',
+              }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '6px' }}>
+              <button
+                type="button"
+                onClick={() => setShowAddForm(false)}
+                style={{
+                  background: 'none',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '4px',
+                  padding: '3px 8px',
+                  fontSize: '11px',
+                  color: '#64748b',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={posting}
+                style={{
+                  background: '#003b73',
+                  border: 'none',
+                  borderRadius: '4px',
+                  padding: '3px 12px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  color: '#ffffff',
+                  cursor: 'pointer',
+                }}
+              >
+                {posting ? 'Sending...' : 'Send'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* Scrollable Conversation Bubbles Stream */}
+        <div
+          ref={chatStreamRef}
+          style={{
+            maxHeight: '440px',
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            paddingRight: '4px',
+          }}
+        >
+          {loading && comments.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: '#94a3b8', fontSize: '12px' }}>
+              Loading comments...
+            </div>
+          ) : comments.length === 0 ? (
+            <div
+              style={{
+                textAlign: 'center',
+                padding: '24px 10px',
+                color: '#94a3b8',
+                fontSize: '12px',
+                background: '#f8fafc',
+                borderRadius: '6px',
+                border: '1px dashed #e2e8f0',
+              }}
+            >
+              No comments yet. Click <b>+ Comment</b> to post.
+            </div>
+          ) : (
+            comments.map((c) => {
+              const rType = (c.author_type || 'staff').toLowerCase();
+              const initialLetter = (c.author_name || c.author_type || 'U').trim().charAt(0).toUpperCase();
+
+              // Palette matching reference image
+              let avatarBg = '#3730a3'; // Indigo / purple (R)
+              if (initialLetter === 'U') avatarBg = '#1e3a8a'; // Navy (U)
+              else if (initialLetter === 'O') avatarBg = '#2563eb'; // Blue (O)
+              else if (rType === 'vendor') avatarBg = '#059669'; // Green (Vendor)
+              else if (rType === 'rider') avatarBg = '#0284c7'; // Rider
+
+              const timeStr = formatCommentTime(c.created_at || c.created_at_formatted);
+
+              return (
+                <div key={c.id} className="order-comment-card-row">
+                  <div className="order-comment-avatar" style={{ background: avatarBg }}>
+                    {initialLetter}
+                  </div>
+                  <div className="order-comment-bubble-body">
+                    <div className="order-comment-text">{c.comment || c.text}</div>
+                    <div className="order-comment-author-footer">
+                      <span className="order-comment-author-name">{c.author_name || 'Staff'}</span>
+                      <span className="order-comment-date-time">{timeStr}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    );
+  }
 
   const activeRoleCfg = ROLE_CONFIG[detectedType] || ROLE_CONFIG.admin;
 

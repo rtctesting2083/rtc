@@ -137,7 +137,7 @@ export function VendorFormModal({ initialVendor = null, defaultBranchId = null, 
           Primary Branch
           <select value={branchId} onChange={(e) => setBranchId(e.target.value)} disabled={lockedBranch}>
             <option value="">No specific branch</option>
-            {branches.map((b) => (
+            {(branches || []).filter((b) => b && b.status !== 'inactive' && b.status !== 'disabled').map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
               </option>

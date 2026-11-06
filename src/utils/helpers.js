@@ -495,7 +495,10 @@ export function awaitingReceiptConfirmation(shipment) {
 export function canForwardShipment(shipment, branchId) {
   if (!shipment.destination_branch_id) return false;
   if (shipment.destination_branch_id === branchId) return false;
-  return shipment.current_branch_id === branchId && ['pending', 'in_transit', 'failed'].includes(shipment.status);
+  return (
+    shipment.current_branch_id === branchId &&
+    ['pending', 'in_transit', 'failed', 'received_at_branch', 'at_branch'].includes(shipment.status)
+  );
 }
 
 export function isToday(iso) {

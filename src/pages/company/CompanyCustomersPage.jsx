@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
 import { VendorFormModal } from '../../components/company/VendorFormModal';
@@ -8,6 +9,7 @@ import { addressSummary } from '../../utils/helpers';
 import { VENDOR_DOCUMENTS } from '../../utils/constants';
 
 export function CompanyCustomersPage() {
+  const navigate = useNavigate();
   const { customers, findBranch, updateCustomer } = useCompany();
   const { openModal, closeModal } = useModal();
 
@@ -156,6 +158,9 @@ export function CompanyCustomersPage() {
                 </td>
                 <td>
                   <div className="row-actions">
+                    <button type="button" className="btn-secondary" onClick={() => navigate('/company/vendor-orders')} title="View Vendor Orders Report">
+                      Orders
+                    </button>
                     <button type="button" className="btn-secondary" onClick={() => handleOpenView(c)}>
                       View
                     </button>

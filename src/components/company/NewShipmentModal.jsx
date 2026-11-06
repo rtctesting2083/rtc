@@ -2,16 +2,39 @@ import React, { useState } from 'react';
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
 import { calcFee, addressSummary } from '../../utils/helpers';
+import { OrderCreatedSuccessDialog } from '../common/OrderCreatedSuccessDialog';
+import { printShipmentLabel } from '../../utils/print';
 
-export function NewShipmentModal({ presetBranchId = null, onDone = null }) {
-  const { customers, branches, productCategories, chargeSettings, addShipment, findBranch } = useCompany();
+export function NewShipmentModal({ presetBranchId = null, defaultBranchId = null, onDone = null }) {
+  const effectiveBranchId = presetBranchId || defaultBranchId;
+  const {
+    customers,
+    branches,
+    orderTypes = [],
+    deliveryServiceTypes = [],
+    productCategories = [],
+    chargeSettings,
+    addShipment,
+    findBranch,
+  } = useCompany();
   const { closeModal } = useModal();
 
-  const isBranchBooking = Boolean(presetBranchId);
-  const currentBranch = presetBranchId ? findBranch(presetBranchId) : null;
+  // Active filters: Only show active types and categories (exclude inactive / disabled)
+  const activeOrderTypes = (orderTypes || []).filter(
+    (ot) => ot && ot.status !== 'inactive' && ot.status !== 'disabled' && ot.active !== false
+  );
+  const activeDeliveryServiceTypes = (deliveryServiceTypes || []).filter(
+    (st) => st && st.status !== 'inactive' && st.status !== 'disabled' && st.active !== false
+  );
+  const activeProductCategories = (productCategories || []).filter(
+    (pc) => pc && pc.status !== 'inactive' && pc.status !== 'disabled' && pc.active !== false
+  );
 
-  const vendorPool = presetBranchId
-    ? customers.filter((c) => c.branch_id === Number(presetBranchId))
+  const isBranchBooking = Boolean(effectiveBranchId);
+  const currentBranch = effectiveBranchId ? findBranch(effectiveBranchId) : null;
+
+  const vendorPool = effectiveBranchId
+    ? customers.filter((c) => c.branch_id === Number(effectiveBranchId))
     : customers;
 
   // On branch side, booking is always for a normal walk-in customer ('individual')
@@ -20,9 +43,13 @@ export function NewShipmentModal({ presetBranchId = null, onDone = null }) {
   const [customerId, setCustomerId] = useState('');
 
   // Origin & Destination Branches
-  const [branchId, setBranchId] = useState(presetBranchId ? String(presetBranchId) : '');
+  const [branchId, setBranchId] = useState(effectiveBranchId ? String(effectiveBranchId) : '');
   const [destBranchId, setDestBranchId] = useState('');
   const [transitBranchId, setTransitBranchId] = useState('');
+
+  // Order & Service Type (Filtered to active only)
+  const [selectedOrderType, setSelectedOrderType] = useState(() => activeOrderTypes[0]?.name || 'Delivery Order');
+  const [selectedServiceType, setSelectedServiceType] = useState(() => activeDeliveryServiceTypes[0]?.name || 'Branch to Door Delivery');
 
   // Delivery Mode: Branch to Branch vs Branch to Door (replaces manual drop-off point)
   const [deliveryMode, setDeliveryMode] = useState('branch_to_door');
@@ -38,16 +65,36 @@ export function NewShipmentModal({ presetBranchId = null, onDone = null }) {
 
   // Package Details
   const [packageType, setPackageType] = useState('non_fragile'); // 'non_fragile' or 'fragile'
-  const [category, setCategory] = useState('Documents');
+  const [category, setCategory] = useState(() => activeProductCategories[0]?.name || 'Documents & Paperwork');
   const [customCategory, setCustomCategory] = useState('');
   const [itemValue, setItemValue] = useState('');
   const [packageDescription, setPackageDescription] = useState('');
+
+  // Sync if D1 records load asynchronously
+  React.useEffect(() => {
+    if (activeOrderTypes.length > 0 && !activeOrderTypes.some((ot) => ot.name === selectedOrderType)) {
+      setSelectedOrderType(activeOrderTypes[0].name);
+    }
+  }, [activeOrderTypes, selectedOrderType]);
+
+  React.useEffect(() => {
+    if (activeDeliveryServiceTypes.length > 0 && !activeDeliveryServiceTypes.some((st) => st.name === selectedServiceType)) {
+      setSelectedServiceType(activeDeliveryServiceTypes[0].name);
+    }
+  }, [activeDeliveryServiceTypes, selectedServiceType]);
+
+  React.useEffect(() => {
+    if (activeProductCategories.length > 0 && category !== 'Other' && !activeProductCategories.some((pc) => pc.name === category)) {
+      setCategory(activeProductCategories[0].name);
+    }
+  }, [activeProductCategories, category]);
 
   // Billing & Options
   const [priority, setPriority] = useState('normal');
   const [hasCod, setHasCod] = useState(false);
   const [codAmount, setCodAmount] = useState('');
   const [error, setError] = useState('');
+  const [createdOrderSuccess, setCreatedOrderSuccess] = useState(null);
 
   const destBranch = destBranchId ? findBranch(destBranchId) : null;
   const origBranch = branchId ? findBranch(branchId) : currentBranch;
@@ -60,8 +107,12 @@ export function NewShipmentModal({ presetBranchId = null, onDone = null }) {
     ? destBranch.name
     : (destBranchId === 'hq' ? 'Head Office (HQ)' : 'Destination Branch');
 
+  const activeBranchesList = (branches || []).filter(
+    (b) => b && b.status !== 'inactive' && b.status !== 'disabled'
+  );
+
   // Available branches for transit (excluding selected origin & dest)
-  const transitOptions = branches.filter(
+  const transitOptions = activeBranchesList.filter(
     (b) => String(b.id) !== String(branchId) && String(b.id) !== String(destBranchId)
   );
 
@@ -149,11 +200,13 @@ export function NewShipmentModal({ presetBranchId = null, onDone = null }) {
     const fee = calcFee(dist, priority, chargeSettings());
     const autoPickup = `${originName} Counter Drop-off`;
     const finalDelivery = deliveryAddress.trim() || `${destName} Counter Collection`;
+    const trkNumber = `RTC-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    addShipment({
+    const shipmentPayload = {
+      tracking_number: trkNumber,
       customer_id: bookingType === 'vendor' && customerId ? Number(customerId) : null,
       client_type: bookingType === 'vendor' && customerId ? 'vendor' : 'walk_in',
-      branch_id: presetBranchId ? Number(presetBranchId) : (branchId === 'hq' ? 'hq' : (branchId ? Number(branchId) : null)),
+      branch_id: effectiveBranchId ? Number(effectiveBranchId) : (branchId === 'hq' ? 'hq' : (branchId ? Number(branchId) : null)),
       destination_branch_id: destBranchId === 'hq' ? 'hq' : (destBranchId ? Number(destBranchId) : null),
       transit_branch_id: transitBranchId ? Number(transitBranchId) : null,
       sender_name: senderName.trim(),
@@ -162,8 +215,8 @@ export function NewShipmentModal({ presetBranchId = null, onDone = null }) {
       receiver_name: receiverName.trim(),
       receiver_phone: receiverPhone.trim(),
       delivery_address: finalDelivery,
-      order_type: deliveryMode === 'branch_to_door' ? 'Branch to Door' : 'Branch to Branch',
-      service_type: deliveryMode === 'branch_to_door' ? 'Branch to Door' : 'Branch to Branch',
+      order_type: selectedOrderType || (deliveryMode === 'branch_to_door' ? 'Delivery Order' : 'Branch to Branch'),
+      service_type: selectedServiceType || (deliveryMode === 'branch_to_door' ? 'Branch to Door Delivery' : 'Branch to Branch Delivery'),
       package_type: packageType === 'fragile' ? 'Fragile' : 'Non-Fragile',
       product_category: chosenCategory,
       item_value: parseFloat(itemValue) || 0,
@@ -173,18 +226,60 @@ export function NewShipmentModal({ presetBranchId = null, onDone = null }) {
       cod_amount: hasCod ? (parseFloat(codAmount) || 0) : 0,
       delivery_fee: fee,
       notes: isBranchBooking
-        ? `Walk-in customer shipment booked at ${originName}. [${packageType === 'fragile' ? 'FRAGILE' : 'NON-FRAGILE'}] (${deliveryMode === 'branch_to_door' ? 'Branch to Door' : 'Branch to Branch'})`
+        ? `Walk-in customer shipment booked at ${originName}. [${packageType === 'fragile' ? 'FRAGILE' : 'NON-FRAGILE'}] (${selectedOrderType || deliveryMode})`
         : (bookingType === 'vendor'
-            ? `Booked for registered vendor from ${originName}.`
-            : `Booked for walk-in customer at ${originName}. [${packageType === 'fragile' ? 'FRAGILE' : 'NON-FRAGILE'}] (${deliveryMode === 'branch_to_door' ? 'Branch to Door' : 'Branch to Branch'})`),
-    });
+            ? `Booked for registered vendor from ${originName}. (${selectedOrderType || deliveryMode})`
+            : `Booked for walk-in customer at ${originName}. [${packageType === 'fragile' ? 'FRAGILE' : 'NON-FRAGILE'}] (${selectedOrderType || deliveryMode})`),
+    };
 
+    addShipment(shipmentPayload);
+
+    setCreatedOrderSuccess({
+      ...shipmentPayload,
+      senderBranchName: originName,
+      destBranchName: destName,
+    });
+  };
+
+  const handlePrintLabel = () => {
+    if (!createdOrderSuccess) return;
+    const origB = origBranch || { name: originName, code: 'ORG' };
+    const destB = destBranch || { name: destName, code: 'DST' };
+    printShipmentLabel(createdOrderSuccess, null, null, origB, destB, {
+      chargeSettings: chargeSettings ? chargeSettings() : null,
+    });
+  };
+
+  const handleResetForAnother = () => {
+    setCreatedOrderSuccess(null);
+    setReceiverName('');
+    setReceiverPhone('');
+    setDeliveryAddress('');
+    setItemValue('');
+    setPackageDescription('');
+    setCodAmount('');
+    setHasCod(false);
+    setError('');
+  };
+
+  const handleDismiss = () => {
+    setCreatedOrderSuccess(null);
     closeModal();
     if (onDone) onDone();
   };
 
   return (
-    <form onSubmit={handleSubmit}>
+    <>
+      {createdOrderSuccess && (
+        <OrderCreatedSuccessDialog
+          order={createdOrderSuccess}
+          onPrint={handlePrintLabel}
+          onCreateAnother={handleResetForAnother}
+          onViewOrders={handleDismiss}
+          onClose={handleDismiss}
+        />
+      )}
+      <form onSubmit={handleSubmit}>
       {/* Information Header Banner */}
       {isBranchBooking ? (
         <div
@@ -271,7 +366,7 @@ export function NewShipmentModal({ presetBranchId = null, onDone = null }) {
             >
               <option value="">-- Select Origin Branch * --</option>
               <option value="hq">Head Office (HQ)</option>
-              {branches.map((b) => (
+              {activeBranchesList.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
                 </option>
@@ -308,7 +403,7 @@ export function NewShipmentModal({ presetBranchId = null, onDone = null }) {
           >
             <option value="">-- Select Destination Branch * --</option>
             <option value="hq">Head Office (HQ)</option>
-            {branches.map((b) => (
+            {activeBranchesList.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
               </option>
@@ -431,6 +526,56 @@ export function NewShipmentModal({ presetBranchId = null, onDone = null }) {
         </div>
       </div>
 
+      {/* Order Type & Service Type (Filtered to active only from D1) */}
+      <div className="form-row" style={{ marginTop: '10px' }}>
+        <label>
+          Order Type *
+          <select
+            value={selectedOrderType}
+            onChange={(e) => setSelectedOrderType(e.target.value)}
+            required
+          >
+            {activeOrderTypes.length > 0 ? (
+              activeOrderTypes.map((ot) => (
+                <option key={ot.id || ot.name} value={ot.name}>
+                  {ot.name}
+                </option>
+              ))
+            ) : (
+              <>
+                <option value="Delivery Order">Delivery Order</option>
+                <option value="Reverse Order">Reverse Order</option>
+                <option value="Exchange Order">Exchange Order</option>
+              </>
+            )}
+          </select>
+        </label>
+
+        <label>
+          Service Type *
+          <select
+            value={selectedServiceType}
+            onChange={(e) => setSelectedServiceType(e.target.value)}
+            required
+          >
+            {activeDeliveryServiceTypes.length > 0 ? (
+              activeDeliveryServiceTypes.map((st) => (
+                <option key={st.id || st.name} value={st.name}>
+                  {st.name}
+                </option>
+              ))
+            ) : (
+              <>
+                <option value="Branch to Door Delivery">Branch to Door Delivery</option>
+                <option value="Branch to Branch Delivery">Branch to Branch Delivery</option>
+                <option value="Door to Door Delivery">Door to Door Delivery</option>
+                <option value="Door to Branch Delivery">Door to Branch Delivery</option>
+              </>
+            )}
+          </select>
+        </label>
+      </div>
+
       {/* Receiver Information */}
       <div className="form-section-divider">📍 Receiver Details</div>
 
@@ -533,7 +678,7 @@ export function NewShipmentModal({ presetBranchId = null, onDone = null }) {
       </div>
 
       <div className="form-row">
-        {/* Category: Electronics / Clothing / Documents etc */}
+        {/* Category: Filtered to active categories only from D1 */}
         <label>
           What type of package is it? (Category) *
           <select
@@ -541,23 +686,21 @@ export function NewShipmentModal({ presetBranchId = null, onDone = null }) {
             onChange={(e) => setCategory(e.target.value)}
             required
           >
-            <option value="Documents">📄 Documents</option>
-            <option value="Electronics">💻 Electronics</option>
-            <option value="Clothing & Textiles">👕 Clothing / Textiles</option>
-            <option value="Food & Perishables">🍱 Food / Perishables</option>
-            <option value="Fragile / Glass">🍷 Glassware / Fragile items</option>
-            {(productCategories || [])
-              .filter(
-                (c) =>
-                  !['Documents', 'Electronics', 'Clothing & Textiles', 'Food & Perishables', 'Fragile / Glass'].includes(
-                    c.name
-                  )
-              )
-              .map((c) => (
+            {activeProductCategories.length > 0 ? (
+              activeProductCategories.map((c) => (
                 <option key={c.id || c.name} value={c.name}>
                   📦 {c.name}
                 </option>
-              ))}
+              ))
+            ) : (
+              <>
+                <option value="Documents & Paperwork">📄 Documents & Paperwork</option>
+                <option value="Electronics & Gadgets">💻 Electronics & Gadgets</option>
+                <option value="Clothing and Apparels">👕 Clothing and Apparels</option>
+                <option value="Food & Perishables">🍱 Food & Perishables</option>
+                <option value="Fragile & Glassware">🍷 Fragile & Glassware</option>
+              </>
+            )}
             <option value="Other">✨ Other / Custom Category</option>
           </select>
         </label>
@@ -688,5 +831,6 @@ export function NewShipmentModal({ presetBranchId = null, onDone = null }) {
         </button>
       </div>
     </form>
+    </>
   );
 }

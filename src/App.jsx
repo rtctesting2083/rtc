@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { ThemeProvider } from './context/ThemeContext';
 import { PlatformProvider } from './context/PlatformContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CompanyProvider } from './context/CompanyContext';
@@ -18,6 +19,7 @@ import { LoginPage } from './pages/portal/LoginPage';
 import { CompanyOverviewPage } from './pages/company/CompanyOverviewPage';
 import { CompanyVerificationPage } from './pages/company/CompanyVerificationPage';
 import { CompanyShipmentsPage } from './pages/company/CompanyShipmentsPage';
+import { CompanyVendorOrdersReportPage } from './pages/company/CompanyVendorOrdersReportPage';
 import { CompanyShipmentReportPage } from './pages/company/CompanyShipmentReportPage';
 import { CompanyCodSettlementPage } from './pages/company/CompanyCodSettlementPage';
 import { CompanyCouriersPage } from './pages/company/CompanyCouriersPage';
@@ -26,6 +28,7 @@ import { CompanyInvoicesPage } from './pages/company/CompanyInvoicesPage';
 import { CompanyTrackPage } from './pages/company/CompanyTrackPage';
 import { CompanyBranchesPage } from './pages/company/CompanyBranchesPage';
 import { CompanyBranchReportsPage } from './pages/company/CompanyBranchReportsPage';
+import { CompanyNoticesPage } from './pages/company/CompanyNoticesPage';
 import { AdminProfilePage } from './pages/company/AdminProfilePage';
 
 // Company Settings
@@ -49,15 +52,22 @@ import { BranchRidersPage } from './pages/branch/BranchRidersPage';
 import { BranchVendorsPage } from './pages/branch/BranchVendorsPage';
 import { BranchProfilePage } from './pages/branch/BranchProfilePage';
 import { BranchUserManagementPage } from './pages/branch/BranchUserManagementPage';
+import { BranchNoticesPage } from './pages/branch/BranchNoticesPage';
 
 // Customer (Vendor)
 import { CustomerDashboardPage } from './pages/customer/CustomerDashboardPage';
 import { CustomerOrdersPage } from './pages/customer/CustomerOrdersPage';
 import { CustomerCreateOrderPage } from './pages/customer/CustomerCreateOrderPage';
+import { CustomerCreatePickupPage } from './pages/customer/CustomerCreatePickupPage';
+import { CustomerPickupReportPage } from './pages/customer/CustomerPickupReportPage';
 import { CustomerInvoicesPage } from './pages/customer/CustomerInvoicesPage';
 import { CustomerCodSettlementPage } from './pages/customer/CustomerCodSettlementPage';
+import { CustomerNoticesPage } from './pages/customer/CustomerNoticesPage';
+import { CustomerTicketsPage } from './pages/customer/CustomerTicketsPage';
+import { CustomerCheckRatePage } from './pages/customer/CustomerCheckRatePage';
 import { CustomerProfilePage } from './pages/customer/CustomerProfilePage';
 import { CustomerAddressBookPage } from './pages/customer/CustomerAddressBookPage';
+import { CustomerDetailsPage } from './pages/customer/CustomerDetailsPage';
 import { CustomerStaffPage } from './pages/customer/CustomerStaffPage';
 import { CustomerPlaceholderPage } from './pages/customer/CustomerPlaceholderPage';
 
@@ -85,12 +95,13 @@ function ProtectedRoute({ allowedTypes, children }) {
 
 export function App() {
   return (
-    <PlatformProvider>
-      <AuthProvider>
-        <CompanyProvider>
-          <ModalProvider>
-            <BrowserRouter>
-              <Routes>
+    <ThemeProvider>
+      <PlatformProvider>
+        <AuthProvider>
+          <CompanyProvider>
+            <ModalProvider>
+              <BrowserRouter>
+                <Routes>
                 {/* Public Login Route */}
                 <Route path="/login" element={<LoginPage />} />
 
@@ -106,15 +117,25 @@ export function App() {
                   <Route index element={<Navigate to="overview" replace />} />
                   <Route path="overview" element={<CompanyOverviewPage />} />
                   <Route path="verification" element={<CompanyVerificationPage />} />
-                  <Route path="shipments" element={<CompanyShipmentsPage />} />
-                  <Route path="shipment-reports" element={<CompanyShipmentReportPage />} />
+                  <Route path="shipments" element={<CompanyShipmentsPage view="shipments" />} />
+                  <Route path="pickup-requests" element={<CompanyShipmentsPage view="pickup_requests" />} />
+                  <Route path="exchange-orders" element={<CompanyShipmentsPage view="exchange" />} />
+                  <Route path="returns" element={<CompanyShipmentsPage view="returns" />} />
+                  <Route path="status-comments" element={<CompanyShipmentsPage view="comments" />} />
+                  <Route path="vendor-orders" element={<CompanyVendorOrdersReportPage />} />
+                  <Route path="vendor-orders-report" element={<CompanyVendorOrdersReportPage />} />
+                  <Route path="shipment-reports" element={<CompanyShipmentReportPage view="all" />} />
+                  <Route path="sales-report" element={<CompanyShipmentReportPage view="sales" />} />
+                  <Route path="location-report" element={<CompanyShipmentReportPage view="locations" />} />
                   <Route path="cod-settlement" element={<CompanyCodSettlementPage />} />
                   <Route path="couriers" element={<CompanyCouriersPage />} />
                   <Route path="customers" element={<CompanyCustomersPage />} />
-                  <Route path="invoices" element={<CompanyInvoicesPage />} />
+                  <Route path="invoices" element={<CompanyInvoicesPage view="invoices" />} />
+                  <Route path="revenue-report" element={<CompanyInvoicesPage view="sales_register" />} />
                   <Route path="track" element={<CompanyTrackPage />} />
                   <Route path="branches" element={<CompanyBranchesPage />} />
                   <Route path="branch-reports" element={<CompanyBranchReportsPage />} />
+                  <Route path="notices" element={<CompanyNoticesPage />} />
 
                   {/* Settings sub-routes */}
                   <Route path="settings/company" element={<CompanyThemeSettingsPage />} />
@@ -151,6 +172,7 @@ export function App() {
                   <Route path="vendors" element={<BranchVendorsPage />} />
                   <Route path="profile" element={<BranchProfilePage />} />
                   <Route path="users" element={<BranchUserManagementPage />} />
+                  <Route path="notices" element={<BranchNoticesPage />} />
                 </Route>
 
                 {/* Customer / Vendor Routes */}
@@ -164,13 +186,23 @@ export function App() {
                 >
                   <Route index element={<Navigate to="dashboard" replace />} />
                   <Route path="dashboard" element={<CustomerDashboardPage />} />
+                  <Route path="tickets" element={<CustomerTicketsPage />} />
+                  <Route path="notices" element={<CustomerNoticesPage />} />
                   <Route path="orders" element={<CustomerOrdersPage />} />
                   <Route path="orders/create" element={<CustomerCreateOrderPage />} />
+                  <Route path="orders/pickup-request" element={<CustomerCreatePickupPage />} />
+                  <Route path="orders/pickup-create" element={<CustomerCreatePickupPage />} />
+                  <Route path="orders/pickup-report" element={<CustomerPickupReportPage />} />
+                  <Route path="orders/pickup-requests" element={<CustomerPickupReportPage />} />
                   <Route path="invoices" element={<CustomerInvoicesPage />} />
                   <Route path="cod-settlement" element={<CustomerCodSettlementPage />} />
                   <Route path="profile" element={<CustomerProfilePage />} />
                   <Route path="customers" element={<CustomerAddressBookPage />} />
+                  <Route path="address-book" element={<CustomerAddressBookPage />} />
+                  <Route path="customer-details" element={<CustomerDetailsPage />} />
                   <Route path="staff" element={<CustomerStaffPage />} />
+                  <Route path="check-rate" element={<CustomerCheckRatePage />} />
+                  <Route path="placeholder/Customer Details" element={<Navigate to="../customer-details" replace />} />
                   <Route path="placeholder/:title" element={<CustomerPlaceholderPage />} />
                 </Route>
 
@@ -195,6 +227,7 @@ export function App() {
         </CompanyProvider>
       </AuthProvider>
     </PlatformProvider>
+    </ThemeProvider>
   );
 }
 

@@ -12,4 +12,9 @@ Please refer test to the full credentials and account guide in [CREDENTIALS.md](
 - **Rider 2 (Sunita Gurung)**: `9822222222` / `sunita123`
 - **Rider 3 (Aakash Shrestha)**: `9833333333` / `password123`
 - **Vendor (Himalayan Traders)**: `9800000001` / `himalayan123`
+- **Vendor (Anee Collection)**: `9857036839` / `9857036839`
+- **Vendor (arun dhobi)**: `9809867906` / `@arun765`
+- **Vendor (Prativa Collection)**: `9847060844` / `9847060844`
+- **Vendor (Swatantra Textile)**: `9857039530` / `9857039530`
+- **Vendor (Neelam Cosmetic)**: `9867764555` / `9867764555`
 - **Vendor Staff (Anil Gupta)**: `anil.gupta` / `anil123`

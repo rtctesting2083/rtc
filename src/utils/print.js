@@ -57,7 +57,7 @@ export function printShipmentLabel(shipment, company, customer, originBranch, de
   const serviceType = shipment.service_type || 'Branch to Door Delivery';
   const orderType = shipment.order_type || 'Delivery Order';
   const orderDate = shipment.created_at ? shipment.created_at.split('T')[0] : new Date().toISOString().split('T')[0];
-  const description = shipment.package_description || `Sender ${senderName} RTC CP ${senderAddress}`;
+  const description = (shipment.package_description || shipment.item_description || '').trim() || '—';
 
   win.document.write(`
     <!DOCTYPE html>

@@ -19,8 +19,10 @@ export const NEXT_STATUSES = {
 };
 
 export const ADVANCE_TO = {
+  pickup_requested: 'assigned',
   assigned: 'picked_up',
-  picked_up: 'in_transit',
+  picked_up: 'received_at_branch',
+  received_at_branch: 'in_transit',
   in_transit: 'out_for_delivery',
   out_for_delivery: 'delivered',
   failed: 'out_for_delivery',
@@ -28,8 +30,10 @@ export const ADVANCE_TO = {
 
 export const SHIPMENT_STATUS_KEYS = [
   'pending',
+  'pickup_requested',
   'assigned',
   'picked_up',
+  'received_at_branch',
   'in_transit',
   'out_for_delivery',
   'delivered',
@@ -50,8 +54,10 @@ export const SHIPMENT_STATUS_COLOR_PRESETS = {
 export function defaultShipmentStatusSettings() {
   return {
     pending: { label: 'Pending', color: 'amber' },
-    assigned: { label: 'Assigned', color: 'blue' },
+    pickup_requested: { label: 'Pickup Requested', color: 'amber' },
+    assigned: { label: 'Pickup Assigned', color: 'blue' },
     picked_up: { label: 'Picked Up', color: 'blue' },
+    received_at_branch: { label: 'Received At Branch', color: 'blue' },
     in_transit: { label: 'In Transit', color: 'blue' },
     out_for_delivery: { label: 'Out For Delivery', color: 'blue' },
     delivered: { label: 'Delivered', color: 'green' },

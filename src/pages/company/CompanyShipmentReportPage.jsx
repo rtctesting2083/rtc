@@ -1,10 +1,22 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useCompany } from '../../context/CompanyContext';
 import { StatStrip } from '../../components/common/StatStrip';
 import { StatusPill } from '../../components/common/StatusPill';
 import { fmtMoney, fmtDate } from '../../utils/helpers';
+import { FileText, TrendingUp, Map, BarChart3 } from 'lucide-react';
 
-export function CompanyShipmentReportPage() {
+export function CompanyShipmentReportPage({ view }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+
+  const reportTab = useMemo(() => {
+    if (view && view !== 'all') return view;
+    if (location.pathname.includes('/sales-report')) return 'sales';
+    if (location.pathname.includes('/location-report')) return 'locations';
+    return searchParams.get('tab'); // 'sales' | 'locations' | null (all)
+  }, [view, location.pathname, searchParams]);
   const { shipments, branches, couriers, findCustomer, findCourier, findBranch } = useCompany();
 
   const [typeFilter, setTypeFilter] = useState('');
@@ -115,10 +127,32 @@ export function CompanyShipmentReportPage() {
   return (
     <div>
       <div className="view-head">
-        <h1>All Branches Shipment Report</h1>
-        <button type="button" className="btn-secondary" onClick={handleExportCsv}>
-          📥 Export CSV
-        </button>
+        <div>
+          <h1>
+            {reportTab === 'sales' && '📈 Sales & Revenue Report'}
+            {reportTab === 'locations' && '🗺️ Location-Order Analysis Report'}
+            {!reportTab && 'All Branches Shipment Report'}
+          </h1>
+          <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '13px' }}>
+            {reportTab === 'sales' && 'Financial overview of service fees, COD volumes, and sales metrics.'}
+            {reportTab === 'locations' && 'Geographic distribution of consignments by destination branch and coverage zone.'}
+            {!reportTab && 'Combined walk-in and branch shipment history.'}
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => navigate('/company/vendor-orders')}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            <FileText size={14} />
+            <span>All Vendor Orders Report</span>
+          </button>
+          <button type="button" className="btn-secondary" onClick={handleExportCsv}>
+            📥 Export CSV
+          </button>
+        </div>
       </div>
 
       <div className="panel" style={{ padding: '16px', marginBottom: '20px' }}>
