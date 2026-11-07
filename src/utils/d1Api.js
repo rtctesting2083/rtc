@@ -1557,11 +1557,14 @@ export const d1Api = {
           branch_name: branchName,
         }),
       });
-      if (!res.ok) return null;
-      return await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || `HTTP ${res.status}: Failed to assign pickup rider`);
+      }
+      return data;
     } catch (e) {
       console.warn('Failed to assign pickup rider on D1:', e);
-      return null;
+      throw e;
     }
   },
 

@@ -105,20 +105,7 @@ export function CustomerLayout() {
 
   const handleOpenPickupRequest = () => {
     setMobileMenuOpen(false);
-    openModal(
-      'Request Parcel Pickup from Store',
-      <VendorPickupRequestModal
-        currentCustomer={currentCustomer}
-        allVendorOrders={shipments}
-        onClose={closeModal}
-        onSuccess={() => {
-          closeModal();
-          navigate('/customer/orders/pickup-report');
-        }}
-      />,
-      'wide',
-      { hideHeader: true }
-    );
+    navigate('/customer/orders/pickup-request');
   };
 
   const closeMobileMenu = () => {

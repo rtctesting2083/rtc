@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useOutletContext } from 'react-router-dom';
-import { Truck, Phone, MapPin, CheckCircle, RotateCcw } from 'lucide-react';
+import { useOutletContext, useLocation } from 'react-router-dom';
+import { Truck, Phone, MapPin, CheckCircle, RotateCcw, Store, Inbox, Package, Banknote, QrCode, RefreshCw } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
 import { StatStrip } from '../../components/common/StatStrip';
@@ -12,10 +12,11 @@ import { RiderScanReceiveModal } from '../../components/rider/RiderScanReceiveMo
 import { fmtMoney, isToday, formatDateTimeAMPM } from '../../utils/helpers';
 import { d1Api } from '../../utils/d1Api';
 
-export function RiderDeliveriesPage() {
+export function RiderDeliveriesPage({ defaultTab = null }) {
   const { currentRider } = useOutletContext();
-  const { shipments, updateShipmentStatus, updateCourier, findBranch } = useCompany();
+  const { shipments, updateShipmentStatus, updateCourier, findBranch, refreshData } = useCompany();
   const { openModal, closeModal } = useModal();
+  const location = useLocation();
 
   const currentStatus = currentRider?.status || 'available';
 
@@ -43,6 +44,12 @@ export function RiderDeliveriesPage() {
     (s) => s.status === 'delivered' && isToday(s.delivered_at)
   ).length;
 
+  const todayCod = useMemo(() => {
+    return myDeliveries
+      .filter((s) => s.status === 'delivered' && isToday(s.delivered_at) && s.cod_amount)
+      .reduce((sum, s) => sum + (parseFloat(s.cod_amount) || 0), 0);
+  }, [myDeliveries]);
+
   // Step 3: Vendor Pickup Requests assigned to this rider
   const [riderPickups, setRiderPickups] = useState([]);
   const [loadingPickups, setLoadingPickups] = useState(false);
@@ -68,7 +75,21 @@ export function RiderDeliveriesPage() {
     return riderPickups.filter((r) => r.status === 'assigned').length;
   }, [riderPickups]);
 
-  const [activeTab, setActiveTab] = useState(assignedPickupCount > 0 ? 'vendor_pickups' : assigned > 0 ? 'assigned' : 'all');
+  const [activeTab, setActiveTab] = useState(
+    defaultTab || (assignedPickupCount > 0 ? 'vendor_pickups' : assigned > 0 ? 'assigned' : 'all')
+  );
+
+  // Sync tab with URL query parameter
+  const searchParams = new URLSearchParams(location.search);
+  const queryTab = searchParams.get('tab');
+  useEffect(() => {
+    if (queryTab) {
+      setActiveTab(queryTab);
+    } else if (defaultTab) {
+      setActiveTab(defaultTab);
+    }
+  }, [queryTab, defaultTab]);
+
   const [search, setSearch] = useState('');
 
   const stats = [
@@ -280,16 +301,28 @@ export function RiderDeliveriesPage() {
 
   return (
     <div>
-      <div className="view-head" style={{ marginBottom: '16px' }}>
+      {/* ════════ HEADER WITH QUICK ACTIONS ════════ */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '14px',
+          marginBottom: '18px',
+        }}
+      >
         <div>
-          <h1>My Deliveries</h1>
-          <p className="view-subtitle" style={{ margin: '2px 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
-            Manage branch assignments, receive parcels via barcode/QR, and execute deliveries.
+          <h1 style={{ margin: '0 0 4px', fontSize: '22px', fontWeight: 800, color: '#0f172a' }}>
+            Rider Deliveries & Pickup Dashboard
+          </h1>
+          <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
+            Manage vendor pickups, receive assigned parcels via QR scan, and complete last-mile customer deliveries.
           </p>
         </div>
 
-        {/* Global Barcode / QR Scan Button */}
-        <div className="row-actions">
+        {/* Action Buttons */}
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button
             type="button"
             className="btn-primary"
@@ -297,18 +330,22 @@ export function RiderDeliveriesPage() {
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '8px',
+              gap: '6px',
               padding: '9px 16px',
-              fontSize: '13.5px',
-              fontWeight: 600,
+              fontSize: '13px',
+              fontWeight: 700,
+              background: 'var(--theme-color, #dc2626)',
+              borderColor: 'var(--theme-color, #dc2626)',
+              boxShadow: '0 2px 6px rgba(220, 38, 38, 0.25)',
             }}
           >
-            <span>📷</span> Scan Barcode / QR to Receive
+            <QrCode size={16} />
+            <span>Scan Barcode / QR to Receive</span>
             {assigned > 0 && (
               <span
                 style={{
-                  background: 'rgba(255,255,255,0.25)',
-                  padding: '1px 7px',
+                  background: 'rgba(255,255,255,0.3)',
+                  padding: '1px 6px',
                   borderRadius: '10px',
                   fontSize: '11px',
                 }}
@@ -317,10 +354,203 @@ export function RiderDeliveriesPage() {
               </span>
             )}
           </button>
+
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={async () => {
+              await loadRiderPickups();
+              if (typeof refreshData === 'function') await refreshData();
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '9px 14px',
+              fontSize: '13px',
+              fontWeight: 600,
+            }}
+            title="Refresh latest data from Cloudflare D1"
+          >
+            <RefreshCw size={14} className={loadingPickups ? 'spin' : ''} />
+            <span>Sync Live D1</span>
+          </button>
         </div>
       </div>
 
-      {/* Duty Status Control Card */}
+      {/* ════════ ATTRACTIVE 6-METRIC KPI GRID ════════ */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+          gap: '12px',
+          marginBottom: '20px',
+        }}
+      >
+        {/* 1. Vendor Pickups */}
+        <div
+          onClick={() => setActiveTab('vendor_pickups')}
+          style={{
+            background: activeTab === 'vendor_pickups' ? '#fef2f2' : '#ffffff',
+            border: activeTab === 'vendor_pickups' ? '2px solid #dc2626' : '1px solid #eeddd5',
+            borderRadius: '12px',
+            padding: '14px 16px',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#b91c1c' }}>
+              Vendor Pickups
+            </span>
+            <span style={{ fontSize: '18px' }}>🏬</span>
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#dc2626' }}>
+            {assignedPickupCount}
+          </div>
+          <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
+            Stores awaiting pickup
+          </div>
+        </div>
+
+        {/* 2. Assigned to Pick Up */}
+        <div
+          onClick={() => setActiveTab('assigned')}
+          style={{
+            background: activeTab === 'assigned' ? '#fffbeb' : '#ffffff',
+            border: activeTab === 'assigned' ? '2px solid #d97706' : '1px solid #eeddd5',
+            borderRadius: '12px',
+            padding: '14px 16px',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#b45309' }}>
+              Assigned Parcels
+            </span>
+            <span style={{ fontSize: '18px' }}>📥</span>
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#d97706' }}>
+            {assigned}
+          </div>
+          <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
+            Ready to receive at hub
+          </div>
+        </div>
+
+        {/* 3. Received in Hand */}
+        <div
+          onClick={() => setActiveTab('picked_up')}
+          style={{
+            background: activeTab === 'picked_up' ? '#f0fdf4' : '#ffffff',
+            border: activeTab === 'picked_up' ? '2px solid #16a34a' : '1px solid #eeddd5',
+            borderRadius: '12px',
+            padding: '14px 16px',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#15803d' }}>
+              Received (In Hand)
+            </span>
+            <span style={{ fontSize: '18px' }}>📦</span>
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#16a34a' }}>
+            {pickedUp}
+          </div>
+          <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
+            Parcels with rider now
+          </div>
+        </div>
+
+        {/* 4. Out for Delivery */}
+        <div
+          onClick={() => setActiveTab('out_for_delivery')}
+          style={{
+            background: activeTab === 'out_for_delivery' ? '#eff6ff' : '#ffffff',
+            border: activeTab === 'out_for_delivery' ? '2px solid #2563eb' : '1px solid #eeddd5',
+            borderRadius: '12px',
+            padding: '14px 16px',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#1d4ed8' }}>
+              Out for Delivery
+            </span>
+            <span style={{ fontSize: '18px' }}>🛵</span>
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#2563eb' }}>
+            {outForDelivery}
+          </div>
+          <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
+            Active on delivery route
+          </div>
+        </div>
+
+        {/* 5. Delivered Today */}
+        <div
+          onClick={() => setActiveTab('completed')}
+          style={{
+            background: activeTab === 'completed' ? '#ecfdf5' : '#ffffff',
+            border: activeTab === 'completed' ? '2px solid #059669' : '1px solid #eeddd5',
+            borderRadius: '12px',
+            padding: '14px 16px',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#047857' }}>
+              Delivered Today
+            </span>
+            <span style={{ fontSize: '18px' }}>✅</span>
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#059669' }}>
+            {deliveredToday}
+          </div>
+          <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
+            Completed deliveries
+          </div>
+        </div>
+
+        {/* 6. Today's COD Collection */}
+        <div
+          onClick={() => setActiveTab('completed')}
+          style={{
+            background: '#ffffff',
+            border: '1px solid #eeddd5',
+            borderRadius: '12px',
+            padding: '14px 16px',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#475569' }}>
+              COD Collected Today
+            </span>
+            <span style={{ fontSize: '18px' }}>💰</span>
+          </div>
+          <div style={{ fontSize: '20px', fontWeight: 800, color: '#b91c1c' }}>
+            NPR {todayCod.toLocaleString()}
+          </div>
+          <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
+            Cash in hand for hub
+          </div>
+        </div>
+      </div>
+
+      {/* ════════ DUTY STATUS CONTROL CARD ════════ */}
       <div
         className="panel"
         style={{
@@ -331,9 +561,10 @@ export function RiderDeliveriesPage() {
           justifyContent: 'space-between',
           flexWrap: 'wrap',
           gap: '12px',
-          background: 'var(--surface-1)',
-          border: '1px solid var(--border)',
-          borderRadius: '10px',
+          background: '#ffffff',
+          border: '1px solid #eeddd5',
+          borderRadius: '12px',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -362,13 +593,13 @@ export function RiderDeliveriesPage() {
                 fontSize: '11px',
                 textTransform: 'uppercase',
                 letterSpacing: '0.05em',
-                color: 'var(--text-muted)',
-                fontWeight: 600,
+                color: '#64748b',
+                fontWeight: 700,
               }}
             >
-              Duty Status
+              Current Duty Status
             </div>
-            <div style={{ fontSize: '16px', fontWeight: 700, marginTop: '1px', textTransform: 'capitalize' }}>
+            <div style={{ fontSize: '15px', fontWeight: 700, marginTop: '1px', textTransform: 'capitalize', color: '#0f172a' }}>
               {currentStatus.replace(/_/g, ' ')}
             </div>
           </div>
@@ -386,9 +617,9 @@ export function RiderDeliveriesPage() {
               fontWeight: 600,
               cursor: 'pointer',
               transition: 'all 0.15s ease',
-              border: currentStatus === 'available' ? '2px solid #10b981' : '1px solid var(--border)',
-              background: currentStatus === 'available' ? '#dcfce7' : 'var(--surface-2)',
-              color: currentStatus === 'available' ? '#166534' : 'var(--text)',
+              border: currentStatus === 'available' ? '2px solid #10b981' : '1px solid #cbd5e1',
+              background: currentStatus === 'available' ? '#dcfce7' : '#ffffff',
+              color: currentStatus === 'available' ? '#166534' : '#334155',
             }}
           >
             🟢 Available
@@ -404,9 +635,9 @@ export function RiderDeliveriesPage() {
               fontWeight: 600,
               cursor: 'pointer',
               transition: 'all 0.15s ease',
-              border: currentStatus === 'out_for_delivery' ? '2px solid #3b82f6' : '1px solid var(--border)',
-              background: currentStatus === 'out_for_delivery' ? '#dbeafe' : 'var(--surface-2)',
-              color: currentStatus === 'out_for_delivery' ? '#1e40af' : 'var(--text)',
+              border: currentStatus === 'out_for_delivery' ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+              background: currentStatus === 'out_for_delivery' ? '#dbeafe' : '#ffffff',
+              color: currentStatus === 'out_for_delivery' ? '#1e40af' : '#334155',
             }}
           >
             🛵 Out for Delivery
@@ -422,17 +653,15 @@ export function RiderDeliveriesPage() {
               fontWeight: 600,
               cursor: 'pointer',
               transition: 'all 0.15s ease',
-              border: currentStatus === 'unavailable' ? '2px solid #ef4444' : '1px solid var(--border)',
-              background: currentStatus === 'unavailable' ? '#fee2e2' : 'var(--surface-2)',
-              color: currentStatus === 'unavailable' ? '#991b1b' : 'var(--text)',
+              border: currentStatus === 'unavailable' ? '2px solid #ef4444' : '1px solid #cbd5e1',
+              background: currentStatus === 'unavailable' ? '#fee2e2' : '#ffffff',
+              color: currentStatus === 'unavailable' ? '#991b1b' : '#334155',
             }}
           >
             🔴 Unavailable
           </button>
         </div>
       </div>
-
-      <StatStrip stats={stats} />
 
       {/* Tabs & Filter Section */}
       <div style={{ marginTop: '22px' }}>
@@ -466,25 +695,26 @@ export function RiderDeliveriesPage() {
                 padding: '8px 14px',
                 borderRadius: '8px',
                 fontSize: '13px',
-                fontWeight: 600,
+                fontWeight: activeTab === 'vendor_pickups' ? 700 : 500,
                 cursor: 'pointer',
-                border: 'none',
-                background: activeTab === 'vendor_pickups' ? '#dc2626' : 'var(--surface-2)',
-                color: activeTab === 'vendor_pickups' ? '#fff' : 'var(--text)',
+                border: activeTab === 'vendor_pickups' ? '1px solid #dc2626' : '1px solid #e2e8f0',
+                background: activeTab === 'vendor_pickups' ? '#dc2626' : '#ffffff',
+                color: activeTab === 'vendor_pickups' ? '#ffffff' : '#334155',
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '6px',
+                boxShadow: activeTab === 'vendor_pickups' ? '0 2px 6px rgba(220,38,38,0.25)' : 'none',
               }}
             >
-              🏢 Vendor Pickups
+              <span>🏬</span> Vendor Pickups
               {assignedPickupCount > 0 && (
                 <span
                   style={{
                     padding: '2px 7px',
                     borderRadius: '10px',
                     fontSize: '11px',
-                    background: activeTab === 'vendor_pickups' ? 'rgba(255,255,255,0.25)' : '#fee2e2',
-                    color: activeTab === 'vendor_pickups' ? '#fff' : '#b91c1c',
+                    background: activeTab === 'vendor_pickups' ? 'rgba(255,255,255,0.3)' : '#fee2e2',
+                    color: activeTab === 'vendor_pickups' ? '#ffffff' : '#b91c1c',
                     fontWeight: 700,
                   }}
                 >
@@ -500,24 +730,25 @@ export function RiderDeliveriesPage() {
                 padding: '8px 14px',
                 borderRadius: '8px',
                 fontSize: '13px',
-                fontWeight: 600,
+                fontWeight: activeTab === 'assigned' ? 700 : 500,
                 cursor: 'pointer',
-                border: 'none',
-                background: activeTab === 'assigned' ? 'var(--primary)' : 'var(--surface-2)',
-                color: activeTab === 'assigned' ? '#fff' : 'var(--text)',
+                border: activeTab === 'assigned' ? '1px solid #dc2626' : '1px solid #e2e8f0',
+                background: activeTab === 'assigned' ? '#dc2626' : '#ffffff',
+                color: activeTab === 'assigned' ? '#ffffff' : '#334155',
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '6px',
+                boxShadow: activeTab === 'assigned' ? '0 2px 6px rgba(220,38,38,0.25)' : 'none',
               }}
             >
-              📦 Assigned Parcels
+              <span>📥</span> Assigned Parcels
               <span
                 style={{
                   padding: '2px 7px',
                   borderRadius: '10px',
                   fontSize: '11px',
-                  background: activeTab === 'assigned' ? 'rgba(255,255,255,0.25)' : 'var(--surface-3)',
-                  color: activeTab === 'assigned' ? '#fff' : 'var(--text-muted)',
+                  background: activeTab === 'assigned' ? 'rgba(255,255,255,0.3)' : '#f1f5f9',
+                  color: activeTab === 'assigned' ? '#ffffff' : '#475569',
                   fontWeight: 700,
                 }}
               >
@@ -532,24 +763,25 @@ export function RiderDeliveriesPage() {
                 padding: '8px 14px',
                 borderRadius: '8px',
                 fontSize: '13px',
-                fontWeight: 600,
+                fontWeight: activeTab === 'picked_up' ? 700 : 500,
                 cursor: 'pointer',
-                border: 'none',
-                background: activeTab === 'picked_up' ? 'var(--primary)' : 'var(--surface-2)',
-                color: activeTab === 'picked_up' ? '#fff' : 'var(--text)',
+                border: activeTab === 'picked_up' ? '1px solid #dc2626' : '1px solid #e2e8f0',
+                background: activeTab === 'picked_up' ? '#dc2626' : '#ffffff',
+                color: activeTab === 'picked_up' ? '#ffffff' : '#334155',
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '6px',
+                boxShadow: activeTab === 'picked_up' ? '0 2px 6px rgba(220,38,38,0.25)' : 'none',
               }}
             >
-              📥 Received (Picked Up)
+              <span>📦</span> Received (In Hand)
               <span
                 style={{
                   padding: '2px 7px',
                   borderRadius: '10px',
                   fontSize: '11px',
-                  background: activeTab === 'picked_up' ? 'rgba(255,255,255,0.25)' : 'var(--surface-3)',
-                  color: activeTab === 'picked_up' ? '#fff' : 'var(--text-muted)',
+                  background: activeTab === 'picked_up' ? 'rgba(255,255,255,0.3)' : '#f1f5f9',
+                  color: activeTab === 'picked_up' ? '#ffffff' : '#475569',
                   fontWeight: 700,
                 }}
               >
@@ -564,28 +796,62 @@ export function RiderDeliveriesPage() {
                 padding: '8px 14px',
                 borderRadius: '8px',
                 fontSize: '13px',
-                fontWeight: 600,
+                fontWeight: activeTab === 'out_for_delivery' ? 700 : 500,
                 cursor: 'pointer',
-                border: 'none',
-                background: activeTab === 'out_for_delivery' ? 'var(--primary)' : 'var(--surface-2)',
-                color: activeTab === 'out_for_delivery' ? '#fff' : 'var(--text)',
+                border: activeTab === 'out_for_delivery' ? '1px solid #dc2626' : '1px solid #e2e8f0',
+                background: activeTab === 'out_for_delivery' ? '#dc2626' : '#ffffff',
+                color: activeTab === 'out_for_delivery' ? '#ffffff' : '#334155',
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '6px',
+                boxShadow: activeTab === 'out_for_delivery' ? '0 2px 6px rgba(220,38,38,0.25)' : 'none',
               }}
             >
-              🛵 Out for Delivery
+              <span>🛵</span> Out for Delivery
               <span
                 style={{
                   padding: '2px 7px',
                   borderRadius: '10px',
                   fontSize: '11px',
-                  background: activeTab === 'out_for_delivery' ? 'rgba(255,255,255,0.25)' : 'var(--surface-3)',
-                  color: activeTab === 'out_for_delivery' ? '#fff' : 'var(--text-muted)',
+                  background: activeTab === 'out_for_delivery' ? 'rgba(255,255,255,0.3)' : '#f1f5f9',
+                  color: activeTab === 'out_for_delivery' ? '#ffffff' : '#475569',
                   fontWeight: 700,
                 }}
               >
                 {outForDelivery}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('completed')}
+              style={{
+                padding: '8px 14px',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: activeTab === 'completed' ? 700 : 500,
+                cursor: 'pointer',
+                border: activeTab === 'completed' ? '1px solid #dc2626' : '1px solid #e2e8f0',
+                background: activeTab === 'completed' ? '#dc2626' : '#ffffff',
+                color: activeTab === 'completed' ? '#ffffff' : '#334155',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: activeTab === 'completed' ? '0 2px 6px rgba(220,38,38,0.25)' : 'none',
+              }}
+            >
+              <span>💰</span> Delivered & COD
+              <span
+                style={{
+                  padding: '2px 7px',
+                  borderRadius: '10px',
+                  fontSize: '11px',
+                  background: activeTab === 'completed' ? 'rgba(255,255,255,0.3)' : '#f1f5f9',
+                  color: activeTab === 'completed' ? '#ffffff' : '#475569',
+                  fontWeight: 700,
+                }}
+              >
+                {deliveredToday}
               </span>
             </button>
 
@@ -596,24 +862,25 @@ export function RiderDeliveriesPage() {
                 padding: '8px 14px',
                 borderRadius: '8px',
                 fontSize: '13px',
-                fontWeight: 600,
+                fontWeight: activeTab === 'all' ? 700 : 500,
                 cursor: 'pointer',
-                border: 'none',
-                background: activeTab === 'all' ? 'var(--primary)' : 'var(--surface-2)',
-                color: activeTab === 'all' ? '#fff' : 'var(--text)',
+                border: activeTab === 'all' ? '1px solid #dc2626' : '1px solid #e2e8f0',
+                background: activeTab === 'all' ? '#dc2626' : '#ffffff',
+                color: activeTab === 'all' ? '#ffffff' : '#334155',
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '6px',
+                boxShadow: activeTab === 'all' ? '0 2px 6px rgba(220,38,38,0.25)' : 'none',
               }}
             >
-              All Deliveries
+              <span>📑</span> All Tasks
               <span
                 style={{
                   padding: '2px 7px',
                   borderRadius: '10px',
                   fontSize: '11px',
-                  background: activeTab === 'all' ? 'rgba(255,255,255,0.25)' : 'var(--surface-3)',
-                  color: activeTab === 'all' ? '#fff' : 'var(--text-muted)',
+                  background: activeTab === 'all' ? 'rgba(255,255,255,0.3)' : '#f1f5f9',
+                  color: activeTab === 'all' ? '#ffffff' : '#475569',
                   fontWeight: 700,
                 }}
               >

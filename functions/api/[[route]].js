@@ -3886,7 +3886,7 @@ export async function onRequest(context) {
       } catch (e) {}
 
       // GET /api/pickup-requests
-      if (method === 'GET') {
+      if ((path === 'pickup-requests' || path === 'pickup-requests/') && method === 'GET') {
         const companyId = Number(url.searchParams.get('company_id') || 1);
         const vendorId = url.searchParams.get('vendor_id');
         const branchId = url.searchParams.get('branch_id');
@@ -3931,7 +3931,7 @@ export async function onRequest(context) {
       }
 
       // POST /api/pickup-requests (Step 1: Vendor creates pickup request)
-      if (method === 'POST') {
+      if ((path === 'pickup-requests' || path === 'pickup-requests/') && method === 'POST') {
         const body = await request.json();
         const cid = Number(body.company_id || 1);
         const vId = Number(body.vendor_id);
@@ -4035,17 +4035,37 @@ export async function onRequest(context) {
         const reqId = Number(assignMatch[1]);
         const body = await request.json();
         const courierId = Number(body.courier_id);
-        const courierName = body.courier_name || '';
-        const courierPhone = body.courier_phone || '';
+        let courierName = (body.courier_name || '').trim();
+        let courierPhone = (body.courier_phone || '').trim();
         const branchName = body.branch_name || '';
         const now = new Date().toISOString();
 
         if (!courierId) {
-          return jsonResponse({ error: 'Courier ID is required' }, 400);
+          return jsonResponse({ error: 'Courier/Rider ID is required' }, 400);
         }
 
         const currentReq = await db.prepare('SELECT * FROM pickup_requests WHERE id = ?').bind(reqId).first();
         if (!currentReq) return jsonResponse({ error: 'Pickup request not found' }, 404);
+
+        // Auto-lookup rider details from riders table
+        let riderRow = null;
+        try {
+          riderRow = await db.prepare('SELECT id, name, phone, branch_id FROM riders WHERE id = ?').bind(courierId).first();
+          if (riderRow) {
+            if (!courierName) courierName = riderRow.name || `Rider #${courierId}`;
+            if (!courierPhone) courierPhone = riderRow.phone || '';
+          }
+        } catch (e) {
+          console.warn('Could not query riders table:', e);
+        }
+        if (!courierName) courierName = `Rider #${courierId}`;
+
+        // Validate that rider belongs to the request's branch
+        if (currentReq.branch_id && riderRow && riderRow.branch_id) {
+          if (Number(riderRow.branch_id) !== Number(currentReq.branch_id)) {
+            return jsonResponse({ error: 'Selected rider does not belong to this branch.' }, 400);
+          }
+        }
 
         await db.prepare(`
           UPDATE pickup_requests SET
@@ -4059,6 +4079,8 @@ export async function onRequest(context) {
 
         let trkList = [];
         try { if (currentReq.tracking_numbers_json) trkList = JSON.parse(currentReq.tracking_numbers_json); } catch (e) {}
+        let orderIdList = [];
+        try { if (currentReq.order_ids_json) orderIdList = JSON.parse(currentReq.order_ids_json); } catch (e) {}
 
         for (const trk of trkList) {
           if (!trk) continue;
@@ -4107,10 +4129,59 @@ export async function onRequest(context) {
           } catch (e) {}
         }
 
+        // Also update by order IDs
+        for (const oId of orderIdList) {
+          if (!oId) continue;
+          try {
+            const vo = await db.prepare('SELECT * FROM vendor_order WHERE id = ?').bind(Number(oId)).first();
+            if (vo && vo.status !== 'assigned') {
+              let events = [];
+              try { if (vo.tracking_events_json) events = JSON.parse(vo.tracking_events_json); } catch (e) {}
+              events.push({
+                status: 'assigned',
+                location: branchName || currentReq.branch_name || 'Branch Hub',
+                notes: `Pickup assigned to rider ${courierName}${courierPhone ? ` (${courierPhone})` : ''}.`,
+                at: now,
+              });
+              await db.prepare(`
+                UPDATE vendor_order SET
+                  status = 'assigned',
+                  courier_id = ?,
+                  tracking_events_json = ?,
+                  updated_at = datetime('now')
+                WHERE id = ?
+              `).bind(courierId, JSON.stringify(events), Number(oId)).run();
+            }
+
+            const s = await db.prepare('SELECT * FROM shipments WHERE id = ?').bind(Number(oId)).first();
+            if (s && s.status !== 'assigned') {
+              let events = [];
+              try { if (s.tracking_events_json) events = JSON.parse(s.tracking_events_json); } catch (e) {}
+              events.push({
+                status: 'assigned',
+                location: branchName || currentReq.branch_name || 'Branch Hub',
+                notes: `Pickup assigned to rider ${courierName}${courierPhone ? ` (${courierPhone})` : ''}.`,
+                at: now,
+              });
+              await db.prepare(`
+                UPDATE shipments SET
+                  status = 'assigned',
+                  courier_id = ?,
+                  tracking_events_json = ?,
+                  updated_at = datetime('now')
+                WHERE id = ?
+              `).bind(courierId, JSON.stringify(events), Number(oId)).run();
+            }
+          } catch (e) {}
+        }
+
         return jsonResponse({
           success: true,
           id: reqId,
           message: `Pickup assigned to rider ${courierName} successfully`,
+          courier_id: courierId,
+          courier_name: courierName,
+          courier_phone: courierPhone,
         });
       }
 

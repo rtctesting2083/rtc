@@ -2257,6 +2257,53 @@ export function CompanyProvider({ children }) {
     }
   };
 
+  const refreshData = useCallback(async () => {
+    if (!companyId) return;
+    try {
+      const [remoteRiders, remoteBranches, remoteShipments] = await Promise.all([
+        d1Api.getRiders(companyId).catch(() => []),
+        d1Api.getBranches(companyId).catch(() => []),
+        d1Api.getShipments(companyId).catch(() => []),
+      ]);
+
+      setData((prev) => {
+        if (!prev) return prev;
+        const updated = { ...prev };
+        if (Array.isArray(remoteRiders) && remoteRiders.length > 0) {
+          updated.couriers = remoteRiders;
+        }
+        if (Array.isArray(remoteBranches) && remoteBranches.length > 0) {
+          const formattedRemote = remoteBranches.map((b) => {
+            const district = b.district || b.address?.district;
+            const isLocal = b.branch_type === 'local_branch' || b.tier === 3 || (!b.branch_type && !b.tier);
+            if (isLocal && district && b.name && !b.name.includes('(')) {
+              return { ...b, name: `${b.name} ( ${district} )` };
+            }
+            return b;
+          });
+          updated.branches = formattedRemote;
+        }
+        if (Array.isArray(remoteShipments)) {
+          const map = new Map();
+          (prev.shipments || []).forEach((s) => {
+            if (s && (s.tracking_number || s.id)) map.set(s.tracking_number || `id_${s.id}`, s);
+          });
+          remoteShipments.forEach((s) => {
+            if (s && (s.tracking_number || s.id)) {
+              const k = s.tracking_number || `id_${s.id}`;
+              map.set(k, { ...(map.get(k) || {}), ...s });
+            }
+          });
+          updated.shipments = Array.from(map.values());
+        }
+        saveCompanyState(companyId, updated);
+        return updated;
+      });
+    } catch (e) {
+      console.warn('refreshData error:', e);
+    }
+  }, [companyId]);
+
   const resetCompanyData = () => {
     if (!companyId) return;
     const fresh = seedCompanyState(companyId);
@@ -2394,6 +2441,7 @@ export function CompanyProvider({ children }) {
         updateVendorOrder,
         deleteVendorOrder,
         resetCompanyData,
+        refreshData,
         themeColor: d1Theme?.theme_color || company?.theme_color || '#dc2626',
         logoUrl: d1Theme?.logo_url !== undefined ? d1Theme.logo_url : (company?.logo_url || null),
         d1Theme,

@@ -73,6 +73,8 @@ import { CustomerPlaceholderPage } from './pages/customer/CustomerPlaceholderPag
 
 // Rider
 import { RiderDeliveriesPage } from './pages/rider/RiderDeliveriesPage';
+import { RiderNoticesPage } from './pages/rider/RiderNoticesPage';
+import { RiderProfilePage } from './pages/rider/RiderProfilePage';
 
 function ProtectedRoute({ allowedTypes, children }) {
   const { session } = useAuth();
@@ -217,6 +219,8 @@ export function App() {
                 >
                   <Route index element={<Navigate to="deliveries" replace />} />
                   <Route path="deliveries" element={<RiderDeliveriesPage />} />
+                  <Route path="notices" element={<RiderNoticesPage />} />
+                  <Route path="profile" element={<RiderProfilePage />} />
                 </Route>
 
                 {/* Default Fallback */}

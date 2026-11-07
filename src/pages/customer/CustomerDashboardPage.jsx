@@ -248,24 +248,7 @@ export function CustomerDashboardPage() {
   };
 
   const handleOpenPickupModal = () => {
-    if (typeof outletCtx.handleOpenPickupRequest === 'function') {
-      outletCtx.handleOpenPickupRequest();
-      return;
-    }
-    openModal(
-      'Request Parcel Pickup from Store',
-      <VendorPickupRequestModal
-        currentCustomer={currentCustomer}
-        allVendorOrders={shipments}
-        onClose={closeModal}
-        onSuccess={() => {
-          closeModal();
-          navigate('/customer/orders/pickup-report');
-        }}
-      />,
-      'wide',
-      { hideHeader: true }
-    );
+    navigate('/customer/orders/pickup-request');
   };
 
   const handleOpenBulkModal = () => {
@@ -377,7 +360,7 @@ export function CustomerDashboardPage() {
           <button
             type="button"
             className="vendor-quick-action-card"
-            onClick={handleOpenPickupModal}
+            onClick={() => navigate('/customer/orders/pickup-request')}
           >
             <Truck size={16} className="qa-icon cyan" />
             <span>Pickup Request</span>

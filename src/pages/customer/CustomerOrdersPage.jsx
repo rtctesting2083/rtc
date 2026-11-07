@@ -55,16 +55,93 @@ export function CustomerOrdersPage() {
   }, [orderTypes]);
 
   // Filters state
-  const [dateRange, setDateRange] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [datePreset, setDatePreset] = useState('');
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const datePickerRef = React.useRef(null);
+
   const [selectedOrderType, setSelectedOrderType] = useState('all');
   const [selectedHub, setSelectedHub] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [appliedFilters, setAppliedFilters] = useState({
-    dateRange: '',
+    startDate: '',
+    endDate: '',
+    dateLabel: '',
     orderType: 'all',
     hub: 'all',
     status: 'all',
   });
+
+  // Close date picker when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (datePickerRef.current && !datePickerRef.current.contains(e.target)) {
+        setDatePickerOpen(false);
+      }
+    }
+    if (datePickerOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [datePickerOpen]);
+
+  // Quick Preset calculations
+  const applyPreset = (presetKey) => {
+    const now = new Date();
+    const pad2 = (n) => String(n).padStart(2, '0');
+    const toYMD = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+    let start = '';
+    let end = toYMD(now);
+
+    if (presetKey === 'today') {
+      start = end;
+    } else if (presetKey === 'yesterday') {
+      const y = new Date(now.getTime() - 86400000);
+      start = toYMD(y);
+      end = start;
+    } else if (presetKey === 'last_7_days') {
+      const d7 = new Date(now.getTime() - 6 * 86400000);
+      start = toYMD(d7);
+    } else if (presetKey === 'this_week') {
+      const day = now.getDay();
+      const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+      const monday = new Date(new Date().setDate(diff));
+      start = toYMD(monday);
+      end = toYMD(new Date());
+    } else if (presetKey === 'this_month') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      start = toYMD(firstDay);
+    } else if (presetKey === 'last_30_days') {
+      const d30 = new Date(now.getTime() - 29 * 86400000);
+      start = toYMD(d30);
+    }
+
+    setStartDate(start);
+    setEndDate(end);
+    setDatePreset(presetKey);
+  };
+
+  // Formatted date label for input
+  const dateRangeDisplay = useMemo(() => {
+    if (!startDate && !endDate) return '';
+    if (startDate && endDate) {
+      if (startDate === endDate) {
+        if (datePreset === 'today') return `Today (${startDate})`;
+        if (datePreset === 'yesterday') return `Yesterday (${startDate})`;
+        return startDate;
+      }
+      if (datePreset === 'last_7_days') return `Last 7 Days (${startDate} to ${endDate})`;
+      if (datePreset === 'this_week') return `This Week (${startDate} to ${endDate})`;
+      if (datePreset === 'this_month') return `This Month (${startDate} to ${endDate})`;
+      if (datePreset === 'last_30_days') return `Last 30 Days (${startDate} to ${endDate})`;
+      return `${startDate} to ${endDate}`;
+    }
+    if (startDate) return `From ${startDate}`;
+    if (endDate) return `Up to ${endDate}`;
+    return '';
+  }, [startDate, endDate, datePreset]);
 
   const [selectedOrderIds, setSelectedOrderIds] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -301,31 +378,56 @@ export function CustomerOrdersPage() {
   // Handle Apply filter click
   const handleApplyFilters = () => {
     setAppliedFilters({
-      dateRange,
+      startDate,
+      endDate,
+      dateLabel: dateRangeDisplay,
       orderType: selectedOrderType,
       hub: selectedHub,
       status: selectedStatus,
     });
+    setDatePickerOpen(false);
   };
 
   // Handle Clear filter click
   const handleClearFilters = () => {
-    setDateRange('');
+    setStartDate('');
+    setEndDate('');
+    setDatePreset('');
     setSelectedOrderType('all');
     setSelectedHub('all');
     setSelectedStatus('all');
     setAppliedFilters({
-      dateRange: '',
+      startDate: '',
+      endDate: '',
+      dateLabel: '',
       orderType: 'all',
       hub: 'all',
       status: 'all',
     });
+    setDatePickerOpen(false);
   };
 
   // Filtered orders based on applied filters
   const displayOrders = useMemo(() => {
     return allOrders.filter((order) => {
-      // Order type filter
+      // 1. Date Range Filter
+      if (appliedFilters.startDate || appliedFilters.endDate) {
+        if (!order.created_at) return false;
+        const d = new Date(order.created_at);
+        if (isNaN(d.getTime())) return false;
+
+        const pad2 = (n) => String(n).padStart(2, '0');
+        const orderDateStr = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+        if (appliedFilters.startDate && orderDateStr < appliedFilters.startDate) {
+          return false;
+        }
+        if (appliedFilters.endDate && orderDateStr > appliedFilters.endDate) {
+          return false;
+        }
+      }
+
+      // 2. Order type filter
       if (appliedFilters.orderType !== 'all') {
         if (
           appliedFilters.orderType.toLowerCase() === 'delivery order' &&
@@ -339,7 +441,7 @@ export function CustomerOrdersPage() {
           return false;
       }
 
-      // Hub filter
+      // 3. Hub filter
       if (appliedFilters.hub !== 'all') {
         if (
           order.destination_hub?.toLowerCase() !== appliedFilters.hub.toLowerCase()
@@ -347,7 +449,7 @@ export function CustomerOrdersPage() {
           return false;
       }
 
-      // Status filter
+      // 4. Status filter
       if (appliedFilters.status !== 'all') {
         if (
           order.status_label?.toLowerCase() !== appliedFilters.status.toLowerCase()
@@ -727,19 +829,295 @@ export function CustomerOrdersPage() {
       {/* ── 1. Top Filters Panel (Matches Screenshot) ── */}
       <div className="order-filter-panel">
         <div className="order-filter-fields">
-          {/* Date Range */}
-          <div className="filter-field-group">
+          {/* Date Range with Interactive Popover */}
+          <div className="filter-field-group" ref={datePickerRef} style={{ position: 'relative' }}>
             <label className="filter-label">Select Date Range</label>
-            <div className="filter-date-wrapper">
+            <div
+              className="filter-date-wrapper"
+              onClick={() => setDatePickerOpen(!datePickerOpen)}
+              style={{ cursor: 'pointer' }}
+            >
               <input
                 type="text"
+                readOnly
                 className="filter-input with-icon"
                 placeholder="Select Date Range"
-                value={dateRange}
-                onChange={(e) => setDateRange(e.target.value)}
+                value={dateRangeDisplay}
+                style={{
+                  cursor: 'pointer',
+                  background: dateRangeDisplay ? '#f0fdf4' : '#ffffff',
+                  borderColor: dateRangeDisplay ? '#22c55e' : '#cbd5e1',
+                  fontWeight: dateRangeDisplay ? 600 : 400,
+                  color: dateRangeDisplay ? '#15803d' : '#1e293b',
+                }}
               />
-              <Calendar size={15} className="filter-input-icon" />
+              <div
+                style={{
+                  position: 'absolute',
+                  right: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                {dateRangeDisplay && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setStartDate('');
+                      setEndDate('');
+                      setDatePreset('');
+                      setAppliedFilters((prev) => ({ ...prev, startDate: '', endDate: '', dateLabel: '' }));
+                    }}
+                    title="Clear date range"
+                    style={{
+                      background: '#f1f5f9',
+                      border: 'none',
+                      borderRadius: '50%',
+                      width: '18px',
+                      height: '18px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      color: '#64748b',
+                      padding: 0,
+                    }}
+                  >
+                    <X size={11} />
+                  </button>
+                )}
+                <Calendar
+                  size={15}
+                  style={{
+                    color: dateRangeDisplay ? '#16a34a' : '#3b82f6',
+                    cursor: 'pointer',
+                  }}
+                />
+              </div>
             </div>
+
+            {/* Floating Date Range Popover */}
+            {datePickerOpen && (
+              <div
+                className="date-range-popover"
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 6px)',
+                  left: 0,
+                  background: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '12px',
+                  boxShadow: '0 14px 30px rgba(0, 0, 0, 0.15), 0 4px 10px rgba(0, 0, 0, 0.06)',
+                  padding: '16px',
+                  width: '320px',
+                  zIndex: 99999,
+                  animation: 'dialogZoomIn 0.15s ease-out',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '12px',
+                    paddingBottom: '8px',
+                    borderBottom: '1px solid #f1f5f9',
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      color: '#1e293b',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <Calendar size={15} style={{ color: '#dc2626' }} />
+                    <span>Filter Orders by Date</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDatePickerOpen(false)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: '#94a3b8',
+                      padding: '2px',
+                    }}
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+
+                {/* Quick Presets */}
+                <div style={{ marginBottom: '14px' }}>
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      color: '#64748b',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    Quick Presets
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                    {[
+                      { key: 'today', label: 'Today' },
+                      { key: 'yesterday', label: 'Yesterday' },
+                      { key: 'last_7_days', label: 'Last 7 Days' },
+                      { key: 'this_week', label: 'This Week' },
+                      { key: 'this_month', label: 'This Month' },
+                      { key: 'last_30_days', label: 'Last 30 Days' },
+                    ].map((p) => {
+                      const isActive = datePreset === p.key;
+                      return (
+                        <button
+                          key={p.key}
+                          type="button"
+                          onClick={() => applyPreset(p.key)}
+                          style={{
+                            padding: '6px 8px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            borderRadius: '6px',
+                            border: isActive ? '1px solid #16a34a' : '1px solid #e2e8f0',
+                            background: isActive ? '#ecfdf5' : '#f8fafc',
+                            color: isActive ? '#15803d' : '#334155',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
+                            textAlign: 'center',
+                          }}
+                        >
+                          {p.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Custom Date Range */}
+                <div style={{ marginBottom: '16px' }}>
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      color: '#64748b',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    Custom Date Range
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div>
+                      <span style={{ fontSize: '11.5px', color: '#475569', display: 'block', marginBottom: '3px', fontWeight: 500 }}>
+                        From Date:
+                      </span>
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => {
+                          setStartDate(e.target.value);
+                          setDatePreset('custom');
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '6px 10px',
+                          fontSize: '12px',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '6px',
+                          outline: 'none',
+                          color: '#1e293b',
+                          background: '#ffffff',
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '11.5px', color: '#475569', display: 'block', marginBottom: '3px', fontWeight: 500 }}>
+                        To Date:
+                      </span>
+                      <input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => {
+                          setEndDate(e.target.value);
+                          setDatePreset('custom');
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '6px 10px',
+                          fontSize: '12px',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '6px',
+                          outline: 'none',
+                          color: '#1e293b',
+                          background: '#ffffff',
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Popover Action Buttons */}
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: '8px',
+                    justifyContent: 'flex-end',
+                    paddingTop: '10px',
+                    borderTop: '1px solid #f1f5f9',
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStartDate('');
+                      setEndDate('');
+                      setDatePreset('');
+                    }}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      color: '#64748b',
+                      background: '#f1f5f9',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Reset
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleApplyFilters}
+                    style={{
+                      padding: '6px 14px',
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      color: '#ffffff',
+                      background: '#16a34a',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 6px rgba(22, 163, 74, 0.3)',
+                    }}
+                  >
+                    Apply Range
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Order Type */}
@@ -828,6 +1206,143 @@ export function CustomerOrdersPage() {
         </div>
       </div>
 
+      {/* Active Filter Pills Bar */}
+      {(appliedFilters.startDate || appliedFilters.endDate || appliedFilters.orderType !== 'all' || appliedFilters.hub !== 'all' || appliedFilters.status !== 'all') && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            flexWrap: 'wrap',
+            margin: '8px 0 16px',
+            padding: '8px 14px',
+            background: '#f8fafc',
+            borderRadius: '8px',
+            border: '1px solid #e2e8f0',
+            fontSize: '12px',
+          }}
+        >
+          <span style={{ fontWeight: 700, color: '#475569' }}>Filtered By:</span>
+          {(appliedFilters.startDate || appliedFilters.endDate) && (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: '#ecfdf5',
+                color: '#166534',
+                border: '1px solid #bbf7d0',
+                padding: '3px 10px',
+                borderRadius: '14px',
+                fontWeight: 600,
+              }}
+            >
+              📅 {appliedFilters.dateLabel || (appliedFilters.startDate === appliedFilters.endDate ? appliedFilters.startDate : `${appliedFilters.startDate} to ${appliedFilters.endDate}`)}
+              <X
+                size={12}
+                style={{ cursor: 'pointer' }}
+                onClick={() => {
+                  setStartDate('');
+                  setEndDate('');
+                  setDatePreset('');
+                  setAppliedFilters((prev) => ({ ...prev, startDate: '', endDate: '', dateLabel: '' }));
+                }}
+              />
+            </span>
+          )}
+          {appliedFilters.orderType !== 'all' && (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: '#eff6ff',
+                color: '#1e40af',
+                border: '1px solid #bfdbfe',
+                padding: '3px 10px',
+                borderRadius: '14px',
+                fontWeight: 600,
+              }}
+            >
+              Type: {appliedFilters.orderType}
+              <X
+                size={12}
+                style={{ cursor: 'pointer' }}
+                onClick={() => {
+                  setSelectedOrderType('all');
+                  setAppliedFilters((prev) => ({ ...prev, orderType: 'all' }));
+                }}
+              />
+            </span>
+          )}
+          {appliedFilters.hub !== 'all' && (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: '#fef3c7',
+                color: '#92400e',
+                border: '1px solid #fde68a',
+                padding: '3px 10px',
+                borderRadius: '14px',
+                fontWeight: 600,
+              }}
+            >
+              Hub: {appliedFilters.hub}
+              <X
+                size={12}
+                style={{ cursor: 'pointer' }}
+                onClick={() => {
+                  setSelectedHub('all');
+                  setAppliedFilters((prev) => ({ ...prev, hub: 'all' }));
+                }}
+              />
+            </span>
+          )}
+          {appliedFilters.status !== 'all' && (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: '#f3e8ff',
+                color: '#6b21a8',
+                border: '1px solid #e9d5ff',
+                padding: '3px 10px',
+                borderRadius: '14px',
+                fontWeight: 600,
+              }}
+            >
+              Status: {appliedFilters.status}
+              <X
+                size={12}
+                style={{ cursor: 'pointer' }}
+                onClick={() => {
+                  setSelectedStatus('all');
+                  setAppliedFilters((prev) => ({ ...prev, status: 'all' }));
+                }}
+              />
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={handleClearFilters}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#dc2626',
+              fontWeight: 700,
+              fontSize: '11.5px',
+              cursor: 'pointer',
+              marginLeft: 'auto',
+            }}
+          >
+            Clear All
+          </button>
+        </div>
+      )}
+
       {/* ── 2. Order List Header Row (Matches Screenshot) ── */}
       <div className="order-list-header-row">
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -851,7 +1366,7 @@ export function CustomerOrdersPage() {
             D1 Database
           </span>
           <span style={{ fontSize: '12.5px', color: '#6b7280', fontWeight: 500 }}>
-            ({allOrders.length} {allOrders.length === 1 ? 'Order' : 'Orders'})
+            ({displayOrders.length} {displayOrders.length === 1 ? 'Order' : 'Orders'}{displayOrders.length !== allOrders.length ? ` of ${allOrders.length}` : ''})
           </span>
         </div>
 
