@@ -6,7 +6,7 @@ import { StatusPill } from '../../components/common/StatusPill';
 import { ShipmentDetailModal } from '../../components/common/ShipmentDetailModal';
 import { OrderCommentsModal } from '../../components/common/OrderCommentsSection';
 import { printShipmentLabel } from '../../utils/print';
-import { fmtMoney, fmtDate, formatDateTimeAMPM } from '../../utils/helpers';
+import { fmtMoney, fmtDate, formatDateTimeAMPM, formatAddressWithDistrictProvince } from '../../utils/helpers';
 import { d1Api } from '../../utils/d1Api';
 import {
   Search,
@@ -35,6 +35,7 @@ import {
   Layers,
   RotateCcw,
   Sparkles,
+  Hash,
 } from 'lucide-react';
 import './AdminDashboard.css';
 
@@ -60,6 +61,8 @@ export function CompanyVendorOrdersReportPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
+  const [seqStatus, setSeqStatus] = useState(null);
+  const [checkingSeq, setCheckingSeq] = useState(false);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -110,8 +113,53 @@ export function CompanyVendorOrdersReportPage() {
     }
   };
 
+  const checkSequence = async () => {
+    try {
+      const res = await d1Api.checkOrderSequence(company?.id || 1);
+      if (res && res.success) {
+        setSeqStatus(res);
+      }
+    } catch (e) {}
+  };
+
+  const handleCheckOrResequence = async () => {
+    setCheckingSeq(true);
+    try {
+      const res = await d1Api.checkOrderSequence(company?.id || 1);
+      setSeqStatus(res);
+      if (res?.is_sequential) {
+        alert(`✓ Sequential Order IDs Verified!\n\nAll ${res.total_unique_counts || res.total_shipments} orders in D1 are strictly sequential (IDs #1 to #${res.max_counter}) with no missing numbers in between.`);
+      } else if (res?.gaps_count > 0) {
+        const confirmFix = window.confirm(
+          `⚠️ Order ID Sequence Gaps Detected in D1 Database!\n\n` +
+          `• Total Orders: ${res.total_unique_counts || res.total_shipments}\n` +
+          `• Missing Numbers: #${res.missing_counters.join(', #')}\n` +
+          `• Max Counter in DB: #${res.max_counter}\n\n` +
+          `Would you like to re-sequence all Order IDs in D1 now so they are strictly consecutive without any gaps?`
+        );
+        if (confirmFix) {
+          const fixRes = await d1Api.resequenceOrderIds(company?.id || 1);
+          if (fixRes?.success) {
+            alert(`✓ Success!\n\n${fixRes.message || 'All Order IDs have been re-sequenced consecutively in D1.'}`);
+            fetchOrders(true);
+            checkSequence();
+          } else {
+            alert(`Could not resequence: ${fixRes?.error || 'Unknown error'}`);
+          }
+        }
+      } else {
+        alert('Order IDs checked. Current sequence is active.');
+      }
+    } catch (err) {
+      alert(`Error checking order ID sequence: ${err.message}`);
+    } finally {
+      setCheckingSeq(false);
+    }
+  };
+
   useEffect(() => {
     fetchOrders();
+    checkSequence();
   }, [company?.id]);
 
   // Handle Quick Date Presets
@@ -488,7 +536,35 @@ export function CompanyVendorOrdersReportPage() {
           <button
             type="button"
             className="admin-btn-action-ghost"
-            onClick={() => fetchOrders(true)}
+            onClick={handleCheckOrResequence}
+            disabled={checkingSeq}
+            title="Verify that Order IDs are sequential without missing numbers in D1"
+            style={{
+              borderColor: seqStatus?.gaps_count > 0 ? '#ef4444' : '#bbf7d0',
+              color: seqStatus?.gaps_count > 0 ? '#b91c1c' : '#15803d',
+              background: seqStatus?.gaps_count > 0 ? '#fef2f2' : '#f0fdf4',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <Hash size={14} />
+            <span>
+              {checkingSeq
+                ? 'Checking...'
+                : seqStatus?.gaps_count > 0
+                ? `Fix Sequence (${seqStatus.gaps_count} missing)`
+                : `Sequential IDs (1-${seqStatus?.max_counter || metrics.totalOrders || '10'})`}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            className="admin-btn-action-ghost"
+            onClick={() => {
+              fetchOrders(true);
+              checkSequence();
+            }}
             disabled={refreshing || loading}
             title="Refresh latest orders from D1 database"
           >
@@ -958,7 +1034,9 @@ export function CompanyVendorOrdersReportPage() {
                 paginatedOrders.map((order) => {
                   const cust = findCustomer(order.customer_id || order.vendor_id);
                   const originHub = getCleanHub(order.branch_id ? findBranch(order.branch_id) : 'Butwal Hub');
-                  const destHub = getCleanHub(order.destination_branch_id ? findBranch(order.destination_branch_id) : 'Kathmandu Hub');
+                  const destBranchObj = order.destination_branch_id ? findBranch(order.destination_branch_id) : null;
+                  const destHub = getCleanHub(destBranchObj || 'Kathmandu Hub');
+                  const formattedAddress = formatAddressWithDistrictProvince(order.delivery_address || order.city, destBranchObj);
                   const isSettled =
                     String(order.settlement_status || '').toLowerCase() === 'settled' ||
                     order.is_settled === true ||
@@ -1044,7 +1122,7 @@ export function CompanyVendorOrdersReportPage() {
                           {order.receiver_name || '—'}
                         </div>
                         <div style={{ fontSize: '11px', color: '#64748b' }}>
-                          {order.receiver_phone || ''} · {order.delivery_address || order.city || '—'}
+                          {order.receiver_phone || ''} · {formattedAddress || order.delivery_address || order.city || '—'}
                         </div>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '10.5px', color: '#2563eb', fontWeight: 600, marginTop: '2px', background: '#eff6ff', padding: '1px 6px', borderRadius: '4px' }}>
                           <span>{originHub}</span>

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
+import { ErrorBoundary } from '../components/common/ErrorBoundary';
 
 const ModalContext = createContext(null);
 
@@ -64,7 +65,11 @@ export function ModalProvider({ children }) {
                 </button>
               </div>
             )}
-            <div className={`modal-body ${modalState.hideHeader ? 'no-head' : ''}`}>{modalState.content}</div>
+            <div className={`modal-body ${modalState.hideHeader ? 'no-head' : ''}`}>
+              <ErrorBoundary title="Modal Content Error" onReset={closeModal}>
+                {modalState.content}
+              </ErrorBoundary>
+            </div>
           </div>
         </div>
       )}

@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS vendor_order (
   delivery_fee REAL DEFAULT 0.0,
   notes TEXT,
   tracking_events_json TEXT,
+  status_updated_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT,
   delivered_at TEXT,

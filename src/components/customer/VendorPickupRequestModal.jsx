@@ -16,9 +16,11 @@ import {
   Plus,
   ArrowRight,
   ShieldCheck,
+  ShieldAlert,
 } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { d1Api } from '../../utils/d1Api';
+import { isVendorVerified } from '../../utils/helpers';
 
 export function VendorPickupRequestModal({
   currentCustomer,
@@ -238,6 +240,52 @@ export function VendorPickupRequestModal({
       setLoading(false);
     }
   };
+
+  const isVerified = isVendorVerified(currentCustomer);
+
+  if (!isVerified) {
+    return (
+      <div style={{ maxWidth: '640px', margin: '20px auto', padding: '32px 24px', background: '#fff', borderRadius: '16px', border: '1.5px solid #fecaca', textAlign: 'center', boxShadow: '0 8px 24px rgba(220, 38, 38, 0.08)' }}>
+        <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+          <ShieldAlert size={30} />
+        </div>
+        <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#991b1b', marginBottom: '8px' }}>
+          Pickup Request Restricted
+        </h2>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5', padding: '2px 9px', borderRadius: '12px', fontSize: '11px', fontWeight: 700, marginBottom: '14px' }}>
+          <ShieldAlert size={12} /> Unverified Merchant Account
+        </div>
+        <p style={{ color: '#475569', fontSize: '13.5px', lineHeight: 1.5, marginBottom: '18px' }}>
+          Your vendor account is unverified. Only verified merchants are authorized to schedule parcel pickups with RTC Courier riders.
+        </p>
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px 16px', textAlign: 'left', fontSize: '12px', color: '#334155', marginBottom: '20px', lineHeight: 1.6 }}>
+          <b>To unlock pickup requests:</b>
+          <div style={{ marginTop: '4px' }}>
+            • Submit your store documents under <b>Profile &gt; KYC Documents</b>.<br />
+            • Contact administration at <b>+977-9857036839</b> for approval.
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: '8px 18px',
+              borderRadius: '6px',
+              border: '1px solid #cbd5e1',
+              background: '#f8fafc',
+              color: '#475569',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

@@ -21,8 +21,10 @@ import {
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
 import { d1Api } from '../../utils/d1Api';
+import { formatDateTimeAMPM } from '../../utils/helpers';
 import { VendorPickupRequestModal } from '../../components/customer/VendorPickupRequestModal';
 import { ShipmentDetailModal } from '../../components/common/ShipmentDetailModal';
+import { PickupRequestWorkflowModal } from '../../components/common/PickupRequestWorkflowModal';
 
 export function CustomerPickupReportPage() {
   const { currentCustomer } = useOutletContext() || {};
@@ -32,7 +34,8 @@ export function CustomerPickupReportPage() {
   const [pickupRequests, setPickupRequests] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('requested');
+  const [hasResolvedInitialView, setHasResolvedInitialView] = useState(false);
 
   const loadRequests = async () => {
     if (!currentCustomer?.id) return;
@@ -53,12 +56,28 @@ export function CustomerPickupReportPage() {
     loadRequests();
   }, [currentCustomer?.id, company?.id]);
 
+  // Resolve vendor's actual shipments for pickup selection
+  const vendorOrders = useMemo(() => {
+    const custId = currentCustomer?.id ? Number(currentCustomer.id) : null;
+    const custPhone = String(currentCustomer?.phone || '').trim();
+    const custName = String(currentCustomer?.name || '').trim().toLowerCase();
+
+    return (shipments || []).filter((s) => {
+      if (!s) return false;
+      const matchId = custId && (Number(s.customer_id) === custId || Number(s.vendor_id) === custId);
+      const matchPhone = custPhone && (String(s.sender_phone || '').trim() === custPhone || String(s.customer_phone || '').trim() === custPhone);
+      const matchName = custName && (String(s.sender_name || '').trim().toLowerCase() === custName || String(s.customer_name || '').trim().toLowerCase() === custName);
+      return matchId || matchPhone || matchName;
+    });
+  }, [shipments, currentCustomer]);
+
   // Open New Pickup Request Modal
   const handleOpenNewRequest = () => {
     openModal(
       'Request Parcel Pickup from Store',
       <VendorPickupRequestModal
         currentCustomer={currentCustomer}
+        allVendorOrders={vendorOrders}
         onClose={closeModal}
         onSuccess={() => {
           closeModal();
@@ -83,21 +102,106 @@ export function CustomerPickupReportPage() {
     }
   };
 
-  // Summary Metrics
-  const totalCount = pickupRequests.length;
-  const pendingCount = pickupRequests.filter((r) => r.status === 'pending').length;
-  const assignedCount = pickupRequests.filter((r) => r.status === 'assigned').length;
-  const pickedUpCount = pickupRequests.filter((r) => r.status === 'picked_up').length;
-  const receivedCount = pickupRequests.filter((r) => r.status === 'received_at_branch').length;
+  // Open 5-Step Pickup Workflow Modal
+  const handleOpenWorkflowDetails = (req) => {
+    openModal(
+      `Pickup Request #${req.id} · 5-Stage Lifecycle`,
+      <PickupRequestWorkflowModal
+        request={req}
+        onClose={closeModal}
+        onUpdated={loadRequests}
+        onOpenShipment={handleOpenShipment}
+      />,
+      'wide',
+      { hideHeader: true }
+    );
+  };
 
-  const totalPackages = useMemo(() => {
-    return pickupRequests.reduce((acc, r) => acc + (Number(r.package_count) || (r.tracking_numbers?.length || 1)), 0);
+  // Stage 1: New Pickup Requests ("Requested") - newly submitted by vendor, awaiting branch acceptance
+  const newRequestedList = useMemo(() => {
+    return pickupRequests.filter(
+      (r) => (!r.status || r.status === 'pending') && !r.accepted_at && !r.assigned_at && !r.picked_up_at && !r.received_at_branch_at
+    );
   }, [pickupRequests]);
 
-  // Filtered List
+  // Stage 2: Pending Rider - accepted by branch, awaiting courier assignment
+  const pendingRiderList = useMemo(() => {
+    return pickupRequests.filter(
+      (r) => (r.status === 'accepted' || (r.status === 'pending' && r.accepted_at)) && !r.assigned_at && !r.picked_up_at && !r.received_at_branch_at
+    );
+  }, [pickupRequests]);
+
+  // Stage 3: Rider Assigned - courier assigned for collection
+  const assignedList = useMemo(() => {
+    return pickupRequests.filter(
+      (r) => (r.status === 'assigned' || r.assigned_at) && !r.picked_up_at && !r.received_at_branch_at
+    );
+  }, [pickupRequests]);
+
+  // Stage 4: Picked Up - collected from store by rider
+  const pickedUpList = useMemo(() => {
+    return pickupRequests.filter(
+      (r) => (r.status === 'picked_up' || r.picked_up_at) && !r.received_at_branch_at
+    );
+  }, [pickupRequests]);
+
+  // Stage 5: Received at Branch Hub - completed pickup arrival
+  const receivedList = useMemo(() => {
+    return pickupRequests.filter(
+      (r) => r.status === 'received_at_branch' || Boolean(r.received_at_branch_at)
+    );
+  }, [pickupRequests]);
+
+  const newRequestedCount = newRequestedList.length;
+  const pendingRiderCount = pendingRiderList.length;
+  const assignedCount = assignedList.length;
+  const pickedUpCount = pickedUpList.length;
+  const receivedCount = receivedList.length;
+  const totalCount = pickupRequests.length;
+
+  const newRequestedPackages = useMemo(() => {
+    return newRequestedList.reduce((acc, r) => acc + (Number(r.package_count) || (r.tracking_numbers?.length || 1)), 0);
+  }, [newRequestedList]);
+
+  // Set default view: Set 'Requested' as default view if report available; otherwise default to status with available report
+  useEffect(() => {
+    if (!hasResolvedInitialView && pickupRequests.length > 0) {
+      if (newRequestedCount > 0) {
+        setStatusFilter('requested');
+      } else if (receivedCount > 0) {
+        setStatusFilter('received_at_branch');
+      } else if (pickedUpCount > 0) {
+        setStatusFilter('picked_up');
+      } else if (assignedCount > 0) {
+        setStatusFilter('assigned');
+      } else if (pendingRiderCount > 0) {
+        setStatusFilter('pending_rider');
+      } else {
+        setStatusFilter('all');
+      }
+      setHasResolvedInitialView(true);
+    }
+  }, [pickupRequests.length, newRequestedCount, receivedCount, pickedUpCount, assignedCount, pendingRiderCount, hasResolvedInitialView]);
+
+  // Filtered List - strictly shows only matching stage requests
   const filteredRequests = useMemo(() => {
     return pickupRequests.filter((r) => {
-      if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+      if (statusFilter === 'requested') {
+        const isNewRequested = (!r.status || r.status === 'pending') && !r.accepted_at && !r.assigned_at && !r.picked_up_at && !r.received_at_branch_at;
+        if (!isNewRequested) return false;
+      } else if (statusFilter === 'pending_rider' || statusFilter === 'pending') {
+        const isPendingRider = (r.status === 'accepted' || (r.status === 'pending' && r.accepted_at)) && !r.assigned_at && !r.picked_up_at && !r.received_at_branch_at;
+        if (!isPendingRider) return false;
+      } else if (statusFilter === 'assigned') {
+        const isAssigned = (r.status === 'assigned' || r.assigned_at) && !r.picked_up_at && !r.received_at_branch_at;
+        if (!isAssigned) return false;
+      } else if (statusFilter === 'picked_up') {
+        const isPickedUp = (r.status === 'picked_up' || r.picked_up_at) && !r.received_at_branch_at;
+        if (!isPickedUp) return false;
+      } else if (statusFilter === 'received_at_branch') {
+        const isReceived = r.status === 'received_at_branch' || Boolean(r.received_at_branch_at);
+        if (!isReceived) return false;
+      }
 
       if (search.trim()) {
         const q = search.toLowerCase().trim();
@@ -111,6 +215,55 @@ export function CustomerPickupReportPage() {
       return true;
     });
   }, [pickupRequests, statusFilter, search]);
+
+  // Status Metric Cards Definition (Interactive filters)
+  const statusCards = useMemo(() => [
+    {
+      key: 'requested',
+      title: 'Requested',
+      count: newRequestedCount,
+      sub: `${newRequestedPackages} parcel${newRequestedPackages === 1 ? '' : 's'} awaiting action`,
+      color: '#dc2626',
+      activeBg: '#fff5f5',
+      glowColor: 'rgba(220, 38, 38, 0.25)',
+    },
+    {
+      key: 'pending_rider',
+      title: 'Pending Rider',
+      count: pendingRiderCount,
+      sub: 'Awaiting branch assignment',
+      color: '#f59e0b',
+      activeBg: '#fffbeb',
+      glowColor: 'rgba(245, 158, 11, 0.25)',
+    },
+    {
+      key: 'assigned',
+      title: 'Rider Assigned',
+      count: assignedCount,
+      sub: 'On the way to store',
+      color: '#2563eb',
+      activeBg: '#eff6ff',
+      glowColor: 'rgba(37, 99, 235, 0.25)',
+    },
+    {
+      key: 'picked_up',
+      title: 'Picked Up',
+      count: pickedUpCount,
+      sub: 'Collected by rider',
+      color: '#10b981',
+      activeBg: '#ecfdf5',
+      glowColor: 'rgba(16, 185, 129, 0.25)',
+    },
+    {
+      key: 'received_at_branch',
+      title: 'Received at Hub',
+      count: receivedCount,
+      sub: 'Ready for delivery route',
+      color: '#0284c7',
+      activeBg: '#f0f9ff',
+      glowColor: 'rgba(2, 132, 199, 0.25)',
+    },
+  ], [newRequestedCount, newRequestedPackages, pendingRiderCount, assignedCount, pickedUpCount, receivedCount]);
 
   // CSV Export
   const handleExportCSV = () => {
@@ -232,12 +385,12 @@ export function CustomerPickupReportPage() {
             }}
           >
             <Plus size={15} />
-            <span>+ Request Pickup</span>
+            <span>Request Pickup</span>
           </button>
         </div>
       </div>
 
-      {/* ── KPI Metric Summary Cards ── */}
+      {/* ── KPI Metric Summary Cards (Click to Filter Status & View Report) ── */}
       <div
         style={{
           display: 'grid',
@@ -246,65 +399,67 @@ export function CustomerPickupReportPage() {
           marginBottom: '22px',
         }}
       >
-        <div className="panel" style={{ padding: '14px 16px', borderLeft: '4px solid #64748b' }}>
-          <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>
-            Total Requests
-          </div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
-            {totalCount}
-          </div>
-          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-            {totalPackages} total parcels
-          </div>
-        </div>
-
-        <div className="panel" style={{ padding: '14px 16px', borderLeft: '4px solid #f59e0b' }}>
-          <div style={{ fontSize: '12px', fontWeight: 600, color: '#d97706', textTransform: 'uppercase' }}>
-            Pending Rider
-          </div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#b45309', marginTop: '4px' }}>
-            {pendingCount}
-          </div>
-          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-            Awaiting branch assignment
-          </div>
-        </div>
-
-        <div className="panel" style={{ padding: '14px 16px', borderLeft: '4px solid #2563eb' }}>
-          <div style={{ fontSize: '12px', fontWeight: 600, color: '#2563eb', textTransform: 'uppercase' }}>
-            Rider Assigned
-          </div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#1e40af', marginTop: '4px' }}>
-            {assignedCount}
-          </div>
-          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-            On the way to store
-          </div>
-        </div>
-
-        <div className="panel" style={{ padding: '14px 16px', borderLeft: '4px solid #10b981' }}>
-          <div style={{ fontSize: '12px', fontWeight: 600, color: '#10b981', textTransform: 'uppercase' }}>
-            Picked Up
-          </div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#065f46', marginTop: '4px' }}>
-            {pickedUpCount}
-          </div>
-          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-            Collected by rider
-          </div>
-        </div>
-
-        <div className="panel" style={{ padding: '14px 16px', borderLeft: '4px solid #0284c7' }}>
-          <div style={{ fontSize: '12px', fontWeight: 600, color: '#0284c7', textTransform: 'uppercase' }}>
-            Received at Hub
-          </div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#0369a1', marginTop: '4px' }}>
-            {receivedCount}
-          </div>
-          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-            Ready for delivery route
-          </div>
-        </div>
+        {statusCards.map((card) => {
+          const isActive = statusFilter === card.key;
+          return (
+            <div
+              key={card.key}
+              className="panel"
+              onClick={() => setStatusFilter(card.key)}
+              style={{
+                padding: '14px 16px',
+                border: isActive ? `2px solid ${card.color}` : '1px solid #e2e8f0',
+                borderLeft: `4px solid ${card.color}`,
+                background: isActive ? card.activeBg : '#ffffff',
+                boxShadow: isActive
+                  ? `0 6px 16px ${card.glowColor}, 0 1px 3px rgba(0,0,0,0.06)`
+                  : '0 1px 2px rgba(0,0,0,0.04)',
+                cursor: 'pointer',
+                transition: 'all 0.18s ease',
+                position: 'relative',
+                transform: isActive ? 'translateY(-2px)' : 'none',
+                userSelect: 'none',
+              }}
+              title={`Click to filter table by ${card.title}`}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div
+                  style={{
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    color: card.color,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.3px',
+                  }}
+                >
+                  {card.title}
+                </div>
+                {isActive && (
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      fontWeight: 800,
+                      background: card.color,
+                      color: '#ffffff',
+                      padding: '2px 7px',
+                      borderRadius: '10px',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.4px',
+                    }}
+                  >
+                    Active View
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
+                {card.count}
+              </div>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                {card.sub}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* ── Filters & Search Toolbar ── */}
@@ -351,13 +506,15 @@ export function CustomerPickupReportPage() {
                 border: '1px solid #cbd5e1',
                 borderRadius: '6px',
                 background: '#fff',
+                cursor: 'pointer',
               }}
             >
-              <option value="all">All Statuses ({totalCount})</option>
-              <option value="pending">Pending ({pendingCount})</option>
+              <option value="requested">Requested ({newRequestedCount})</option>
+              <option value="pending_rider">Pending Rider ({pendingRiderCount})</option>
               <option value="assigned">Rider Assigned ({assignedCount})</option>
               <option value="picked_up">Picked Up ({pickedUpCount})</option>
               <option value="received_at_branch">Received at Hub ({receivedCount})</option>
+              <option value="all">All Pickup Requests ({totalCount})</option>
             </select>
           </div>
         </div>
@@ -394,8 +551,24 @@ export function CustomerPickupReportPage() {
               return (
                 <tr key={req.id}>
                   {/* 1. Request ID */}
-                  <td className="mono" style={{ fontWeight: 800, color: '#dc2626' }}>
-                    #{req.id}
+                  <td className="mono" style={{ fontWeight: 800 }}>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenWorkflowDetails(req)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: 0,
+                        font: 'inherit',
+                        fontWeight: 800,
+                        color: '#dc2626',
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                      }}
+                      title="View 5-Step Workflow Details"
+                    >
+                      #{req.id}
+                    </button>
                   </td>
 
                   {/* 2. Date & Schedule */}
@@ -478,28 +651,58 @@ export function CustomerPickupReportPage() {
                     </div>
                   </td>
 
-                  {/* 7. Status */}
+                  {/* 7. 5-Stage Status & Timestamps */}
                   <td>
-                    {isPending && (
-                      <span className="order-status-pill pickup-process" style={{ background: '#fef3c7', color: '#92400e' }}>
-                        Pending Rider
-                      </span>
-                    )}
-                    {isAssigned && (
-                      <span className="order-status-pill at-destination-hub" style={{ background: '#eff6ff', color: '#1e40af' }}>
-                        Rider Assigned
-                      </span>
-                    )}
-                    {isPickedUp && (
-                      <span className="order-status-pill delivered" style={{ background: '#dcfce7', color: '#166534' }}>
-                        Picked Up
-                      </span>
-                    )}
-                    {isReceived && (
-                      <span className="order-status-pill at-destination-hub" style={{ background: '#e0f2fe', color: '#0369a1' }}>
-                        Received at Hub
-                      </span>
-                    )}
+                    <div
+                      onClick={() => handleOpenWorkflowDetails(req)}
+                      style={{ cursor: 'pointer', display: 'inline-block' }}
+                      title="Click to view 5-stage pickup lifecycle audit trail"
+                    >
+                      {req.status === 'received_at_branch' && (
+                        <span className="order-status-pill at-destination-hub" style={{ background: '#e0f2fe', color: '#0369a1', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <CheckCircle2 size={12} />
+                          <span>5/5 Received at Hub</span>
+                        </span>
+                      )}
+                      {req.status === 'picked_up' && (
+                        <span className="order-status-pill delivered" style={{ background: '#dcfce7', color: '#166534', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <Truck size={12} />
+                          <span>4/5 Picked Up</span>
+                        </span>
+                      )}
+                      {req.status === 'assigned' && (
+                        <span className="order-status-pill at-destination-hub" style={{ background: '#eff6ff', color: '#1e40af', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <Clock3 size={12} />
+                          <span>3/5 Rider Assigned</span>
+                        </span>
+                      )}
+                      {req.status === 'accepted' && (
+                        <span className="order-status-pill at-destination-hub" style={{ background: '#f3e8ff', color: '#6b21a8', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <CheckCircle2 size={12} />
+                          <span>2/5 Request Accepted</span>
+                        </span>
+                      )}
+                      {(!req.status || req.status === 'pending') && (
+                        <span className="order-status-pill pickup-process" style={{ background: '#fef3c7', color: '#92400e', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <Clock3 size={12} />
+                          <span>1/5 Pickup Requested</span>
+                        </span>
+                      )}
+                    </div>
+
+                    <div style={{ fontSize: '10.5px', marginTop: '4px', lineHeight: 1.3 }}>
+                      {req.received_at_branch_at ? (
+                        <div style={{ color: '#0369a1', fontWeight: 600 }}>Arrived: {formatDateTimeAMPM(req.received_at_branch_at)}</div>
+                      ) : req.picked_up_at ? (
+                        <div style={{ color: '#166534', fontWeight: 600 }}>Collected: {formatDateTimeAMPM(req.picked_up_at)}</div>
+                      ) : req.assigned_at ? (
+                        <div style={{ color: '#1e40af', fontWeight: 600 }}>Assigned: {formatDateTimeAMPM(req.assigned_at)}</div>
+                      ) : req.accepted_at ? (
+                        <div style={{ color: '#6b21a8', fontWeight: 600 }}>Accepted: {formatDateTimeAMPM(req.accepted_at)}</div>
+                      ) : (
+                        <div style={{ color: '#64748b' }}>Submitted: {req.created_at ? formatDateTimeAMPM(req.created_at) : 'Today'}</div>
+                      )}
+                    </div>
                   </td>
 
                   {/* 8. Assigned Rider */}
@@ -527,16 +730,15 @@ export function CustomerPickupReportPage() {
 
                   {/* 9. Actions */}
                   <td style={{ textAlign: 'center' }}>
-                    {(req.tracking_numbers || []).length > 0 && (
-                      <button
-                        type="button"
-                        className="action-icon-btn"
-                        onClick={() => handleOpenShipment(req.tracking_numbers[0])}
-                        title="View First Order Details"
-                      >
-                        <Eye size={14} />
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="action-icon-btn"
+                      onClick={() => handleOpenWorkflowDetails(req)}
+                      title="View 5-Stage Lifecycle & Tracking Timeline"
+                      style={{ color: '#dc2626', background: '#fef2f2', borderColor: '#fecaca' }}
+                    >
+                      <Eye size={14} />
+                    </button>
                   </td>
                 </tr>
               );
@@ -545,7 +747,20 @@ export function CustomerPickupReportPage() {
             {filteredRequests.length === 0 && (
               <tr>
                 <td colSpan="9" style={{ padding: '36px 20px', textAlign: 'center', color: '#64748b' }}>
-                  {loading ? 'Loading pickup requests from D1...' : 'No pickup requests found matching criteria.'}
+                  {loading ? (
+                    'Loading pickup requests from D1...'
+                  ) : statusFilter === 'requested' ? (
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '13.5px', color: '#0f172a', marginBottom: '4px' }}>
+                        No New Pickup Requests in 'Requested'
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#64748b' }}>
+                        There are currently no new pickup requests awaiting branch acceptance. Click "+ Request Pickup" above to submit a new pickup request.
+                      </div>
+                    </div>
+                  ) : (
+                    'No pickup requests found matching criteria.'
+                  )}
                 </td>
               </tr>
             )}

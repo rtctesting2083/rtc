@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS shipments (
   invoice_id INTEGER,
   notes TEXT,
   tracking_events_json TEXT,
+  status_updated_at TEXT,
   created_at TEXT NOT NULL,
   delivered_at TEXT,
   updated_at TEXT,

@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { useOutletContext, useSearchParams } from 'react-router-dom';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { useOutletContext, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Printer,
   Download,
@@ -8,6 +8,7 @@ import {
   Eye,
   ChevronsRight,
   RotateCcw,
+  RefreshCw,
   Check,
   Search,
   Filter,
@@ -18,18 +19,388 @@ import {
   FileText,
   X,
   Truck,
+  Copy,
 } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { useAuth } from '../../context/AuthContext';
 import { useModal } from '../../context/ModalContext';
 import { ShipmentDetailModal } from '../../components/common/ShipmentDetailModal';
+import { CreateOrderModal } from '../../components/customer/CreateOrderModal';
 import { OrderCommentsModal } from '../../components/common/OrderCommentsSection';
 import { VendorPickupRequestModal } from '../../components/customer/VendorPickupRequestModal';
 import { printShipmentLabel } from '../../utils/print';
-import { fmtMoney, fmtDate } from '../../utils/helpers';
+import { fmtMoney, fmtDate, formatAddressWithDistrictProvince, getProvinceForDistrict } from '../../utils/helpers';
 import { d1Api } from '../../utils/d1Api';
 
+// Helper to normalize branch and district strings for robust matching
+const cleanBranchStr = (s) =>
+  String(s || '')
+    .toLowerCase()
+    .replace(/[\(\)\[\],.-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+// ── Searchable Branch Filter with Input Directly Within the Box ──
+function SearchableBranchFilter({
+  value,
+  onChange,
+  branches = [],
+  placeholder = 'Select Branch',
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const wrapperRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const selectedBranch = useMemo(() => {
+    if (!value || value === 'all') return null;
+    const target = String(value).toLowerCase().trim();
+    const targetClean = cleanBranchStr(value);
+    return branches.find(
+      (b) =>
+        String(b.id) === target ||
+        b.name?.toLowerCase().trim() === target ||
+        cleanBranchStr(b.name) === targetClean ||
+        (targetClean.length > 3 && (cleanBranchStr(b.name).includes(targetClean) || targetClean.includes(cleanBranchStr(b.name))))
+    );
+  }, [branches, value]);
+
+  // Keep input display in sync with selected value when dropdown is closed
+  useEffect(() => {
+    if (!isOpen) {
+      if (selectedBranch) {
+        setQuery(selectedBranch.name);
+      } else if (value && value !== 'all') {
+        setQuery(value);
+      } else {
+        setQuery('');
+      }
+    }
+  }, [selectedBranch, value, isOpen]);
+
+  // Close when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Filter branches by branch name, district, province, municipality, or code
+  const filteredBranches = useMemo(() => {
+    if (!query.trim() || (selectedBranch && query.trim() === selectedBranch.name?.trim())) {
+      return branches;
+    }
+    const q = cleanBranchStr(query);
+    return branches.filter((b) => {
+      const name = cleanBranchStr(b.name);
+      const district = cleanBranchStr(b.district || b.address?.district);
+      const province = cleanBranchStr(b.province || b.address?.province);
+      const municipality = cleanBranchStr(b.municipality || b.address?.municipality);
+      const code = cleanBranchStr(b.code);
+      return (
+        name.includes(q) ||
+        district.includes(q) ||
+        province.includes(q) ||
+        municipality.includes(q) ||
+        code.includes(q) ||
+        q.includes(name) ||
+        (district && q.includes(district))
+      );
+    });
+  }, [branches, query, selectedBranch]);
+
+  const handleSelect = (branch) => {
+    if (!branch || branch === 'all') {
+      onChange('all', null);
+      setQuery('');
+    } else {
+      const bName = typeof branch === 'string' ? branch : branch.name;
+      onChange(bName, typeof branch === 'object' ? branch : null);
+      setQuery(bName);
+    }
+    setIsOpen(false);
+  };
+
+  const handleClear = (e) => {
+    e.stopPropagation();
+    onChange('all', null);
+    setQuery('');
+    setIsOpen(false);
+    inputRef.current?.focus();
+  };
+
+  return (
+    <div
+      ref={wrapperRef}
+      style={{
+        position: 'relative',
+        width: '100%',
+      }}
+    >
+      {/* Box with search input directly inside */}
+      <div
+        onClick={() => {
+          setIsOpen(true);
+          inputRef.current?.focus();
+        }}
+        style={{
+          position: 'relative',
+          display: 'flex',
+          alignItems: 'center',
+          width: '100%',
+          cursor: 'pointer',
+        }}
+      >
+        <Search
+          size={13}
+          style={{
+            position: 'absolute',
+            left: '9px',
+            color: '#94a3b8',
+            pointerEvents: 'none',
+          }}
+        />
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          placeholder={placeholder}
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsOpen(true);
+          }}
+          onFocus={() => {
+            setIsOpen(true);
+            if (selectedBranch && query === selectedBranch.name) {
+              inputRef.current?.select();
+            }
+          }}
+          onChange={(e) => {
+            const val = e.target.value;
+            setQuery(val);
+            if (!isOpen) setIsOpen(true);
+            if (!val.trim()) {
+              onChange('all', null);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setIsOpen(false);
+            } else if (e.key === 'Enter') {
+              e.preventDefault();
+              if (filteredBranches.length > 0) {
+                handleSelect(filteredBranches[0]);
+              } else if (query.trim()) {
+                handleSelect(query.trim());
+              }
+              setIsOpen(false);
+            } else if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              if (!isOpen) setIsOpen(true);
+            }
+          }}
+          style={{
+            width: '100%',
+            height: '34px',
+            background: '#ffffff',
+            border: isOpen ? '1px solid var(--theme-color, #dc2626)' : '1px solid #cbd5e1',
+            borderRadius: '6px',
+            paddingLeft: '28px',
+            paddingRight: (selectedBranch || query) ? '44px' : '26px',
+            fontSize: '12px',
+            fontWeight: selectedBranch && query === selectedBranch.name ? 600 : 400,
+            color: '#1e293b',
+            outline: 'none',
+            boxSizing: 'border-box',
+            boxShadow: isOpen ? '0 0 0 2px rgba(220, 38, 38, 0.12)' : 'none',
+            transition: 'all 0.15s ease',
+            textOverflow: 'ellipsis',
+          }}
+        />
+
+        {/* Clear and Dropdown Arrow actions */}
+        <div
+          style={{
+            position: 'absolute',
+            right: '7px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '2px',
+          }}
+        >
+          {(selectedBranch || query) && (
+            <button
+              type="button"
+              onClick={handleClear}
+              title="Clear Branch"
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#94a3b8',
+                padding: '2px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '50%',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#dc2626')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
+            >
+              <X size={13} />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsOpen((prev) => !prev);
+              inputRef.current?.focus();
+            }}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#64748b',
+              padding: '2px',
+              fontSize: '10px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              transform: isOpen ? 'rotate(180deg)' : 'none',
+              transition: 'transform 0.15s ease',
+            }}
+          >
+            ▼
+          </button>
+        </div>
+      </div>
+
+      {/* Dropdown Options List */}
+      {isOpen && (
+        <div
+          onMouseDown={(e) => e.stopPropagation()}
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            left: 0,
+            right: 0,
+            minWidth: '280px',
+            background: '#ffffff',
+            border: '1px solid #cbd5e1',
+            borderRadius: '8px',
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+            zIndex: 99999,
+            overflow: 'hidden',
+          }}
+        >
+          {query.trim() && (
+            <div
+              style={{
+                padding: '6px 12px',
+                background: '#f8fafc',
+                borderBottom: '1px solid #f1f5f9',
+                fontSize: '11px',
+                color: '#64748b',
+                display: 'flex',
+                justifyContent: 'space-between',
+              }}
+            >
+              <span>{filteredBranches.length} branch{filteredBranches.length === 1 ? '' : 'es'} found</span>
+              <span style={{ color: 'var(--theme-color, #dc2626)', fontWeight: 600 }}>Filtering: "{query}"</span>
+            </div>
+          )}
+
+          <div
+            style={{
+              maxHeight: '220px',
+              overflowY: 'auto',
+              padding: '4px 0',
+            }}
+          >
+            {/* All Branches option */}
+            <div
+              onClick={() => handleSelect('all')}
+              style={{
+                padding: '7px 12px',
+                fontSize: '12px',
+                cursor: 'pointer',
+                background: !selectedBranch ? '#f1f5f9' : 'transparent',
+                fontWeight: !selectedBranch ? 600 : 400,
+                color: !selectedBranch ? 'var(--theme-color, #dc2626)' : '#475569',
+                borderBottom: '1px dashed #f1f5f9',
+              }}
+              onMouseEnter={(e) => {
+                if (selectedBranch) e.currentTarget.style.background = '#f8fafc';
+              }}
+              onMouseLeave={(e) => {
+                if (selectedBranch) e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              All Branches
+            </div>
+
+            {filteredBranches.length > 0 ? (
+              filteredBranches.map((b) => {
+                const isSelected = selectedBranch && String(selectedBranch.id) === String(b.id);
+                const dist = b.district || b.address?.district || '';
+                const prov = b.province || b.address?.province || '';
+                return (
+                  <div
+                    key={b.id}
+                    onClick={() => handleSelect(b)}
+                    style={{
+                      padding: '7px 12px',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      background: isSelected ? 'rgba(220, 38, 38, 0.08)' : 'transparent',
+                      color: isSelected ? 'var(--theme-color, #dc2626)' : '#1e293b',
+                      fontWeight: isSelected ? 600 : 500,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '2px',
+                      transition: 'background 0.1s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isSelected) e.currentTarget.style.background = '#f8fafc';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSelected) e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    <div>{b.name}</div>
+                    {(dist || prov) && (
+                      <div style={{ fontSize: '10.5px', color: '#64748b' }}>
+                        📍 {dist ? `${dist}, ` : ''}{prov || 'Nepal'}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            ) : (
+              <div
+                style={{
+                  padding: '12px',
+                  fontSize: '12px',
+                  color: '#94a3b8',
+                  textAlign: 'center',
+                }}
+              >
+                No branches found matching "{query}"
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function CustomerOrdersPage() {
+  const navigate = useNavigate();
   const { session } = useAuth() || {};
   const { currentCustomer, handleOpenCreateOrder } = useOutletContext() || {};
   const effectiveCustId = currentCustomer?.id || session?.customerId;
@@ -61,6 +432,7 @@ export function CustomerOrdersPage() {
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const datePickerRef = React.useRef(null);
 
+  const [searchOrderId, setSearchOrderId] = useState('');
   const [selectedOrderType, setSelectedOrderType] = useState('all');
   const [selectedHub, setSelectedHub] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
@@ -68,10 +440,174 @@ export function CustomerOrdersPage() {
     startDate: '',
     endDate: '',
     dateLabel: '',
+    orderId: '',
     orderType: 'all',
     hub: 'all',
     status: 'all',
   });
+
+  // Draft filter states for the Advanced Filter Bar
+  const [draftHub, setDraftHub] = useState('all');
+  const [draftStatus, setDraftStatus] = useState('all');
+  const [draftOrderType, setDraftOrderType] = useState('all');
+  const [draftSearch, setDraftSearch] = useState('');
+  const [draftDatePreset, setDraftDatePreset] = useState('all');
+  const [copiedTracking, setCopiedTracking] = useState(null);
+
+  const copyTracking = (trk, id) => {
+    if (!trk) return;
+    navigator.clipboard?.writeText(trk);
+    setCopiedTracking(id);
+    setTimeout(() => setCopiedTracking(null), 2000);
+  };
+
+  const handleApplyAdvancedFilters = (e) => {
+    if (e) e.preventDefault();
+    setSelectedHub(draftHub);
+    setSelectedStatus(draftStatus);
+    setSelectedOrderType(draftOrderType);
+    setSearchOrderId(draftSearch.trim());
+
+    let sDate = '';
+    let eDate = '';
+    let dLabel = '';
+
+    if (draftDatePreset === 'today') {
+      const today = new Date().toISOString().split('T')[0];
+      sDate = today;
+      eDate = today;
+      dLabel = 'Today';
+    } else if (draftDatePreset === 'yesterday') {
+      const y = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+      sDate = y;
+      eDate = y;
+      dLabel = 'Yesterday';
+    } else if (draftDatePreset === '7days') {
+      const past = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+      const today = new Date().toISOString().split('T')[0];
+      sDate = past;
+      eDate = today;
+      dLabel = 'Last 7 Days';
+    } else if (draftDatePreset === '30days') {
+      const past = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+      const today = new Date().toISOString().split('T')[0];
+      sDate = past;
+      eDate = today;
+      dLabel = 'Last 30 Days';
+    } else if (draftDatePreset === 'this_month') {
+      const now = new Date();
+      sDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+      eDate = now.toISOString().split('T')[0];
+      dLabel = 'This Month';
+    }
+
+    setStartDate(sDate);
+    setEndDate(eDate);
+    setDatePreset(draftDatePreset);
+
+    setAppliedFilters({
+      startDate: sDate,
+      endDate: eDate,
+      dateLabel: dLabel,
+      orderId: draftSearch.trim(),
+      orderType: draftOrderType,
+      hub: draftHub,
+      status: draftStatus,
+    });
+  };
+
+  const handleClearAdvancedFilters = () => {
+    setDraftHub('all');
+    setDraftStatus('all');
+    setDraftOrderType('all');
+    setDraftSearch('');
+    setDraftDatePreset('all');
+
+    setSelectedHub('all');
+    setSelectedStatus('all');
+    setSelectedOrderType('all');
+    setSearchOrderId('');
+    setStartDate('');
+    setEndDate('');
+    setDatePreset('');
+
+    setAppliedFilters({
+      startDate: '',
+      endDate: '',
+      dateLabel: '',
+      orderId: '',
+      orderType: 'all',
+      hub: 'all',
+      status: 'all',
+    });
+  };
+
+  const handleBranchChange = (branchNameOrId, branchObj = null) => {
+    const val = branchNameOrId || 'all';
+    setSelectedHub(val);
+    // Instant live filter update when user selects or clears branch!
+    setAppliedFilters((prev) => ({
+      ...prev,
+      hub: val,
+    }));
+  };
+
+  const [directBranches, setDirectBranches] = useState([]);
+
+  useEffect(() => {
+    d1Api.getBranches(company?.id || 1).then((res) => {
+      if (Array.isArray(res) && res.length > 0) {
+        setDirectBranches(res);
+      }
+    }).catch(() => {});
+  }, [company?.id]);
+
+  // Unified branch repository combining CompanyContext branches and directly fetched D1 branches
+  const allKnownBranches = useMemo(() => {
+    const map = new Map();
+    (branches || []).forEach((b) => {
+      if (b && b.id) map.set(String(b.id), b);
+    });
+    (directBranches || []).forEach((b) => {
+      if (b && b.id) {
+        const existing = map.get(String(b.id)) || {};
+        map.set(String(b.id), { ...b, ...existing });
+      }
+    });
+    return Array.from(map.values());
+  }, [branches, directBranches]);
+
+  // Filter vendor branches (hide internal province/district main hubs and disabled branches)
+  const vendorBranches = useMemo(() => {
+    const sourceList = allKnownBranches.length > 0 ? allKnownBranches : ((branches && branches.length > 0) ? branches : directBranches);
+    return (sourceList || [])
+      .filter((b) => {
+        if (!b) return false;
+        if (b.status === 'inactive' || b.status === 'disabled') return false;
+        if (b.tier === 1 || b.tier === 2) return false;
+        const bType = (b.branch_type || '').toLowerCase();
+        if (bType === 'province_hub' || bType === 'district_hub' || bType === 'province' || bType === 'district') {
+          return false;
+        }
+        const name = (b.name || '').toLowerCase();
+        if (name.includes('province hub') || name.includes('district hub') || name.includes('district sub-hub')) {
+          return false;
+        }
+        return true;
+      })
+      .map((b) => {
+        const dist = b.district || b.address?.district || '';
+        let displayName = b.name || '';
+        if (dist && !displayName.includes('(')) {
+          displayName = `${displayName} ( ${dist} )`;
+        }
+        return {
+          ...b,
+          name: displayName,
+        };
+      })
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [allKnownBranches, branches, directBranches]);
 
   // Close date picker when clicking outside
   useEffect(() => {
@@ -87,7 +623,7 @@ export function CustomerOrdersPage() {
   }, [datePickerOpen]);
 
   // Quick Preset calculations
-  const applyPreset = (presetKey) => {
+  const applyPreset = (presetKey, autoApply = false) => {
     const now = new Date();
     const pad2 = (n) => String(n).padStart(2, '0');
     const toYMD = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
@@ -121,6 +657,17 @@ export function CustomerOrdersPage() {
     setStartDate(start);
     setEndDate(end);
     setDatePreset(presetKey);
+
+    if (autoApply) {
+      const label = start === end ? `${presetKey.charAt(0).toUpperCase() + presetKey.slice(1)} (${start})` : `${start} to ${end}`;
+      setAppliedFilters((prev) => ({
+        ...prev,
+        startDate: start,
+        endDate: end,
+        dateLabel: label,
+      }));
+      setDatePickerOpen(false);
+    }
   };
 
   // Formatted date label for input
@@ -147,6 +694,17 @@ export function CustomerOrdersPage() {
   const [loading, setLoading] = useState(false);
   const [directOrders, setDirectOrders] = useState([]);
   const fetchedCustIdRef = React.useRef(null);
+
+  const handleOpenEditOrder = (order) => {
+    const raw = order.rawShipment || order;
+    const status = String(raw.status || '').toLowerCase();
+    const pickupDoneStatuses = ['picked_up', 'received_at_branch', 'at_branch', 'in_transit', 'out_for_delivery', 'delivered', 'cancelled', 'returned'];
+    if (pickupDoneStatuses.includes(status)) {
+      alert('This order cannot be edited because pickup has already occurred or the parcel is in transit.');
+      return;
+    }
+    navigate(`/customer/orders/edit/${raw.id}`);
+  };
 
   // Inline Product Description Editing State
   const [editingOrderId, setEditingOrderId] = useState(null);
@@ -300,10 +858,33 @@ export function CustomerOrdersPage() {
 
     return Array.from(mergedMap.values())
       .map((s) => {
-        const destB = s.destination_branch_id
-          ? typeof findBranch === 'function' ? findBranch(s.destination_branch_id) : null
-          : null;
-        const destHubName = destB?.name || s.dest_branch_name || s.city || 'Kathmandu Hub';
+        const destB = (s.destination_branch_id
+          ? allKnownBranches.find((b) => String(b.id) === String(s.destination_branch_id)) ||
+            (typeof findBranch === 'function' ? findBranch(s.destination_branch_id) : null)
+          : null) ||
+          allKnownBranches.find((b) => {
+            const bName = cleanBranchStr(b.name);
+            const sName = cleanBranchStr(s.dest_branch_name || s.destination_hub || s.city);
+            return bName && sName && (bName === sName || bName.includes(sName) || sName.includes(bName));
+          }) || null;
+
+        let destDistrict = destB?.district || destB?.address?.district || '';
+        if (!destDistrict && destB?.name) {
+          const m = destB.name.match(/\(\s*([^)]+?)\s*\)/);
+          if (m && m[1]) destDistrict = m[1].trim();
+        }
+        let destProvince = destB?.province || destB?.address?.province || '';
+        if (!destProvince && destDistrict) {
+          destProvince = getProvinceForDistrict(destDistrict);
+        }
+
+        const destHubName = destB?.name
+          ? (destB.name.includes('(') ? destB.name : (destDistrict ? `${destB.name} ( ${destDistrict} )` : destB.name))
+          : (s.dest_branch_name || s.city || 'Kathmandu Hub');
+        const formattedAddress = formatAddressWithDistrictProvince(
+          s.delivery_address || s.city,
+          destB || { name: s.dest_branch_name || s.destination_hub, district: destDistrict, province: destProvince }
+        );
 
         let statusLabel = 'Pending';
         let statusType = 'pending';
@@ -344,33 +925,101 @@ export function CustomerOrdersPage() {
             })
           : '—';
 
+        // Whenever the status changes, add the date of that day below the status
+        let statusDateRaw = s.status_updated_at;
+
+        // If not directly present, check tracking events for the latest event matching current status
+        if (!statusDateRaw && (s.tracking_events_json || s.tracking_events)) {
+          try {
+            const events = s.tracking_events || (typeof s.tracking_events_json === 'string' ? JSON.parse(s.tracking_events_json) : s.tracking_events_json);
+            if (Array.isArray(events) && events.length > 0) {
+              const curStatusNorm = String(s.status || '').toLowerCase().replace(/[\s_-]+/g, '');
+              const matchedEvent = [...events].reverse().find((ev) => {
+                const evStatusNorm = String(ev.status || '').toLowerCase().replace(/[\s_-]+/g, '');
+                return evStatusNorm === curStatusNorm;
+              }) || events[events.length - 1];
+
+              if (matchedEvent && (matchedEvent.at || matchedEvent.timestamp || matchedEvent.time)) {
+                statusDateRaw = matchedEvent.at || matchedEvent.timestamp || matchedEvent.time;
+              }
+            }
+          } catch (e) {}
+        }
+
+        // If delivered and delivered_at is present
+        if (!statusDateRaw && s.status === 'delivered' && s.delivered_at) {
+          statusDateRaw = s.delivered_at;
+        }
+
+        // If status changed beyond initial pending and updated_at exists
+        if (!statusDateRaw && s.status && s.status !== 'pending' && s.updated_at) {
+          statusDateRaw = s.updated_at;
+        }
+
+        // Fallback to order creation date
+        if (!statusDateRaw) {
+          statusDateRaw = s.created_at;
+        }
+
+        const statusDateStr = statusDateRaw
+          ? new Date(statusDateRaw).toLocaleDateString('en-US', {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+            })
+          : dateStr;
+
+        const realRefId = (s.vendor_reference_id && typeof s.vendor_reference_id === 'string' && s.vendor_reference_id.trim() && s.vendor_reference_id.trim() !== 'ref-')
+          ? s.vendor_reference_id.trim()
+          : '';
+
+        const notesStr = String(s.notes || '');
+        const pkgDescStr = String(s.package_description || '');
+        let parsedExchangeReason = '';
+        let parsedReturnReason = '';
+        if (/\[EXCHANGE ORDER\]/i.test(notesStr) || String(s.order_type || '').toLowerCase().includes('exchange')) {
+          const m = notesStr.match(/Reason:\s*([^|]+)/i) || pkgDescStr.match(/Reason:\s*([^|)]+)/i);
+          if (m) parsedExchangeReason = m[1].trim();
+        }
+        if (/\[REVERSE ORDER\]/i.test(notesStr) || String(s.order_type || '').toLowerCase().includes('return') || String(s.order_type || '').toLowerCase().includes('reverse')) {
+          const m = notesStr.match(/Reason:\s*([^|]+)/i) || pkgDescStr.match(/\(([^)]+)\)$/);
+          if (m) parsedReturnReason = m[1].trim();
+        }
+
         return {
           id: s.id,
-          tracking_number: s.tracking_number || `RTC-20261102-${s.id || 1}`,
-          vendor_reference_id: s.vendor_reference_id
-            ? (String(s.vendor_reference_id).startsWith('ref-') ? s.vendor_reference_id : `ref-${s.vendor_reference_id}`)
-            : 'ref-',
+          tracking_number: s.tracking_number || '',
+          vendor_reference_id: realRefId,
           created_at: s.created_at,
           created_display: dateStr,
           status_label: statusLabel,
-          status_date: dateStr,
+          status_date: statusDateStr,
           status_type: statusType,
           receiver_name: s.receiver_name || 'Customer',
           receiver_phone: s.receiver_phone || '',
           delivery_address: s.delivery_address || s.city || '—',
+          formatted_address: formattedAddress,
           product_description: (s.package_description || s.item_description || '').trim() || '—',
           package_description: (s.package_description || s.item_description || '').trim(),
           order_type: s.order_type || 'Delivery Order',
-          order_type_kind: String(s.order_type || '').toLowerCase().includes('return') ? 'return' : 'forward',
+          order_type_kind: String(s.order_type || '').toLowerCase().includes('exchange')
+            ? 'exchange'
+            : (String(s.order_type || '').toLowerCase().includes('return') || String(s.order_type || '').toLowerCase().includes('reverse'))
+              ? 'return'
+              : 'forward',
+          exchange_reason: parsedExchangeReason,
+          return_reason: parsedReturnReason,
           destination_hub: destHubName,
           destination_branch_id: s.destination_branch_id,
+          destination_district: destDistrict,
+          destination_province: destProvince,
           cod_amount: Number(s.cod_amount) || 0,
           delivery_fee: Number(s.delivery_fee) || 0,
           last_comment: s.notes || '-',
           rawShipment: s,
         };
       });
-  }, [shipments, directOrders, effectiveCustId, currentCustomer?.phone, currentCustomer?.name, findBranch]);
+  }, [shipments, directOrders, effectiveCustId, currentCustomer?.phone, currentCustomer?.name, findBranch, branches, allKnownBranches]);
 
   // Pure live orders directly from Cloudflare D1 (Zero static dummy data)
   const allOrders = liveCustomerOrders;
@@ -381,6 +1030,7 @@ export function CustomerOrdersPage() {
       startDate,
       endDate,
       dateLabel: dateRangeDisplay,
+      orderId: searchOrderId.trim(),
       orderType: selectedOrderType,
       hub: selectedHub,
       status: selectedStatus,
@@ -393,6 +1043,7 @@ export function CustomerOrdersPage() {
     setStartDate('');
     setEndDate('');
     setDatePreset('');
+    setSearchOrderId('');
     setSelectedOrderType('all');
     setSelectedHub('all');
     setSelectedStatus('all');
@@ -400,6 +1051,7 @@ export function CustomerOrdersPage() {
       startDate: '',
       endDate: '',
       dateLabel: '',
+      orderId: '',
       orderType: 'all',
       hub: 'all',
       status: 'all',
@@ -410,46 +1062,135 @@ export function CustomerOrdersPage() {
   // Filtered orders based on applied filters
   const displayOrders = useMemo(() => {
     return allOrders.filter((order) => {
+      // 0. Order ID search filter
+      if (appliedFilters.orderId) {
+        const qId = appliedFilters.orderId.toLowerCase().trim();
+        const trk = String(order.tracking_number || '').toLowerCase();
+        const refId = String(order.vendor_reference_id || '').toLowerCase();
+        if (!trk.includes(qId) && !refId.includes(qId)) {
+          return false;
+        }
+      }
+
       // 1. Date Range Filter
       if (appliedFilters.startDate || appliedFilters.endDate) {
         if (!order.created_at) return false;
-        const d = new Date(order.created_at);
-        if (isNaN(d.getTime())) return false;
+        
+        const rawStr = String(order.created_at || '').trim();
+        const datesToCheck = new Set();
 
-        const pad2 = (n) => String(n).padStart(2, '0');
-        const orderDateStr = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+        const m = rawStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (m) {
+          datesToCheck.add(`${m[1]}-${m[2]}-${m[3]}`);
+        }
 
-        if (appliedFilters.startDate && orderDateStr < appliedFilters.startDate) {
-          return false;
+        let d = null;
+        if (/^\d{10,13}$/.test(rawStr)) {
+          const num = Number(rawStr);
+          d = new Date(num < 1e11 ? num * 1000 : num);
+        } else {
+          d = new Date(rawStr);
         }
-        if (appliedFilters.endDate && orderDateStr > appliedFilters.endDate) {
-          return false;
+
+        if (d && !isNaN(d.getTime())) {
+          const pad2 = (n) => String(n).padStart(2, '0');
+          datesToCheck.add(`${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`);
+          datesToCheck.add(`${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`);
         }
+
+        if (order.status_date) {
+          const dStat = new Date(order.status_date);
+          if (!isNaN(dStat.getTime())) {
+            const pad2 = (n) => String(n).padStart(2, '0');
+            datesToCheck.add(`${dStat.getFullYear()}-${pad2(dStat.getMonth() + 1)}-${pad2(dStat.getDate())}`);
+          }
+        }
+
+        if (datesToCheck.size === 0) return false;
+
+        const anyMatches = Array.from(datesToCheck).some((dateStr) => {
+          if (appliedFilters.startDate && dateStr < appliedFilters.startDate) return false;
+          if (appliedFilters.endDate && dateStr > appliedFilters.endDate) return false;
+          return true;
+        });
+
+        if (!anyMatches) return false;
       }
 
       // 2. Order type filter
       if (appliedFilters.orderType !== 'all') {
-        if (
-          appliedFilters.orderType.toLowerCase() === 'delivery order' &&
-          order.order_type_kind !== 'forward'
-        )
-          return false;
-        if (
-          appliedFilters.orderType.toLowerCase() === 'return order' &&
-          order.order_type_kind !== 'return'
-        )
-          return false;
+        const sel = appliedFilters.orderType.toLowerCase();
+        const oType = String(order.order_type || '').toLowerCase();
+        if (sel === 'delivery order' || sel === 'forward') {
+          if (order.order_type_kind !== 'forward') return false;
+        } else if (sel.includes('exchange')) {
+          if (order.order_type_kind !== 'exchange' && !oType.includes('exchange')) return false;
+        } else if (sel.includes('return') || sel.includes('reverse')) {
+          if (order.order_type_kind !== 'return' && !oType.includes('return') && !oType.includes('reverse')) return false;
+        } else {
+          if (!oType.includes(sel) && !sel.includes(oType)) return false;
+        }
       }
 
-      // 3. Hub filter
-      if (appliedFilters.hub !== 'all') {
-        if (
-          order.destination_hub?.toLowerCase() !== appliedFilters.hub.toLowerCase()
-        )
-          return false;
+      // 3. Branches filter
+      if (appliedFilters.hub && appliedFilters.hub !== 'all') {
+        const rawTarget = String(appliedFilters.hub).trim();
+        const cleanTarget = cleanBranchStr(rawTarget);
+        if (cleanTarget && cleanTarget !== 'all') {
+          // Find matching branch in vendorBranches or allKnownBranches
+          const matchedBranch = (vendorBranches || []).find(
+            (b) =>
+              String(b.id) === rawTarget ||
+              cleanBranchStr(b.name) === cleanTarget ||
+              (cleanTarget.length > 3 && (cleanBranchStr(b.name).includes(cleanTarget) || cleanTarget.includes(cleanBranchStr(b.name))))
+          ) || (allKnownBranches || []).find(
+            (b) =>
+              String(b.id) === rawTarget ||
+              cleanBranchStr(b.name) === cleanTarget
+          );
+
+          let isBranchMatch = false;
+
+          // 1. Direct branch ID match
+          if (matchedBranch && Number(order.destination_branch_id) === Number(matchedBranch.id)) {
+            isBranchMatch = true;
+          } else if (String(order.destination_branch_id) === rawTarget) {
+            isBranchMatch = true;
+          } else {
+            // 2. Name & address matching
+            const destNorm = cleanBranchStr(order.destination_hub);
+            const rawBranchNorm = cleanBranchStr(order.rawShipment?.dest_branch_name);
+            const distNorm = cleanBranchStr(order.destination_district);
+            const provNorm = cleanBranchStr(order.destination_province);
+            const addrNorm = cleanBranchStr(order.formatted_address || order.delivery_address);
+            const branchDistNorm = cleanBranchStr(matchedBranch?.district || matchedBranch?.address?.district);
+
+            const matchesName =
+              destNorm === cleanTarget ||
+              destNorm.includes(cleanTarget) ||
+              cleanTarget.includes(destNorm) ||
+              rawBranchNorm === cleanTarget ||
+              rawBranchNorm.includes(cleanTarget) ||
+              cleanTarget.includes(rawBranchNorm);
+
+            const matchesDistrict =
+              (distNorm && (distNorm === cleanTarget || distNorm.includes(cleanTarget) || cleanTarget.includes(distNorm))) ||
+              (branchDistNorm && distNorm && branchDistNorm === distNorm);
+
+            const matchesProvince = provNorm && (provNorm === cleanTarget || provNorm.includes(cleanTarget) || cleanTarget.includes(provNorm));
+
+            const matchesAddress = addrNorm && addrNorm.includes(cleanTarget);
+
+            if (matchesName || matchesDistrict || matchesProvince || matchesAddress) {
+              isBranchMatch = true;
+            }
+          }
+
+          if (!isBranchMatch) return false;
+        }
       }
 
-      // 4. Status filter
+      // 6. Status filter
       if (appliedFilters.status !== 'all') {
         if (
           order.status_label?.toLowerCase() !== appliedFilters.status.toLowerCase()
@@ -457,9 +1198,61 @@ export function CustomerOrdersPage() {
           return false;
       }
 
+      // 5. Search / Batch filter from query parameters or search bar
+      const qSearch = (searchParams.get('search') || searchParams.get('batch_code') || '').trim().toLowerCase();
+      if (qSearch) {
+        const trk = String(order.tracking_number || '').toLowerCase();
+        const ref = String(order.vendor_reference_id || order.reference_id || '').toLowerCase();
+        const batch = String(order.batch_code || '').toLowerCase();
+        const rName = String(order.receiver_name || '').toLowerCase();
+        const rPhone = String(order.receiver_phone || '').toLowerCase();
+        const dest = String(order.destination_hub || order.destination_branch_name || '').toLowerCase();
+        const matched = trk.includes(qSearch) || ref.includes(qSearch) || batch.includes(qSearch) || rName.includes(qSearch) || rPhone.includes(qSearch) || dest.includes(qSearch);
+        if (!matched) return false;
+      }
+
       return true;
     });
-  }, [allOrders, appliedFilters]);
+  }, [allOrders, appliedFilters, searchParams]);
+
+  // Overall metric summaries (Matches Riders Page Cards)
+  const orderMetrics = useMemo(() => {
+    let total = allOrders.length;
+    let delivered = 0;
+    let inTransit = 0;
+    let pendingOrReturns = 0;
+    let totalCod = 0;
+
+    allOrders.forEach((o) => {
+      const st = String(o.status || o.status_label || '').toLowerCase();
+      totalCod += Number(o.cod_amount) || 0;
+      if (st.includes('delivered')) {
+        delivered++;
+      } else if (
+        st.includes('transit') ||
+        st.includes('out_for_delivery') ||
+        st.includes('dispatched') ||
+        st.includes('received') ||
+        st.includes('picked_up')
+      ) {
+        inTransit++;
+      } else {
+        pendingOrReturns++;
+      }
+    });
+
+    return { total, delivered, inTransit, pendingOrReturns, totalCod };
+  }, [allOrders]);
+
+  const hasActiveFilter = Boolean(
+    appliedFilters.orderId ||
+    appliedFilters.startDate ||
+    appliedFilters.endDate ||
+    appliedFilters.orderType !== 'all' ||
+    appliedFilters.hub !== 'all' ||
+    appliedFilters.status !== 'all' ||
+    searchParams.get('search')
+  );
 
   // Checkbox selection
   const isAllSelected =
@@ -490,7 +1283,14 @@ export function CustomerOrdersPage() {
       };
     openModal(
       `Order ${order.tracking_number}`,
-      <ShipmentDetailModal shipment={raw} onClose={closeModal} />,
+      <ShipmentDetailModal
+        shipment={raw}
+        onClose={closeModal}
+        onEditOrder={(ship) => {
+          closeModal();
+          handleOpenEditOrder(ship);
+        }}
+      />,
       'xxwide',
       { hideHeader: true }
     );
@@ -527,20 +1327,30 @@ export function CustomerOrdersPage() {
     targets.forEach((ord) => handlePrintSingle(ord));
   };
 
-  // Open Vendor Pickup Request Modal
+  // Open Vendor Pickup Request Modal (Pending Orders Only)
   const handleOpenPickupRequest = (singleOrder = null) => {
-    const preselected = singleOrder
+    const rawList = singleOrder
       ? [singleOrder]
       : selectedOrderIds.length > 0
       ? displayOrders.filter((o) => selectedOrderIds.includes(o.id))
       : [];
 
+    const pendingOnly = rawList.filter((o) => {
+      const st = String(o.status || '').toLowerCase().trim();
+      return st === 'pending' && !o.rawShipment?.pickup_request_id;
+    });
+
+    if (rawList.length > 0 && pendingOnly.length === 0) {
+      alert('Pickup requests can only be submitted for Pending orders. The selected orders are not eligible.');
+      return;
+    }
+
     openModal(
       'Request Parcel Pickup from Store',
       <VendorPickupRequestModal
         currentCustomer={currentCustomer}
-        selectedOrders={preselected}
-        allVendorOrders={displayOrders}
+        selectedOrders={pendingOnly}
+        allVendorOrders={displayOrders.filter((o) => String(o.status || '').toLowerCase().trim() === 'pending')}
         onClose={closeModal}
         onSuccess={() => {
           setSelectedOrderIds([]);
@@ -576,7 +1386,7 @@ export function CustomerOrdersPage() {
       o.status_label,
       o.receiver_name,
       o.receiver_phone,
-      o.delivery_address,
+      o.formatted_address || o.delivery_address,
       o.product_description,
       o.order_type,
       o.destination_hub,
@@ -634,7 +1444,7 @@ export function CustomerOrdersPage() {
         <td style="text-align: center;">${idx + 1}</td>
         <td>
           <strong>${o.tracking_number}</strong><br/>
-          <span style="font-size: 10px; color: #64748b;">${o.vendor_reference_id || '—'}</span>
+          ${o.vendor_reference_id ? `<span style="font-size: 10px; color: #64748b;">Ref: ${o.vendor_reference_id}</span>` : ''}
         </td>
         <td>
           <span style="display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; background: #e0f2fe; color: #0369a1;">
@@ -644,7 +1454,7 @@ export function CustomerOrdersPage() {
         <td>
           <strong>${o.receiver_name}</strong><br/>
           <span style="font-size: 10.5px; color: #475569;">${o.receiver_phone || ''}</span><br/>
-          <span style="font-size: 10px; color: #64748b;">${o.delivery_address || '—'}</span>
+          <span style="font-size: 10px; color: #64748b;">${o.formatted_address || o.delivery_address || '—'}</span>
         </td>
         <td style="max-width: 180px;">
           <strong style="color: #0f172a;">${o.product_description || '—'}</strong>
@@ -826,582 +1636,70 @@ export function CustomerOrdersPage() {
 
   return (
     <div className="order-list-page-container">
-      {/* ── 1. Top Filters Panel (Matches Screenshot) ── */}
-      <div className="order-filter-panel">
-        <div className="order-filter-fields">
-          {/* Date Range with Interactive Popover */}
-          <div className="filter-field-group" ref={datePickerRef} style={{ position: 'relative' }}>
-            <label className="filter-label">Select Date Range</label>
-            <div
-              className="filter-date-wrapper"
-              onClick={() => setDatePickerOpen(!datePickerOpen)}
-              style={{ cursor: 'pointer' }}
-            >
-              <input
-                type="text"
-                readOnly
-                className="filter-input with-icon"
-                placeholder="Select Date Range"
-                value={dateRangeDisplay}
-                style={{
-                  cursor: 'pointer',
-                  background: dateRangeDisplay ? '#f0fdf4' : '#ffffff',
-                  borderColor: dateRangeDisplay ? '#22c55e' : '#cbd5e1',
-                  fontWeight: dateRangeDisplay ? 600 : 400,
-                  color: dateRangeDisplay ? '#15803d' : '#1e293b',
-                }}
-              />
-              <div
-                style={{
-                  position: 'absolute',
-                  right: '10px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-              >
-                {dateRangeDisplay && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setStartDate('');
-                      setEndDate('');
-                      setDatePreset('');
-                      setAppliedFilters((prev) => ({ ...prev, startDate: '', endDate: '', dateLabel: '' }));
-                    }}
-                    title="Clear date range"
-                    style={{
-                      background: '#f1f5f9',
-                      border: 'none',
-                      borderRadius: '50%',
-                      width: '18px',
-                      height: '18px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      color: '#64748b',
-                      padding: 0,
-                    }}
-                  >
-                    <X size={11} />
-                  </button>
-                )}
-                <Calendar
-                  size={15}
-                  style={{
-                    color: dateRangeDisplay ? '#16a34a' : '#3b82f6',
-                    cursor: 'pointer',
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Floating Date Range Popover */}
-            {datePickerOpen && (
-              <div
-                className="date-range-popover"
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  position: 'absolute',
-                  top: 'calc(100% + 6px)',
-                  left: 0,
-                  background: '#ffffff',
-                  border: '1px solid #cbd5e1',
-                  borderRadius: '12px',
-                  boxShadow: '0 14px 30px rgba(0, 0, 0, 0.15), 0 4px 10px rgba(0, 0, 0, 0.06)',
-                  padding: '16px',
-                  width: '320px',
-                  zIndex: 99999,
-                  animation: 'dialogZoomIn 0.15s ease-out',
-                }}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    marginBottom: '12px',
-                    paddingBottom: '8px',
-                    borderBottom: '1px solid #f1f5f9',
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: '13px',
-                      fontWeight: 700,
-                      color: '#1e293b',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                    }}
-                  >
-                    <Calendar size={15} style={{ color: '#dc2626' }} />
-                    <span>Filter Orders by Date</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setDatePickerOpen(false)}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      color: '#94a3b8',
-                      padding: '2px',
-                    }}
-                  >
-                    <X size={15} />
-                  </button>
-                </div>
-
-                {/* Quick Presets */}
-                <div style={{ marginBottom: '14px' }}>
-                  <div
-                    style={{
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      color: '#64748b',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.04em',
-                      marginBottom: '8px',
-                    }}
-                  >
-                    Quick Presets
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
-                    {[
-                      { key: 'today', label: 'Today' },
-                      { key: 'yesterday', label: 'Yesterday' },
-                      { key: 'last_7_days', label: 'Last 7 Days' },
-                      { key: 'this_week', label: 'This Week' },
-                      { key: 'this_month', label: 'This Month' },
-                      { key: 'last_30_days', label: 'Last 30 Days' },
-                    ].map((p) => {
-                      const isActive = datePreset === p.key;
-                      return (
-                        <button
-                          key={p.key}
-                          type="button"
-                          onClick={() => applyPreset(p.key)}
-                          style={{
-                            padding: '6px 8px',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            borderRadius: '6px',
-                            border: isActive ? '1px solid #16a34a' : '1px solid #e2e8f0',
-                            background: isActive ? '#ecfdf5' : '#f8fafc',
-                            color: isActive ? '#15803d' : '#334155',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease',
-                            textAlign: 'center',
-                          }}
-                        >
-                          {p.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Custom Date Range */}
-                <div style={{ marginBottom: '16px' }}>
-                  <div
-                    style={{
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      color: '#64748b',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.04em',
-                      marginBottom: '8px',
-                    }}
-                  >
-                    Custom Date Range
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <div>
-                      <span style={{ fontSize: '11.5px', color: '#475569', display: 'block', marginBottom: '3px', fontWeight: 500 }}>
-                        From Date:
-                      </span>
-                      <input
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => {
-                          setStartDate(e.target.value);
-                          setDatePreset('custom');
-                        }}
-                        style={{
-                          width: '100%',
-                          padding: '6px 10px',
-                          fontSize: '12px',
-                          border: '1px solid #cbd5e1',
-                          borderRadius: '6px',
-                          outline: 'none',
-                          color: '#1e293b',
-                          background: '#ffffff',
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <span style={{ fontSize: '11.5px', color: '#475569', display: 'block', marginBottom: '3px', fontWeight: 500 }}>
-                        To Date:
-                      </span>
-                      <input
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => {
-                          setEndDate(e.target.value);
-                          setDatePreset('custom');
-                        }}
-                        style={{
-                          width: '100%',
-                          padding: '6px 10px',
-                          fontSize: '12px',
-                          border: '1px solid #cbd5e1',
-                          borderRadius: '6px',
-                          outline: 'none',
-                          color: '#1e293b',
-                          background: '#ffffff',
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Popover Action Buttons */}
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: '8px',
-                    justifyContent: 'flex-end',
-                    paddingTop: '10px',
-                    borderTop: '1px solid #f1f5f9',
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStartDate('');
-                      setEndDate('');
-                      setDatePreset('');
-                    }}
-                    style={{
-                      padding: '6px 12px',
-                      fontSize: '11.5px',
-                      fontWeight: 600,
-                      color: '#64748b',
-                      background: '#f1f5f9',
-                      border: 'none',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Reset
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleApplyFilters}
-                    style={{
-                      padding: '6px 14px',
-                      fontSize: '11.5px',
-                      fontWeight: 600,
-                      color: '#ffffff',
-                      background: '#16a34a',
-                      border: 'none',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      boxShadow: '0 2px 6px rgba(22, 163, 74, 0.3)',
-                    }}
-                  >
-                    Apply Range
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Order Type */}
-          <div className="filter-field-group">
-            <label className="filter-label">Order Type</label>
-            <select
-              className="filter-select"
-              value={selectedOrderType}
-              onChange={(e) => setSelectedOrderType(e.target.value)}
-            >
-              <option value="all">Select Order Type</option>
-              {activeOrderTypes.length > 0 ? (
-                activeOrderTypes.map((ot) => (
-                  <option key={ot.id || ot.name} value={ot.name}>
-                    {ot.name}
-                  </option>
-                ))
-              ) : (
-                <>
-                  <option value="Delivery Order">Delivery Order</option>
-                  <option value="Return Order">Return Order</option>
-                  <option value="Exchange Order">Exchange Order</option>
-                </>
-              )}
-            </select>
-          </div>
-
-          {/* Hubs */}
-          <div className="filter-field-group">
-            <label className="filter-label">Hubs</label>
-            <select
-              className="filter-select"
-              value={selectedHub}
-              onChange={(e) => setSelectedHub(e.target.value)}
-            >
-              <option value="all">Select Hub</option>
-              {(branches || [])
-                .filter((b) => b && b.status !== 'inactive' && b.status !== 'disabled')
-                .map((b) => (
-                  <option key={b.id} value={b.name}>
-                    {b.name}
-                  </option>
-                ))}
-            </select>
-          </div>
-
-          {/* Current Status */}
-          <div className="filter-field-group">
-            <label className="filter-label">Current Status</label>
-            <select
-              className="filter-select"
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-            >
-              <option value="all">Select Status</option>
-              <option value="Pending">Pending</option>
-              <option value="Pickup Requested">Pickup Requested</option>
-              <option value="Pickup Assigned">Pickup Assigned</option>
-              <option value="Picked Up by Rider">Picked Up by Rider</option>
-              <option value="Received At Hub">Received At Hub</option>
-              <option value="Dispatched (In Transit)">Dispatched (In Transit)</option>
-              <option value="Out for Delivery">Out for Delivery</option>
-              <option value="Delivered">Delivered</option>
-              <option value="Follow Up for Return">Follow Up for Return</option>
-              <option value="Cancelled">Cancelled</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Action Buttons: Apply & Clear */}
-        <div className="order-filter-actions">
-          <button
-            type="button"
-            className="filter-btn-apply"
-            onClick={handleApplyFilters}
-          >
-            Apply
-          </button>
-          <button
-            type="button"
-            className="filter-btn-clear"
-            onClick={handleClearFilters}
-          >
-            Clear
-          </button>
-        </div>
-      </div>
-
-      {/* Active Filter Pills Bar */}
-      {(appliedFilters.startDate || appliedFilters.endDate || appliedFilters.orderType !== 'all' || appliedFilters.hub !== 'all' || appliedFilters.status !== 'all') && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            flexWrap: 'wrap',
-            margin: '8px 0 16px',
-            padding: '8px 14px',
-            background: '#f8fafc',
-            borderRadius: '8px',
-            border: '1px solid #e2e8f0',
-            fontSize: '12px',
-          }}
-        >
-          <span style={{ fontWeight: 700, color: '#475569' }}>Filtered By:</span>
-          {(appliedFilters.startDate || appliedFilters.endDate) && (
+      {/* ── 1. Top View Head (Title + Subtitle + Action Buttons matching Riders Page) ── */}
+      <div
+        className="view-head"
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '16px',
+          flexWrap: 'wrap',
+          gap: '12px',
+        }}
+      >
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <h1 style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+              Order List
+            </h1>
             <span
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '6px',
+                gap: '4px',
+                fontSize: '11px',
+                fontWeight: 600,
+                color: '#059669',
                 background: '#ecfdf5',
-                color: '#166534',
-                border: '1px solid #bbf7d0',
-                padding: '3px 10px',
-                borderRadius: '14px',
-                fontWeight: 600,
+                padding: '2px 8px',
+                borderRadius: '12px',
+                border: '1px solid #a7f3d0',
               }}
+              title="Connected to Cloudflare D1 Database"
             >
-              📅 {appliedFilters.dateLabel || (appliedFilters.startDate === appliedFilters.endDate ? appliedFilters.startDate : `${appliedFilters.startDate} to ${appliedFilters.endDate}`)}
-              <X
-                size={12}
-                style={{ cursor: 'pointer' }}
-                onClick={() => {
-                  setStartDate('');
-                  setEndDate('');
-                  setDatePreset('');
-                  setAppliedFilters((prev) => ({ ...prev, startDate: '', endDate: '', dateLabel: '' }));
-                }}
-              />
+              <Database size={11} />
+              D1 Database
             </span>
-          )}
-          {appliedFilters.orderType !== 'all' && (
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: '#eff6ff',
-                color: '#1e40af',
-                border: '1px solid #bfdbfe',
-                padding: '3px 10px',
-                borderRadius: '14px',
-                fontWeight: 600,
-              }}
-            >
-              Type: {appliedFilters.orderType}
-              <X
-                size={12}
-                style={{ cursor: 'pointer' }}
-                onClick={() => {
-                  setSelectedOrderType('all');
-                  setAppliedFilters((prev) => ({ ...prev, orderType: 'all' }));
-                }}
-              />
+            <span style={{ fontSize: '12.5px', color: '#6b7280', fontWeight: 500 }}>
+              ({displayOrders.length} {displayOrders.length === 1 ? 'Order' : 'Orders'}{displayOrders.length !== allOrders.length ? ` of ${allOrders.length}` : ''})
             </span>
-          )}
-          {appliedFilters.hub !== 'all' && (
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: '#fef3c7',
-                color: '#92400e',
-                border: '1px solid #fde68a',
-                padding: '3px 10px',
-                borderRadius: '14px',
-                fontWeight: 600,
-              }}
-            >
-              Hub: {appliedFilters.hub}
-              <X
-                size={12}
-                style={{ cursor: 'pointer' }}
-                onClick={() => {
-                  setSelectedHub('all');
-                  setAppliedFilters((prev) => ({ ...prev, hub: 'all' }));
-                }}
-              />
-            </span>
-          )}
-          {appliedFilters.status !== 'all' && (
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: '#f3e8ff',
-                color: '#6b21a8',
-                border: '1px solid #e9d5ff',
-                padding: '3px 10px',
-                borderRadius: '14px',
-                fontWeight: 600,
-              }}
-            >
-              Status: {appliedFilters.status}
-              <X
-                size={12}
-                style={{ cursor: 'pointer' }}
-                onClick={() => {
-                  setSelectedStatus('all');
-                  setAppliedFilters((prev) => ({ ...prev, status: 'all' }));
-                }}
-              />
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={handleClearFilters}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#dc2626',
-              fontWeight: 700,
-              fontSize: '11.5px',
-              cursor: 'pointer',
-              marginLeft: 'auto',
-            }}
-          >
-            Clear All
-          </button>
-        </div>
-      )}
-
-      {/* ── 2. Order List Header Row (Matches Screenshot) ── */}
-      <div className="order-list-header-row">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <h1 className="order-list-title" style={{ margin: 0 }}>Order List</h1>
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontSize: '11px',
-              fontWeight: 600,
-              color: '#059669',
-              background: '#ecfdf5',
-              padding: '2px 8px',
-              borderRadius: '12px',
-              border: '1px solid #a7f3d0',
-            }}
-            title="Connected to Cloudflare D1 Database"
-          >
-            <Database size={11} />
-            D1 Database
-          </span>
-          <span style={{ fontSize: '12.5px', color: '#6b7280', fontWeight: 500 }}>
-            ({displayOrders.length} {displayOrders.length === 1 ? 'Order' : 'Orders'}{displayOrders.length !== allOrders.length ? ` of ${allOrders.length}` : ''})
-          </span>
+          </div>
+          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '3px' }}>
+            Real-time orders, lifecycle tracking, COD reconciliation & shipping management.
+          </div>
         </div>
 
-        <div className="order-list-top-actions">
-          {typeof handleOpenCreateOrder === 'function' && (
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={handleOpenCreateOrder}
-              style={{
-                background: 'var(--theme-color, #dc2626)',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '6px 12px',
-                fontSize: '12.5px',
-                fontWeight: 600,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                cursor: 'pointer',
-              }}
-            >
-              <Plus size={14} />
-              <span>Create Order</span>
-            </button>
-          )}
-
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <button
             type="button"
-            className="btn-export"
             onClick={handleRefreshOrders}
             disabled={loading}
-            title="Refresh Orders from Cloudflare D1"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+            style={{
+              padding: '7px 14px',
+              borderRadius: '6px',
+              border: '1px solid #cbd5e1',
+              background: '#ffffff',
+              color: '#334155',
+              fontSize: '12.5px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+            }}
+            title="Refresh orders from Cloudflare D1"
           >
             <RotateCcw size={14} className={loading ? 'spin' : ''} />
             <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
@@ -1409,35 +1707,671 @@ export function CustomerOrdersPage() {
 
           <button
             type="button"
-            className="btn-print-label"
             onClick={handlePrintSelected}
+            style={{
+              padding: '7px 14px',
+              borderRadius: '6px',
+              border: '1px solid #cbd5e1',
+              background: '#ffffff',
+              color: '#334155',
+              fontSize: '12.5px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+            }}
             title="Print shipping label with QR and barcode"
           >
-            <Printer size={15} />
+            <Printer size={14} />
             <span>Print Label</span>
           </button>
 
           <button
             type="button"
-            className="btn-export"
             onClick={handleExport}
+            style={{
+              padding: '7px 14px',
+              borderRadius: '6px',
+              border: '1px solid #cbd5e1',
+              background: '#ffffff',
+              color: '#334155',
+              fontSize: '12.5px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+            }}
             title="Export orders to CSV"
           >
-            <Download size={15} />
-            <span>Export</span>
+            <Download size={14} />
+            <span>Export CSV</span>
           </button>
 
           <button
             type="button"
-            className="btn-export"
             onClick={handlePrintReport}
+            style={{
+              padding: '7px 14px',
+              borderRadius: '6px',
+              border: '1px solid #cbd5e1',
+              background: '#ffffff',
+              color: '#334155',
+              fontSize: '12.5px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+            }}
             title="Print or Save Order List Report as PDF"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
           >
-            <FileText size={15} />
+            <FileText size={14} />
             <span>Print Report</span>
           </button>
+
+          {typeof handleOpenCreateOrder === 'function' && (
+            <button
+              type="button"
+              onClick={handleOpenCreateOrder}
+              style={{
+                padding: '7px 16px',
+                borderRadius: '6px',
+                border: 'none',
+                background: '#dc2626',
+                color: '#ffffff',
+                fontSize: '12.5px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 1px 2px rgba(220, 38, 38, 0.25)',
+              }}
+            >
+              <Plus size={15} />
+              <span>+ Create Order</span>
+            </button>
+          )}
         </div>
+      </div>
+
+      {/* ── 2. Metric Summary Cards (4 Cards matching Riders Page) ── */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: '12px',
+          marginBottom: '16px',
+        }}
+      >
+        {/* Card 1: Total Orders */}
+        <div
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '10px',
+            padding: '14px 16px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+          }}
+        >
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+            Total Orders
+          </div>
+          <div style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
+            {orderMetrics.total}
+          </div>
+          <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
+            Total COD: <strong style={{ color: '#0f172a' }}>Rs. {Number(orderMetrics.totalCod || 0).toLocaleString()}</strong>
+          </div>
+        </div>
+
+        {/* Card 2: Delivered Orders */}
+        <div
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '10px',
+            padding: '14px 16px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+          }}
+        >
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+            Delivered Orders
+          </div>
+          <div style={{ fontSize: '22px', fontWeight: 800, color: '#15803d', marginTop: '4px' }}>
+            {orderMetrics.delivered}
+          </div>
+          <div style={{ fontSize: '11.5px', color: '#16a34a', marginTop: '2px', fontWeight: 600 }}>
+            {orderMetrics.total > 0 ? Math.round((orderMetrics.delivered / orderMetrics.total) * 100) : 0}% delivery success rate
+          </div>
+        </div>
+
+        {/* Card 3: In Transit / Out for Delivery */}
+        <div
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '10px',
+            padding: '14px 16px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+          }}
+        >
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#2563eb', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+            In Transit / Out for Delivery
+          </div>
+          <div style={{ fontSize: '22px', fontWeight: 800, color: '#1d4ed8', marginTop: '4px' }}>
+            {orderMetrics.inTransit}
+          </div>
+          <div style={{ fontSize: '11.5px', color: '#2563eb', marginTop: '2px', fontWeight: 600 }}>
+            Dispatched or out with rider
+          </div>
+        </div>
+
+        {/* Card 4: Pending & Returns */}
+        <div
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '10px',
+            padding: '14px 16px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+          }}
+        >
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#d97706', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+            Pending & Returns
+          </div>
+          <div style={{ fontSize: '22px', fontWeight: 800, color: '#b45309', marginTop: '4px' }}>
+            {orderMetrics.pendingOrReturn}
+          </div>
+          <div style={{ fontSize: '11.5px', color: '#b45309', marginTop: '2px', fontWeight: 600 }}>
+            {orderMetrics.pending} pending, {orderMetrics.returned} returns
+          </div>
+        </div>
+      </div>
+
+      {/* ── 3. Advanced Filter Bar (Matches Riders Page Structure) ── */}
+      <div
+        style={{
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          borderRadius: '10px',
+          padding: '16px',
+          marginBottom: '16px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+        }}
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleApplyFilters();
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'flex-end',
+              flexWrap: 'wrap',
+              gap: '12px',
+            }}
+          >
+            {/* 1. Branch / Hub Dropdown */}
+            <div style={{ flex: '1.2', minWidth: '160px' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  color: '#475569',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.4px',
+                  marginBottom: '4px',
+                }}
+              >
+                Branch / Hub
+              </label>
+              <SearchableBranchFilter
+                value={selectedHub}
+                onChange={handleBranchChange}
+                branches={vendorBranches}
+                placeholder="Select Branch"
+              />
+            </div>
+
+            {/* 2. Order Status Dropdown */}
+            <div style={{ flex: '1.1', minWidth: '140px' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  color: '#475569',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.4px',
+                  marginBottom: '4px',
+                }}
+              >
+                Order Status
+              </label>
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                style={{
+                  width: '100%',
+                  height: '38px',
+                  padding: '0 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '12.5px',
+                  color: '#1e293b',
+                  background: '#ffffff',
+                  fontWeight: 500,
+                  outline: 'none',
+                }}
+              >
+                <option value="all">All Statuses</option>
+                <option value="Pending">Pending</option>
+                <option value="Pickup Requested">Pickup Requested</option>
+                <option value="Pickup Assigned">Pickup Assigned</option>
+                <option value="Picked Up by Rider">Picked Up by Rider</option>
+                <option value="Received At Hub">Received At Hub</option>
+                <option value="Dispatched (In Transit)">Dispatched (In Transit)</option>
+                <option value="Out for Delivery">Out for Delivery</option>
+                <option value="Delivered">Delivered</option>
+                <option value="Follow Up for Return">Follow Up for Return</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+            </div>
+
+            {/* 3. Order Type Dropdown */}
+            <div style={{ flex: '1.1', minWidth: '130px' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  color: '#475569',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.4px',
+                  marginBottom: '4px',
+                }}
+              >
+                Order Type
+              </label>
+              <select
+                value={selectedOrderType}
+                onChange={(e) => setSelectedOrderType(e.target.value)}
+                style={{
+                  width: '100%',
+                  height: '38px',
+                  padding: '0 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '12.5px',
+                  color: '#1e293b',
+                  background: '#ffffff',
+                  fontWeight: 500,
+                  outline: 'none',
+                }}
+              >
+                <option value="all">All Order Types</option>
+                <option value="Delivery Order">Delivery Order</option>
+                <option value="Reverse Order">Reverse Order</option>
+                <option value="Exchange Order">Exchange Order</option>
+                {activeOrderTypes
+                  .filter((ot) => {
+                    const n = (ot?.name || '').toLowerCase();
+                    return n && !n.includes('delivery') && !n.includes('reverse') && !n.includes('exchange') && !n.includes('return');
+                  })
+                  .map((ot) => (
+                    <option key={ot.id || ot.name} value={ot.name}>
+                      {ot.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            {/* 4. Time Period / Date Preset */}
+            <div style={{ flex: '1.1', minWidth: '130px' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  color: '#475569',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.4px',
+                  marginBottom: '4px',
+                }}
+              >
+                Time Period
+              </label>
+              <select
+                value={datePreset}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setDatePreset(val);
+                  if (val === 'all_time' || !val) {
+                    setStartDate('');
+                    setEndDate('');
+                  } else {
+                    applyPreset(val, false);
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  height: '38px',
+                  padding: '0 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '12.5px',
+                  color: '#1e293b',
+                  background: '#ffffff',
+                  fontWeight: 500,
+                  outline: 'none',
+                }}
+              >
+                <option value="">All Time</option>
+                <option value="today">Today</option>
+                <option value="yesterday">Yesterday</option>
+                <option value="last_7_days">Last 7 Days</option>
+                <option value="this_week">This Week</option>
+                <option value="this_month">This Month</option>
+                <option value="last_30_days">Last 30 Days</option>
+              </select>
+            </div>
+
+            {/* 5. Search Keyword Input */}
+            <div style={{ flex: '1.6', minWidth: '200px' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  color: '#475569',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.4px',
+                  marginBottom: '4px',
+                }}
+              >
+                Search Order
+              </label>
+              <div
+                style={{
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+              >
+                <Search
+                  size={15}
+                  style={{
+                    position: 'absolute',
+                    left: '10px',
+                    color: '#94a3b8',
+                    pointerEvents: 'none',
+                  }}
+                />
+                <input
+                  type="text"
+                  placeholder="Order ID, Name, Phone, Address..."
+                  value={searchOrderId}
+                  onChange={(e) => setSearchOrderId(e.target.value)}
+                  style={{
+                    width: '100%',
+                    height: '38px',
+                    padding: '0 32px 0 34px',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '12.5px',
+                    color: '#1e293b',
+                    background: '#ffffff',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                {searchOrderId && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchOrderId('')}
+                    style={{
+                      position: 'absolute',
+                      right: '8px',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: '2px',
+                      color: '#94a3b8',
+                    }}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 6. Filter Action Buttons */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button
+                type="submit"
+                style={{
+                  height: '38px',
+                  padding: '0 18px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: '#16a34a',
+                  color: '#ffffff',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 1px 2px rgba(22, 163, 74, 0.25)',
+                  transition: 'background 0.15s ease',
+                }}
+              >
+                <Filter size={14} />
+                <span>Filter</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleClearFilters}
+                style={{
+                  height: '38px',
+                  padding: '0 14px',
+                  borderRadius: '6px',
+                  border: '1px solid #f87171',
+                  background: '#ffffff',
+                  color: '#dc2626',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <X size={14} />
+                <span>Clear</span>
+              </button>
+            </div>
+          </div>
+        </form>
+
+        {/* ── Active Filter Badges ── */}
+        {(appliedFilters.orderId || appliedFilters.startDate || appliedFilters.endDate || appliedFilters.orderType !== 'all' || appliedFilters.hub !== 'all' || appliedFilters.status !== 'all') && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '6px',
+              marginTop: '12px',
+              paddingTop: '10px',
+              borderTop: '1px solid #f1f5f9',
+            }}
+          >
+            <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+              Active Filters:
+            </span>
+
+            {appliedFilters.hub !== 'all' && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '3px 8px',
+                  borderRadius: '12px',
+                  background: '#e0e7ff',
+                  color: '#3730a3',
+                  fontSize: '11.5px',
+                  fontWeight: 600,
+                }}
+              >
+                Branch: {appliedFilters.hub}
+                <X
+                  size={12}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    setSelectedHub('all');
+                    setAppliedFilters((prev) => ({ ...prev, hub: 'all' }));
+                  }}
+                />
+              </span>
+            )}
+
+            {appliedFilters.status !== 'all' && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '3px 8px',
+                  borderRadius: '12px',
+                  background: '#fef3c7',
+                  color: '#92400e',
+                  fontSize: '11.5px',
+                  fontWeight: 600,
+                }}
+              >
+                Status: {appliedFilters.status}
+                <X
+                  size={12}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    setSelectedStatus('all');
+                    setAppliedFilters((prev) => ({ ...prev, status: 'all' }));
+                  }}
+                />
+              </span>
+            )}
+
+            {appliedFilters.orderType !== 'all' && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '3px 8px',
+                  borderRadius: '12px',
+                  background: '#eff6ff',
+                  color: '#1e40af',
+                  fontSize: '11.5px',
+                  fontWeight: 600,
+                }}
+              >
+                Type: {appliedFilters.orderType}
+                <X
+                  size={12}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    setSelectedOrderType('all');
+                    setAppliedFilters((prev) => ({ ...prev, orderType: 'all' }));
+                  }}
+                />
+              </span>
+            )}
+
+            {(appliedFilters.startDate || appliedFilters.endDate) && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '3px 8px',
+                  borderRadius: '12px',
+                  background: '#ecfdf5',
+                  color: '#166534',
+                  fontSize: '11.5px',
+                  fontWeight: 600,
+                }}
+              >
+                Period: {appliedFilters.dateLabel || `${appliedFilters.startDate} to ${appliedFilters.endDate}`}
+                <X
+                  size={12}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    setStartDate('');
+                    setEndDate('');
+                    setDatePreset('');
+                    setAppliedFilters((prev) => ({ ...prev, startDate: '', endDate: '', dateLabel: '' }));
+                  }}
+                />
+              </span>
+            )}
+
+            {appliedFilters.orderId && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '3px 8px',
+                  borderRadius: '12px',
+                  background: '#fef2f2',
+                  color: '#991b1b',
+                  fontSize: '11.5px',
+                  fontWeight: 600,
+                }}
+              >
+                Search: {appliedFilters.orderId}
+                <X
+                  size={12}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    setSearchOrderId('');
+                    setAppliedFilters((prev) => ({ ...prev, orderId: '' }));
+                  }}
+                />
+              </span>
+            )}
+
+            <button
+              type="button"
+              onClick={handleClearFilters}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#dc2626',
+                cursor: 'pointer',
+                fontSize: '11px',
+                fontWeight: 700,
+                marginLeft: '6px',
+                padding: '2px 4px',
+              }}
+            >
+              Reset All
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── 3. Order Table Card (Matches Screenshot) ── */}
@@ -1453,13 +2387,13 @@ export function CustomerOrdersPage() {
                   style={{ cursor: 'pointer' }}
                 />
               </th>
-              <th>Order ID</th>
+              <th style={{ minWidth: '155px' }}>Order ID</th>
               <th>Status</th>
-              <th>Customers</th>
+              <th style={{ minWidth: '170px' }}>Customers</th>
               <th>Product Description</th>
               <th style={{ textAlign: 'center' }}>Order Type</th>
               <th>Destination Branch</th>
-              <th>Amount</th>
+              <th style={{ minWidth: '160px' }}>Amount</th>
               <th>Last Comment</th>
               <th style={{ textAlign: 'center' }}>Action</th>
             </tr>
@@ -1481,15 +2415,31 @@ export function CustomerOrdersPage() {
 
                   {/* 2. Order ID */}
                   <td>
-                    <button
-                      type="button"
-                      className="order-id-link"
-                      onClick={() => handleOpenDetail(order)}
-                    >
-                      {order.tracking_number}
-                    </button>
-                    <div className="order-ref-text">{order.vendor_reference_id}</div>
-                    <div className="order-date-text">{order.created_display}</div>
+                    <div className="amount-line">
+                      <span className="amount-label">Order ID:</span>{' '}
+                      <button
+                        type="button"
+                        className="order-id-link"
+                        onClick={() => handleOpenDetail(order)}
+                        style={{ display: 'inline', fontWeight: 700, color: 'var(--theme-color, #dc2626)', padding: 0, margin: 0, border: 'none', background: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                      >
+                        {order.tracking_number}
+                      </button>
+                    </div>
+                    {Boolean(order.vendor_reference_id && order.vendor_reference_id.trim()) && (
+                      <div className="amount-line">
+                        <span className="amount-label">Ref ID:</span>{' '}
+                        <span className="amount-val" style={{ fontWeight: 600, color: '#475569' }}>
+                          {order.vendor_reference_id}
+                        </span>
+                      </div>
+                    )}
+                    <div className="amount-line">
+                      <span className="amount-label">Date:</span>{' '}
+                      <span className="amount-val" style={{ fontWeight: 500, color: '#64748b' }}>
+                        {order.created_display || '—'}
+                      </span>
+                    </div>
                   </td>
 
                   {/* 3. Status */}
@@ -1502,132 +2452,81 @@ export function CustomerOrdersPage() {
 
                   {/* 4. Customers */}
                   <td>
-                    <div className="customer-name">{order.receiver_name}</div>
-                    <div className="customer-phone">{order.receiver_phone}</div>
-                    <div className="customer-address">{order.delivery_address}</div>
+                    <div className="amount-line">
+                      <span className="amount-label">Name:</span>{' '}
+                      <span className="amount-val" style={{ color: '#0f172a' }}>{order.receiver_name || '—'}</span>
+                    </div>
+                    <div className="amount-line">
+                      <span className="amount-label">Phone:</span>{' '}
+                      <span className="amount-val" style={{ fontWeight: 600, color: '#334155' }}>
+                        {order.receiver_phone || '—'}
+                      </span>
+                    </div>
+                    <div className="amount-line" style={{ maxWidth: '280px' }}>
+                      <span className="amount-label" style={{ flexShrink: 0 }}>Address:</span>{' '}
+                      <span
+                        className="amount-val"
+                        style={{ fontWeight: 500, color: '#475569', wordBreak: 'break-word' }}
+                        title={order.formatted_address || order.delivery_address}
+                      >
+                        {order.formatted_address || order.delivery_address || '—'}
+                      </span>
+                    </div>
                   </td>
 
-                  {/* 5. Product Description (Connected to D1 with Inline Edit) */}
+                  {/* 5. Product Description */}
                   <td style={{ minWidth: '150px', maxWidth: '220px' }}>
-                    {editingOrderId === order.id ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <textarea
-                          className="filter-input"
-                          rows={2}
-                          value={editDescText}
-                          onChange={(e) => setEditDescText(e.target.value)}
-                          placeholder="Enter product description..."
-                          style={{
-                            fontSize: '11.5px',
-                            padding: '4px 6px',
-                            resize: 'vertical',
-                            width: '100%',
-                            boxSizing: 'border-box',
-                            border: '1px solid #3b82f6',
-                            borderRadius: '4px',
-                          }}
-                          autoFocus
-                        />
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <button
-                            type="button"
-                            onClick={() => handleSaveEditDesc(order.id)}
-                            disabled={savingOrderId === order.id}
-                            style={{
-                              padding: '2px 8px',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              background: '#059669',
-                              color: '#ffffff',
-                              border: 'none',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '3px',
-                            }}
-                          >
-                            <Check size={11} />
-                            {savingOrderId === order.id ? 'Saving...' : 'Save'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleCancelEditDesc}
-                            style={{
-                              padding: '2px 8px',
-                              fontSize: '11px',
-                              background: '#f1f5f9',
-                              color: '#475569',
-                              border: '1px solid #cbd5e1',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '3px',
-                            }}
-                          >
-                            <X size={11} />
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'flex-start',
-                          justifyContent: 'space-between',
-                          gap: '6px',
-                          group: 'relative',
-                        }}
-                      >
-                        <div style={{ flex: 1 }}>
-                          <div className="product-desc-text" style={{ fontSize: '12px', color: '#1e293b', fontWeight: 500 }}>
-                            {order.product_description}
-                          </div>
-                          {savedOrderId === order.id && (
-                            <span
-                              style={{
-                                display: 'inline-block',
-                                fontSize: '10px',
-                                color: '#059669',
-                                fontWeight: 600,
-                                marginTop: '2px',
-                              }}
-                            >
-                              ✓ Saved to D1
-                            </span>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleStartEditDesc(order)}
-                          title="Edit Product Description"
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            cursor: 'pointer',
-                            color: '#94a3b8',
-                            padding: '2px',
-                            borderRadius: '3px',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.color = '#2563eb')}
-                          onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
-                        >
-                          <Edit2 size={12} />
-                        </button>
-                      </div>
-                    )}
+                    <div className="product-desc-text" style={{ fontSize: '12px', color: '#1e293b', fontWeight: 500 }}>
+                      {order.product_description}
+                    </div>
                   </td>
 
                   {/* 6. Order Type */}
                   <td style={{ textAlign: 'center' }}>
-                    {order.order_type_kind === 'return' ? (
-                      <span className="order-type-badge return" title="Return Order">
-                        <RotateCcw size={12} strokeWidth={2.5} />
-                      </span>
+                    {order.order_type_kind === 'exchange' ? (
+                      <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <span className="order-type-badge exchange" title="Exchange Order (Swap at Doorstep)">
+                          <RefreshCw size={12} strokeWidth={2.5} />
+                        </span>
+                        {order.exchange_reason && (
+                          <div
+                            style={{
+                              fontSize: '10px',
+                              color: '#1d4ed8',
+                              fontWeight: 600,
+                              marginTop: '3px',
+                              maxWidth: '120px',
+                              lineHeight: '1.2',
+                              wordBreak: 'break-word',
+                            }}
+                            title={`Exchange Reason: ${order.exchange_reason}`}
+                          >
+                            {order.exchange_reason}
+                          </div>
+                        )}
+                      </div>
+                    ) : order.order_type_kind === 'return' ? (
+                      <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <span className="order-type-badge return" title={order.order_type || "Reverse Order (RTV)"}>
+                          <RotateCcw size={12} strokeWidth={2.5} />
+                        </span>
+                        {order.return_reason && (
+                          <div
+                            style={{
+                              fontSize: '10px',
+                              color: '#b91c1c',
+                              fontWeight: 600,
+                              marginTop: '3px',
+                              maxWidth: '120px',
+                              lineHeight: '1.2',
+                              wordBreak: 'break-word',
+                            }}
+                            title={`Return Reason: ${order.return_reason}`}
+                          >
+                            {order.return_reason}
+                          </div>
+                        )}
+                      </div>
                     ) : (
                       <span className="order-type-badge forward" title="Delivery Order">
                         <ChevronsRight size={13} strokeWidth={2.5} />
@@ -1659,26 +2558,7 @@ export function CustomerOrdersPage() {
 
                   {/* 10. Action */}
                   <td style={{ textAlign: 'center' }}>
-                    <div className="action-buttons-cell">
-                      <button
-                        type="button"
-                        className="action-icon-btn"
-                        onClick={() => handleOpenCommentModal(order)}
-                        title="View & Add Comments"
-                      >
-                        <MessageSquare size={14} />
-                      </button>
-                      {(!order.status || order.status === 'pending' || order.status === 'order_created') && (
-                        <button
-                          type="button"
-                          className="action-icon-btn"
-                          onClick={() => handleOpenPickupRequest(order)}
-                          title="Request Pickup for this Order"
-                          style={{ color: '#dc2626' }}
-                        >
-                          <Truck size={14} />
-                        </button>
-                      )}
+                    <div className="action-buttons-cell" style={{ justifyContent: 'center', gap: '6px' }}>
                       <button
                         type="button"
                         className="action-icon-btn"
@@ -1687,14 +2567,23 @@ export function CustomerOrdersPage() {
                       >
                         <Eye size={14} />
                       </button>
-                      <button
-                        type="button"
-                        className="action-icon-btn"
-                        onClick={() => handlePrintSingle(order)}
-                        title="Print Label"
-                      >
-                        <Printer size={14} />
-                      </button>
+
+                      {/* Edit Button: allowed when pickup has not yet occurred */}
+                      {['pending', 'pickup_requested'].includes(String(order.rawShipment?.status || order.status || '').toLowerCase()) && (
+                        <button
+                          type="button"
+                          className="action-icon-btn"
+                          onClick={() => handleOpenEditOrder(order)}
+                          title="Edit Order (Pickup Not Yet Occurred)"
+                          style={{
+                            color: '#b45309',
+                            background: '#fef3c7',
+                            border: '1px solid #fde68a',
+                          }}
+                        >
+                          <Edit2 size={13} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

@@ -3,9 +3,13 @@ import { useAuth } from './AuthContext';
 import { usePlatform } from './PlatformContext';
 import { loadCompanyState, saveCompanyState, seedCompanyState } from '../utils/storage';
 import { d1Api } from '../utils/d1Api';
+import { smsService } from '../utils/smsService';
 import {
   defaultDeliveryChargeSettings,
   defaultShipmentStatusSettings,
+  defaultPortalMenus,
+  defaultVendorTypes,
+  defaultVendorCategories,
 } from '../utils/constants';
 import {
   trackingNumber,
@@ -195,6 +199,40 @@ export function CompanyProvider({ children }) {
         console.warn('Could not fetch D1 product_categories:', err);
       });
 
+      // 2d2. Hydrate dedicated exchange reasons from Cloudflare remote D1 table 'exchange_reasons'
+      d1Api.getExchangeReasons(companyId).then((remoteExchangeReasons) => {
+        if (Array.isArray(remoteExchangeReasons) && remoteExchangeReasons.length > 0) {
+          setData((prev) => {
+            if (!prev) return prev;
+            const updated = {
+              ...prev,
+              exchangeReasons: remoteExchangeReasons,
+            };
+            saveCompanyState(companyId, updated);
+            return updated;
+          });
+        }
+      }).catch((err) => {
+        console.warn('Could not fetch D1 exchange_reasons:', err);
+      });
+
+      // 2d3. Hydrate dedicated return reasons from Cloudflare remote D1 table 'return_reasons'
+      d1Api.getReturnReasons(companyId).then((remoteReturnReasons) => {
+        if (Array.isArray(remoteReturnReasons) && remoteReturnReasons.length > 0) {
+          setData((prev) => {
+            if (!prev) return prev;
+            const updated = {
+              ...prev,
+              returnReasons: remoteReturnReasons,
+            };
+            saveCompanyState(companyId, updated);
+            return updated;
+          });
+        }
+      }).catch((err) => {
+        console.warn('Could not fetch D1 return_reasons:', err);
+      });
+
       // 2e. Hydrate dedicated delivery charges & shipping zones from Cloudflare remote D1 tables 'delivery_charge_settings' and 'shipping_zones'
       d1Api.getDeliveryCharges(companyId).then((remoteDeliveryCharges) => {
         if (remoteDeliveryCharges && !remoteDeliveryCharges.error) {
@@ -249,6 +287,57 @@ export function CompanyProvider({ children }) {
         }
       }).catch((err) => {
         console.warn('Could not fetch D1 landmarks:', err);
+      });
+
+      // 2e4. Hydrate portal menu settings from Cloudflare remote D1 table 'portal_menu_settings'
+      d1Api.getPortalMenus(companyId).then((remoteMenus) => {
+        if (Array.isArray(remoteMenus) && remoteMenus.length > 0) {
+          setData((prev) => {
+            if (!prev) return prev;
+            const updated = {
+              ...prev,
+              portalMenus: remoteMenus,
+            };
+            saveCompanyState(companyId, updated);
+            return updated;
+          });
+        }
+      }).catch((err) => {
+        console.warn('Could not fetch D1 portal_menu_settings:', err);
+      });
+
+      // 2e5. Hydrate vendor types from Cloudflare remote D1 table 'vendor_types'
+      d1Api.getVendorTypes(companyId).then((remoteVendorTypes) => {
+        if (Array.isArray(remoteVendorTypes) && remoteVendorTypes.length > 0) {
+          setData((prev) => {
+            if (!prev) return prev;
+            const updated = {
+              ...prev,
+              vendorTypes: remoteVendorTypes,
+            };
+            saveCompanyState(companyId, updated);
+            return updated;
+          });
+        }
+      }).catch((err) => {
+        console.warn('Could not fetch D1 vendor_types:', err);
+      });
+
+      // 2e6. Hydrate vendor categories from Cloudflare remote D1 table 'vendor_categories'
+      d1Api.getVendorCategories(companyId).then((remoteVendorCats) => {
+        if (Array.isArray(remoteVendorCats) && remoteVendorCats.length > 0) {
+          setData((prev) => {
+            if (!prev) return prev;
+            const updated = {
+              ...prev,
+              vendorCategories: remoteVendorCats,
+            };
+            saveCompanyState(companyId, updated);
+            return updated;
+          });
+        }
+      }).catch((err) => {
+        console.warn('Could not fetch D1 vendor_categories:', err);
       });
 
       // 2f. Hydrate staff users from Cloudflare remote D1 table 'company_users'
@@ -353,41 +442,17 @@ export function CompanyProvider({ children }) {
         console.warn('Could not fetch D1 vendors:', err);
       });
 
-      // 6. Hydrate live shipments from Cloudflare remote D1 table 'shipments'
+      // 6. Hydrate live shipments ONLY from Cloudflare remote D1 table 'shipments'
       d1Api.getShipments(companyId).then((remoteShipments) => {
         if (Array.isArray(remoteShipments)) {
-          if (remoteShipments.length === 0) {
-            setData((prev) => {
-              if (!prev) return prev;
-              const updated = {
-                ...prev,
-                shipments: [],
-              };
-              saveCompanyState(companyId, updated);
-              return updated;
-            });
-            return;
-          }
           setData((prev) => {
             if (!prev) return prev;
-            const map = new Map();
-            (prev.shipments || []).forEach((s) => {
-              if (s && (s.tracking_number || s.id)) {
-                map.set(s.tracking_number || `id_${s.id}`, s);
-              }
-            });
-            remoteShipments.forEach((s) => {
-              if (s && (s.tracking_number || s.id)) {
-                const k = s.tracking_number || `id_${s.id}`;
-                const existing = map.get(k) || {};
-                map.set(k, { ...existing, ...s });
-              }
-            });
-            const mergedList = Array.from(map.values());
-            const maxShipmentId = Math.max(...mergedList.map((s) => Number(s.id) || 1), prev.nextId?.shipment || 1);
+            const maxShipmentId = remoteShipments.length > 0
+              ? Math.max(...remoteShipments.map((s) => Number(s.id) || 1), prev.nextId?.shipment || 1)
+              : (prev.nextId?.shipment || 1);
             const updated = {
               ...prev,
-              shipments: mergedList,
+              shipments: remoteShipments,
               nextId: {
                 ...prev.nextId,
                 shipment: maxShipmentId + 1,
@@ -594,6 +659,9 @@ export function CompanyProvider({ children }) {
           console.warn('Failed to save order to D1 vendor_order:', err);
         });
       }
+
+      // Automated SMS dispatch (SMSsarara)
+      smsService.notifyOrderCreated(newShipmentObj, Number(companyId || 1));
     }
   };
 
@@ -624,6 +692,8 @@ export function CompanyProvider({ children }) {
         return {
           ...s,
           status: newStatus,
+          status_updated_at: now,
+          updated_at: now,
           delivered_at: newStatus === 'delivered' ? now : s.delivered_at,
           tracking_events: [...(s.tracking_events || []), event],
         };
@@ -633,6 +703,19 @@ export function CompanyProvider({ children }) {
       d1Api.updateShipmentStatus(id, newStatus, notes, location).catch((err) => {
         console.warn('Failed to update shipment status on D1:', err);
       });
+
+      // Dispatch automated event SMS (SMSsarara)
+      const targetShipment = (data?.shipments || []).find((s) => Number(s.id) === Number(id));
+      if (targetShipment) {
+        if (newStatus === 'out_for_delivery') {
+          const rider = (data?.couriers || []).find((r) => Number(r.id) === Number(targetShipment.courier_id));
+          smsService.notifyOutForDelivery(targetShipment, rider, Number(companyId || 1));
+        } else if (newStatus === 'delivered') {
+          smsService.notifyDelivered(targetShipment, Number(companyId || 1));
+        } else if (newStatus === 'cancelled' || newStatus === 'returned' || newStatus === 'rejected') {
+          smsService.notifyOrderCancelled(targetShipment, Number(companyId || 1));
+        }
+      }
     }
   };
 
@@ -650,6 +733,8 @@ export function CompanyProvider({ children }) {
             ...s,
             courier_id: Number(courierId),
             status: s.status === 'pending' ? 'assigned' : s.status,
+            status_updated_at: s.status === 'pending' ? now : (s.status_updated_at || s.created_at),
+            updated_at: now,
             tracking_events: [
               ...(s.tracking_events || []),
               {
@@ -685,6 +770,8 @@ export function CompanyProvider({ children }) {
             ...s,
             courier_id: Number(courierId),
             status: s.status === 'pending' ? 'assigned' : s.status,
+            status_updated_at: s.status === 'pending' ? now : (s.status_updated_at || s.created_at),
+            updated_at: now,
             tracking_events: [
               ...(s.tracking_events || []),
               {
@@ -842,8 +929,18 @@ export function CompanyProvider({ children }) {
       }
 
       const settings = prev.deliveryChargeSettings || defaultDeliveryChargeSettings();
+      const p = settings?.pricing || settings || {};
+      const isTaxEnabled = p.tax?.enabled !== undefined
+        ? Boolean(p.tax.enabled)
+        : (p.tax_enabled !== undefined
+          ? Boolean(p.tax_enabled)
+          : (settings.tax_enabled !== undefined ? Boolean(settings.tax_enabled) : true));
+      const taxRate = isTaxEnabled
+        ? Number(p.tax?.percent !== undefined ? p.tax.percent : (p.tax_percent !== undefined ? p.tax_percent : (settings.tax_percent || 13)))
+        : 0;
+
       const subtotal = unbilled.reduce((sum, s) => sum + (s.delivery_fee || 0), 0);
-      const tax_amount = Math.round(subtotal * ((settings.tax_percent || 13) / 100) * 100) / 100;
+      const tax_amount = isTaxEnabled ? (Math.round(subtotal * (taxRate / 100) * 100) / 100) : 0;
       const total_amount = Math.round((subtotal + tax_amount) * 100) / 100;
 
       const invoiceId = prev.nextId.invoice;
@@ -1091,9 +1188,11 @@ export function CompanyProvider({ children }) {
         staffNextId: { role: 1, user: 1 },
         vendorCustomers: [],
         vendorCustomersNextId: 1,
-        verified: false,
-        verification_status: 'pending',
-        status: 'pending_verification',
+        vendor_type: customerPayload.vendor_type || 'E-Commerce / Online Store',
+        vendor_category: customerPayload.vendor_category || 'General Merchandise',
+        verified: customerPayload.verified ?? false,
+        verification_status: customerPayload.verification_status || (customerPayload.verified ? 'verified' : 'unverified'),
+        status: customerPayload.status || (customerPayload.verified ? 'active' : 'unverified'),
       };
       return {
         ...prev,
@@ -1114,12 +1213,14 @@ export function CompanyProvider({ children }) {
         password: customerPayload.password,
         email: customerPayload.email || '',
         contact_person: customerPayload.contact_person || '',
+        vendor_type: customerPayload.vendor_type || 'E-Commerce / Online Store',
+        vendor_category: customerPayload.vendor_category || 'General Merchandise',
         address: customerPayload.address || {},
         bank_details: customerPayload.bank_details || {},
         documents: customerPayload.documents || {},
-        verified: false,
-        verification_status: 'pending',
-        status: 'pending_verification',
+        verified: customerPayload.verified ?? false,
+        verification_status: customerPayload.verification_status || (customerPayload.verified ? 'verified' : 'unverified'),
+        status: customerPayload.status || (customerPayload.verified ? 'active' : 'unverified'),
       }).then((res) => {
         if (res && res.id) {
           updateData((prev) => ({
@@ -1433,23 +1534,36 @@ export function CompanyProvider({ children }) {
 
   const verifyVendor = (id, status = 'verified') => {
     const isApproved = status === 'verified';
-    updateData((prev) => ({
-      ...prev,
-      customers: (prev.customers || []).map((c) =>
-        c.id === Number(id)
-          ? {
-              ...c,
-              verified: isApproved,
-              verification_status: status,
-              status: isApproved ? 'active' : 'rejected',
-            }
-          : c
-      ),
-    }));
+    let targetVendor = null;
+    updateData((prev) => {
+      targetVendor = (prev.customers || []).find((c) => Number(c.id) === Number(id)) ||
+                     (prev.vendors || []).find((v) => Number(v.id) === Number(id));
+      return {
+        ...prev,
+        customers: (prev.customers || []).map((c) =>
+          c.id === Number(id)
+            ? {
+                ...c,
+                verified: isApproved,
+                verification_status: status,
+                status: isApproved ? 'active' : 'rejected',
+              }
+            : c
+        ),
+      };
+    });
+
     if (companyId) {
       d1Api.verifyEntity('vendor', id, isApproved, status).catch((err) => {
         console.warn('Failed to verify vendor on D1:', err);
       });
+
+      if (isApproved) {
+        const vendor = targetVendor || (data?.customers || []).find((c) => Number(c.id) === Number(id)) || (data?.vendors || []).find((v) => Number(v.id) === Number(id));
+        if (vendor) {
+          smsService.notifyVendorVerified(vendor, Number(companyId || 1));
+        }
+      }
     }
   };
 
@@ -1921,6 +2035,162 @@ export function CompanyProvider({ children }) {
     });
   };
 
+  const addExchangeReason = (payload) => {
+    const itemData = typeof payload === 'string'
+      ? { name: payload, code: payload.substring(0, 15).toUpperCase().replace(/\s+/g, '_'), description: '', status: 'active', display_order: 0 }
+      : {
+          name: payload.name || '',
+          code: payload.code || (payload.name ? payload.name.substring(0, 15).toUpperCase().replace(/\s+/g, '_') : ''),
+          description: payload.description || '',
+          status: payload.status || 'active',
+          display_order: Number(payload.display_order) || 0,
+        };
+
+    let tempId;
+    updateData((prev) => {
+      tempId = Date.now();
+      const newItem = { id: tempId, company_id: companyId, ...itemData };
+      const nextReasons = [...(prev.exchangeReasons || []), newItem];
+      return {
+        ...prev,
+        exchangeReasons: nextReasons,
+      };
+    });
+
+    // Write to dedicated D1 table exchange_reasons
+    d1Api.addExchangeReason({ company_id: companyId, ...itemData }).then((res) => {
+      if (res?.item?.id) {
+        updateData((prev) => ({
+          ...prev,
+          exchangeReasons: (prev.exchangeReasons || []).map((r) => (r.id === tempId ? res.item : r)),
+        }));
+      }
+    }).catch((err) => {
+      console.warn('Failed to insert exchange reason into D1:', err);
+    });
+  };
+
+  const updateExchangeReason = (id, updates) => {
+    const numId = Number(id);
+
+    // Write to dedicated D1 table exchange_reasons
+    d1Api.updateExchangeReason(numId, updates, companyId).then((res) => {
+      if (res?.item) {
+        updateData((prev) => ({
+          ...prev,
+          exchangeReasons: (prev.exchangeReasons || []).map((r) => (r.id === numId ? res.item : r)),
+        }));
+      }
+    }).catch((err) => {
+      console.warn('Failed to update exchange reason in D1:', err);
+    });
+
+    updateData((prev) => {
+      const nextReasons = (prev.exchangeReasons || []).map((r) =>
+        r.id === numId ? { ...r, ...updates, updated_at: new Date().toISOString() } : r
+      );
+      return {
+        ...prev,
+        exchangeReasons: nextReasons,
+      };
+    });
+  };
+
+  const deleteExchangeReason = (id) => {
+    const numId = Number(id);
+
+    // Delete from dedicated D1 table exchange_reasons
+    d1Api.deleteExchangeReason(numId, companyId).catch((err) => {
+      console.warn('Failed to delete exchange reason from D1:', err);
+    });
+
+    updateData((prev) => {
+      const nextReasons = (prev.exchangeReasons || []).filter((r) => r.id !== numId);
+      return {
+        ...prev,
+        exchangeReasons: nextReasons,
+      };
+    });
+  };
+
+  const addReturnReason = (payload) => {
+    const itemData = typeof payload === 'string'
+      ? { name: payload, code: payload.substring(0, 15).toUpperCase().replace(/\s+/g, '_'), description: '', status: 'active', display_order: 0 }
+      : {
+          name: payload.name || '',
+          code: payload.code || (payload.name ? payload.name.substring(0, 15).toUpperCase().replace(/\s+/g, '_') : ''),
+          description: payload.description || '',
+          status: payload.status || 'active',
+          display_order: Number(payload.display_order) || 0,
+        };
+
+    let tempId;
+    updateData((prev) => {
+      tempId = Date.now();
+      const newItem = { id: tempId, company_id: companyId, ...itemData };
+      const nextReasons = [...(prev.returnReasons || []), newItem];
+      return {
+        ...prev,
+        returnReasons: nextReasons,
+      };
+    });
+
+    // Write to dedicated D1 table return_reasons
+    d1Api.addReturnReason({ company_id: companyId, ...itemData }).then((res) => {
+      if (res?.item?.id) {
+        updateData((prev) => ({
+          ...prev,
+          returnReasons: (prev.returnReasons || []).map((r) => (r.id === tempId ? res.item : r)),
+        }));
+      }
+    }).catch((err) => {
+      console.warn('Failed to insert return reason into D1:', err);
+    });
+  };
+
+  const updateReturnReason = (id, updates) => {
+    const numId = Number(id);
+
+    // Write to dedicated D1 table return_reasons
+    d1Api.updateReturnReason(numId, updates, companyId).then((res) => {
+      if (res?.item) {
+        updateData((prev) => ({
+          ...prev,
+          returnReasons: (prev.returnReasons || []).map((r) => (r.id === numId ? res.item : r)),
+        }));
+      }
+    }).catch((err) => {
+      console.warn('Failed to update return reason in D1:', err);
+    });
+
+    updateData((prev) => {
+      const nextReasons = (prev.returnReasons || []).map((r) =>
+        r.id === numId ? { ...r, ...updates, updated_at: new Date().toISOString() } : r
+      );
+      return {
+        ...prev,
+        returnReasons: nextReasons,
+      };
+    });
+  };
+
+  const deleteReturnReason = (id) => {
+    const numId = Number(id);
+
+    // Delete from dedicated D1 table return_reasons
+    d1Api.deleteReturnReason(numId, companyId).catch((err) => {
+      console.warn('Failed to delete return reason from D1:', err);
+    });
+
+    updateData((prev) => {
+      const nextReasons = (prev.returnReasons || []).filter((r) => r.id !== numId);
+      return {
+        ...prev,
+        returnReasons: nextReasons,
+      };
+    });
+  };
+
   const addLandmark = async (branchId, name) => {
     const trimmed = (name || '').trim();
     if (!trimmed) return;
@@ -1958,6 +2228,303 @@ export function CompanyProvider({ children }) {
       return {
         ...prev,
         landmarks: nextLandmarks,
+      };
+    });
+  };
+
+  // Portal Menu Settings (D1 Table 'portal_menu_settings')
+  const refreshPortalMenus = async () => {
+    try {
+      const remote = await d1Api.getPortalMenus(companyId);
+      if (Array.isArray(remote) && remote.length > 0) {
+        updateData((prev) => ({
+          ...prev,
+          portalMenus: remote,
+        }));
+      }
+    } catch (e) {
+      console.warn('Failed to refresh portal menus from D1:', e);
+    }
+  };
+
+  const togglePortalMenu = async (params) => {
+    const { id, portal, menu_key, is_enabled, cascade } = params;
+
+    // Optimistic local update
+    updateData((prev) => {
+      const currentList = prev.portalMenus && prev.portalMenus.length > 0 ? prev.portalMenus : defaultPortalMenus();
+      const targetItem = id 
+        ? currentList.find((m) => Number(m.id) === Number(id))
+        : currentList.find((m) => m.portal === portal && m.menu_key === menu_key);
+
+      if (!targetItem) return prev;
+
+      const nextState = is_enabled !== undefined ? (is_enabled ? 1 : 0) : (targetItem.is_enabled ? 0 : 1);
+
+      const nextList = currentList.map((m) => {
+        if (m.id === targetItem.id || (m.portal === targetItem.portal && m.menu_key === targetItem.menu_key)) {
+          return { ...m, is_enabled: nextState };
+        }
+        // If parent menu toggled and cascade is requested, also toggle child sub-menus
+        if (cascade && !targetItem.parent_key && m.parent_key === targetItem.menu_key && m.portal === targetItem.portal) {
+          return { ...m, is_enabled: nextState };
+        }
+        return m;
+      });
+
+      return {
+        ...prev,
+        portalMenus: nextList,
+      };
+    });
+
+    try {
+      const res = await d1Api.togglePortalMenu(params, companyId);
+      if (res?.item) {
+        updateData((prev) => ({
+          ...prev,
+          portalMenus: (prev.portalMenus || []).map((m) => (Number(m.id) === Number(res.item.id) ? res.item : m)),
+        }));
+      }
+      return res;
+    } catch (e) {
+      console.warn('Failed to toggle portal menu in D1:', e);
+    }
+  };
+
+  const batchUpdatePortalMenus = async (items) => {
+    if (!Array.isArray(items) || items.length === 0) return;
+
+    // Optimistic local update
+    updateData((prev) => {
+      const currentList = prev.portalMenus && prev.portalMenus.length > 0 ? prev.portalMenus : defaultPortalMenus();
+      const lookup = new Map();
+      items.forEach((it) => {
+        if (it.id) lookup.set(`id:${it.id}`, it.is_enabled ? 1 : 0);
+        if (it.portal && it.menu_key) lookup.set(`${it.portal}:${it.menu_key}`, it.is_enabled ? 1 : 0);
+      });
+
+      const nextList = currentList.map((m) => {
+        let matched = false;
+        let newState = m.is_enabled;
+        if (lookup.has(`id:${m.id}`)) {
+          newState = lookup.get(`id:${m.id}`);
+          matched = true;
+        } else if (lookup.has(`${m.portal}:${m.menu_key}`)) {
+          newState = lookup.get(`${m.portal}:${m.menu_key}`);
+          matched = true;
+        }
+        return matched ? { ...m, is_enabled: newState } : m;
+      });
+
+      return {
+        ...prev,
+        portalMenus: nextList,
+      };
+    });
+
+    try {
+      const res = await d1Api.batchUpdatePortalMenus(items, companyId);
+      if (res?.menus) {
+        updateData((prev) => ({
+          ...prev,
+          portalMenus: res.menus,
+        }));
+      }
+      return res;
+    } catch (e) {
+      console.warn('Failed to batch update portal menus in D1:', e);
+    }
+  };
+
+  const resetPortalMenus = async (portal = 'all') => {
+    updateData((prev) => {
+      const currentList = prev.portalMenus && prev.portalMenus.length > 0 ? prev.portalMenus : defaultPortalMenus();
+      const nextList = currentList.map((m) => {
+        if (portal === 'all' || m.portal === portal) {
+          return { ...m, is_enabled: 1 };
+        }
+        return m;
+      });
+      return {
+        ...prev,
+        portalMenus: nextList,
+      };
+    });
+
+    try {
+      const res = await d1Api.resetPortalMenus(portal, companyId);
+      if (res?.menus) {
+        updateData((prev) => ({
+          ...prev,
+          portalMenus: res.menus,
+        }));
+      }
+      return res;
+    } catch (e) {
+      console.warn('Failed to reset portal menus in D1:', e);
+    }
+  };
+
+  const isPortalMenuEnabled = (portal, menuKey) => {
+    const list = data?.portalMenus && data.portalMenus.length > 0 ? data.portalMenus : defaultPortalMenus();
+    const item = list.find((m) => m.portal === portal && m.menu_key === menuKey);
+    if (!item) return true; // Default to enabled if not found
+    if (!item.is_enabled || item.is_enabled === 0) return false;
+
+    // If item has a parent_key, also check that parent is enabled
+    if (item.parent_key) {
+      const parent = list.find((m) => m.portal === portal && m.menu_key === item.parent_key);
+      if (parent && (!parent.is_enabled || parent.is_enabled === 0)) return false;
+    }
+
+    return true;
+  };
+
+  // Vendor Types (D1 Table 'vendor_types')
+  const addVendorType = (payload) => {
+    const itemData = typeof payload === 'string'
+      ? { name: payload, code: payload.substring(0, 15).toUpperCase().replace(/\s+/g, '_'), description: '', status: 'active', display_order: 0 }
+      : {
+          name: payload.name || '',
+          code: payload.code || (payload.name ? payload.name.substring(0, 15).toUpperCase().replace(/\s+/g, '_') : ''),
+          description: payload.description || '',
+          status: payload.status || 'active',
+          display_order: Number(payload.display_order) || 0,
+        };
+
+    let tempId;
+    updateData((prev) => {
+      tempId = Date.now();
+      const newItem = { id: tempId, company_id: companyId, ...itemData };
+      const nextTypes = [...(prev.vendorTypes || defaultVendorTypes()), newItem];
+      return {
+        ...prev,
+        vendorTypes: nextTypes,
+      };
+    });
+
+    d1Api.addVendorType({ company_id: companyId, ...itemData }).then((res) => {
+      if (res?.item) {
+        updateData((prev) => ({
+          ...prev,
+          vendorTypes: (prev.vendorTypes || defaultVendorTypes()).map((t) => (t.id === tempId ? res.item : t)),
+        }));
+      }
+    }).catch((err) => {
+      console.warn('Failed to insert vendor type into D1:', err);
+    });
+  };
+
+  const updateVendorType = (id, updates) => {
+    const numId = Number(id);
+    d1Api.updateVendorType(numId, updates, companyId).then((res) => {
+      if (res?.item) {
+        updateData((prev) => ({
+          ...prev,
+          vendorTypes: (prev.vendorTypes || defaultVendorTypes()).map((t) => (t.id === numId ? res.item : t)),
+        }));
+      }
+    }).catch((err) => {
+      console.warn('Failed to update vendor type in D1:', err);
+    });
+
+    updateData((prev) => {
+      const nextTypes = (prev.vendorTypes || defaultVendorTypes()).map((t) =>
+        t.id === numId ? { ...t, ...updates, updated_at: new Date().toISOString() } : t
+      );
+      return {
+        ...prev,
+        vendorTypes: nextTypes,
+      };
+    });
+  };
+
+  const deleteVendorType = (id) => {
+    const numId = Number(id);
+    d1Api.deleteVendorType(numId, companyId).catch((err) => {
+      console.warn('Failed to delete vendor type from D1:', err);
+    });
+
+    updateData((prev) => {
+      const nextTypes = (prev.vendorTypes || defaultVendorTypes()).filter((t) => t.id !== numId);
+      return {
+        ...prev,
+        vendorTypes: nextTypes,
+      };
+    });
+  };
+
+  // Vendor Categories (D1 Table 'vendor_categories')
+  const addVendorCategory = (payload) => {
+    const itemData = typeof payload === 'string'
+      ? { name: payload, code: payload.substring(0, 15).toUpperCase().replace(/\s+/g, '_'), description: '', status: 'active', display_order: 0 }
+      : {
+          name: payload.name || '',
+          code: payload.code || (payload.name ? payload.name.substring(0, 15).toUpperCase().replace(/\s+/g, '_') : ''),
+          description: payload.description || '',
+          status: payload.status || 'active',
+          display_order: Number(payload.display_order) || 0,
+        };
+
+    let tempId;
+    updateData((prev) => {
+      tempId = Date.now();
+      const newItem = { id: tempId, company_id: companyId, ...itemData };
+      const nextCats = [...(prev.vendorCategories || defaultVendorCategories()), newItem];
+      return {
+        ...prev,
+        vendorCategories: nextCats,
+      };
+    });
+
+    d1Api.addVendorCategory({ company_id: companyId, ...itemData }).then((res) => {
+      if (res?.item) {
+        updateData((prev) => ({
+          ...prev,
+          vendorCategories: (prev.vendorCategories || defaultVendorCategories()).map((c) => (c.id === tempId ? res.item : c)),
+        }));
+      }
+    }).catch((err) => {
+      console.warn('Failed to insert vendor category into D1:', err);
+    });
+  };
+
+  const updateVendorCategory = (id, updates) => {
+    const numId = Number(id);
+    d1Api.updateVendorCategory(numId, updates, companyId).then((res) => {
+      if (res?.item) {
+        updateData((prev) => ({
+          ...prev,
+          vendorCategories: (prev.vendorCategories || defaultVendorCategories()).map((c) => (c.id === numId ? res.item : c)),
+        }));
+      }
+    }).catch((err) => {
+      console.warn('Failed to update vendor category in D1:', err);
+    });
+
+    updateData((prev) => {
+      const nextCats = (prev.vendorCategories || defaultVendorCategories()).map((c) =>
+        c.id === numId ? { ...c, ...updates, updated_at: new Date().toISOString() } : c
+      );
+      return {
+        ...prev,
+        vendorCategories: nextCats,
+      };
+    });
+  };
+
+  const deleteVendorCategory = (id) => {
+    const numId = Number(id);
+    d1Api.deleteVendorCategory(numId, companyId).catch((err) => {
+      console.warn('Failed to delete vendor category from D1:', err);
+    });
+
+    updateData((prev) => {
+      const nextCats = (prev.vendorCategories || defaultVendorCategories()).filter((c) => c.id !== numId);
+      return {
+        ...prev,
+        vendorCategories: nextCats,
       };
     });
   };
@@ -2126,7 +2693,7 @@ export function CompanyProvider({ children }) {
       if (allVendorShipments.length > 0) {
         updateData((prev) => {
           if (!prev) return prev;
-          const prevShipments = prev.shipments || [];
+          const prevShipments = (prev.shipments || []).filter((s) => s && s.tracking_number && !s.tracking_number.includes('HIST'));
           const map = new Map();
           // Keep all existing shipments
           prevShipments.forEach((s) => {
@@ -2201,7 +2768,7 @@ export function CompanyProvider({ children }) {
       if (list.length > 0) {
         updateData((prev) => {
           if (!prev) return prev;
-          const prevShipments = prev.shipments || [];
+          const prevShipments = (prev.shipments || []).filter((s) => s && s.tracking_number && !s.tracking_number.includes('HIST'));
           const map = new Map();
           prevShipments.forEach((s) => {
             if (s) map.set(s.tracking_number || `id_${s.id}`, s);
@@ -2284,17 +2851,7 @@ export function CompanyProvider({ children }) {
           updated.branches = formattedRemote;
         }
         if (Array.isArray(remoteShipments)) {
-          const map = new Map();
-          (prev.shipments || []).forEach((s) => {
-            if (s && (s.tracking_number || s.id)) map.set(s.tracking_number || `id_${s.id}`, s);
-          });
-          remoteShipments.forEach((s) => {
-            if (s && (s.tracking_number || s.id)) {
-              const k = s.tracking_number || `id_${s.id}`;
-              map.set(k, { ...(map.get(k) || {}), ...s });
-            }
-          });
-          updated.shipments = Array.from(map.values());
+          updated.shipments = remoteShipments;
         }
         saveCompanyState(companyId, updated);
         return updated;
@@ -2359,6 +2916,8 @@ export function CompanyProvider({ children }) {
         orderTypes: data?.orderTypes || [],
         deliveryServiceTypes: data?.deliveryServiceTypes || [],
         productCategories: data?.productCategories || [],
+        exchangeReasons: data?.exchangeReasons || [],
+        returnReasons: data?.returnReasons || [],
         deliveryChargeSettings: data?.deliveryChargeSettings || defaultDeliveryChargeSettings(),
         shipmentStatusSettings: data?.shipmentStatusSettings || defaultShipmentStatusSettings(),
         customShipmentStatuses: data?.customShipmentStatuses || [],
@@ -2429,6 +2988,26 @@ export function CompanyProvider({ children }) {
         addProductCategory,
         updateProductCategory,
         deleteProductCategory,
+        addExchangeReason,
+        updateExchangeReason,
+        deleteExchangeReason,
+        addReturnReason,
+        updateReturnReason,
+        deleteReturnReason,
+        vendorTypes: data?.vendorTypes || defaultVendorTypes(),
+        vendorCategories: data?.vendorCategories || defaultVendorCategories(),
+        addVendorType,
+        updateVendorType,
+        deleteVendorType,
+        addVendorCategory,
+        updateVendorCategory,
+        deleteVendorCategory,
+        portalMenus: data?.portalMenus || defaultPortalMenus(),
+        togglePortalMenu,
+        batchUpdatePortalMenus,
+        resetPortalMenus,
+        isPortalMenuEnabled,
+        refreshPortalMenus,
         addLandmark,
         deleteLandmark,
         addVendorCustomer,

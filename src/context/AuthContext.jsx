@@ -8,7 +8,11 @@ export function AuthProvider({ children }) {
   const { findCompany, companies } = usePlatform();
   const [session, setSession] = useState(() => {
     const loaded = loadSession();
-    return loaded?.type === 'admin' ? null : loaded;
+    if (!loaded || loaded?.type === 'admin') return null;
+    if (!loaded.loginEpoch) {
+      loaded.loginEpoch = loaded.createdAt ? new Date(loaded.createdAt).getTime() : Date.now();
+    }
+    return loaded;
   });
 
   useEffect(() => {
@@ -61,6 +65,7 @@ export function AuthProvider({ children }) {
             type: 'company',
             companyId: comp.id,
             userId: null,
+            loginEpoch: Date.now(),
           };
           setSession(newSession);
           return { session: newSession, redirect: '/company/overview' };
@@ -83,6 +88,8 @@ export function AuthProvider({ children }) {
               type: 'company',
               companyId: comp.id,
               userId: usr.id,
+              isStaff: true,
+              loginEpoch: Date.now(),
             };
             setSession(newSession);
             return { session: newSession, redirect: '/company/overview' };
@@ -120,6 +127,7 @@ export function AuthProvider({ children }) {
               companyId: comp.id,
               branchId: b.id,
               staffUserId: null,
+              loginEpoch: Date.now(),
             };
             setSession(newSession);
             return { session: newSession, redirect: '/branch/overview' };
@@ -146,6 +154,7 @@ export function AuthProvider({ children }) {
                 companyId: comp.id,
                 branchId: b.id,
                 staffUserId: su.id,
+                loginEpoch: Date.now(),
               };
               setSession(newSession);
               return { session: newSession, redirect: '/branch/overview' };
@@ -182,6 +191,7 @@ export function AuthProvider({ children }) {
               companyId: comp.id,
               customerId: cust.id,
               staffUserId: null,
+              loginEpoch: Date.now(),
             };
             setSession(newSession);
             return { session: newSession, redirect: '/customer/dashboard' };
@@ -208,6 +218,7 @@ export function AuthProvider({ children }) {
                 companyId: comp.id,
                 customerId: cust.id,
                 staffUserId: csu.id,
+                loginEpoch: Date.now(),
               };
               setSession(newSession);
               return { session: newSession, redirect: '/customer/dashboard' };
@@ -243,6 +254,7 @@ export function AuthProvider({ children }) {
               type: 'rider',
               companyId: comp.id,
               riderId: courier.id,
+              loginEpoch: Date.now(),
             };
             setSession(newSession);
             return { session: newSession, redirect: '/rider/deliveries' };
@@ -279,6 +291,8 @@ export function AuthProvider({ children }) {
         type: 'company',
         companyId: company.id,
         userId: user.id,
+        isStaff: true,
+        loginEpoch: Date.now(),
       };
       setSession(newSession);
       return newSession;
@@ -292,6 +306,7 @@ export function AuthProvider({ children }) {
       type: 'company',
       companyId: company.id,
       userId: null, // owner login
+      loginEpoch: Date.now(),
     };
     setSession(newSession);
     return newSession;
@@ -324,6 +339,7 @@ export function AuthProvider({ children }) {
         companyId: company.id,
         branchId: matchedBranch.id,
         staffUserId: matchedUser.id,
+        loginEpoch: Date.now(),
       };
       setSession(newSession);
       return newSession;
@@ -342,6 +358,7 @@ export function AuthProvider({ children }) {
       companyId: company.id,
       branchId: branch.id,
       staffUserId: null,
+      loginEpoch: Date.now(),
     };
     setSession(newSession);
     return newSession;
@@ -362,6 +379,7 @@ export function AuthProvider({ children }) {
       type: 'rider',
       companyId: company.id,
       riderId: rider.id,
+      loginEpoch: Date.now(),
     };
     setSession(newSession);
     return newSession;
@@ -394,6 +412,7 @@ export function AuthProvider({ children }) {
         companyId: company.id,
         customerId: matchedCustomer.id,
         staffUserId: matchedUser.id,
+        loginEpoch: Date.now(),
       };
       setSession(newSession);
       return newSession;
@@ -409,6 +428,7 @@ export function AuthProvider({ children }) {
       companyId: company.id,
       customerId: customer.id,
       staffUserId: null,
+      loginEpoch: Date.now(),
     };
     setSession(newSession);
     return newSession;

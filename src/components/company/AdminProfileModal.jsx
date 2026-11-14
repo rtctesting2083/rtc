@@ -31,12 +31,28 @@ export function AdminProfileModal({ initialTab = 'profile', onClose }) {
   const { session, logout } = useAuth();
   const { company, findCompanyUser } = useCompany();
   const { updateCompany } = usePlatform();
-  const navigate = useNavigate();
+
+  // Safe navigation fallback if rendered in an isolated context
+  let navigate = null;
+  try {
+    navigate = useNavigate();
+  } catch (err) {
+    navigate = (path) => {
+      window.location.href = path;
+    };
+  }
 
   const [activeTab, setActiveTab] = useState(initialTab); // 'profile' | 'password' | 'users'
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Sync tab if prop changes
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   const isStaffUser = Boolean(session?.userId);
   const currentUser = isStaffUser ? findCompanyUser(session.userId) : null;
@@ -168,7 +184,7 @@ export function AdminProfileModal({ initialTab = 'profile', onClose }) {
 
       // 2. Update local platform state
       if (updateCompany) {
-        updateCompany(company.id || 1, payload);
+        updateCompany(company?.id || 1, payload);
       }
 
       setSuccessMsg('Admin profile updated successfully in Cloudflare D1 Database!');
@@ -214,7 +230,7 @@ export function AdminProfileModal({ initialTab = 'profile', onClose }) {
 
       // Update password in local context state as well
       if (updateCompany) {
-        updateCompany(company.id || 1, { password: passwordData.newPassword });
+        updateCompany(company?.id || 1, { password: passwordData.newPassword });
       }
 
       setSuccessMsg('Password successfully updated in Cloudflare D1 Database!');
@@ -229,13 +245,19 @@ export function AdminProfileModal({ initialTab = 'profile', onClose }) {
   const handleLogout = () => {
     if (onClose) onClose();
     logout();
-    navigate('/login');
+    if (navigate) {
+      try { navigate('/login'); return; } catch {}
+    }
+    window.location.href = '/login';
   };
 
   const handleSwitchAccount = () => {
     if (onClose) onClose();
     logout();
-    navigate('/login');
+    if (navigate) {
+      try { navigate('/login'); return; } catch {}
+    }
+    window.location.href = '/login';
   };
 
   const userDisplayName = isStaffUser
@@ -999,7 +1021,10 @@ export function AdminProfileModal({ initialTab = 'profile', onClose }) {
               type="button"
               onClick={() => {
                 if (onClose) onClose();
-                navigate('/company/settings/users');
+                if (navigate) {
+                  try { navigate('/company/settings/users'); return; } catch {}
+                }
+                window.location.href = '/company/settings/users';
               }}
               style={{
                 background: 'var(--admin-red, #dc2626)',

@@ -399,12 +399,18 @@
   height: 44px;
   border-radius: 12px;
   background: #fef2f2;
-  color: var(--admin-red);
+  color: var(--admin-red, #dc2626);
+  border: 1px solid #fee2e2;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 20px;
   flex-shrink: 0;
+}
+
+.admin-date-icon-wrap svg {
+  color: var(--admin-red, #dc2626) !important;
+  stroke: var(--admin-red, #dc2626) !important;
 }
 
 .admin-date-content h4 {
@@ -478,15 +484,22 @@
 }
 
 .admin-metric-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: #ffffff;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: var(--admin-red, #dc2626);
+  border: 1px solid #fee2e2;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 16px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 3px rgba(220, 38, 38, 0.08);
+}
+
+.admin-metric-icon svg {
+  color: var(--admin-red, #dc2626) !important;
+  stroke: var(--admin-red, #dc2626) !important;
 }
 
 .admin-metric-value {
@@ -609,22 +622,34 @@
 }
 
 .admin-micro-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
   margin: 0 auto 6px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 13px;
+  background: #fef2f2 !important;
+  color: var(--admin-red, #dc2626) !important;
+  border: 1px solid #fee2e2;
 }
 
-.admin-micro-icon.green { background: #dcfce7; color: #15803d; }
-.admin-micro-icon.blue { background: #dbeafe; color: #1d4ed8; }
-.admin-micro-icon.amber { background: #fef3c7; color: #b45309; }
-.admin-micro-icon.purple { background: #ede9fe; color: #6d28d9; }
-.admin-micro-icon.red { background: #fee2e2; color: #b91c1c; }
-.admin-micro-icon.teal { background: #ccfbf1; color: #0f766e; }
+.admin-micro-icon svg {
+  color: var(--admin-red, #dc2626) !important;
+  stroke: var(--admin-red, #dc2626) !important;
+}
+
+.admin-micro-icon.green,
+.admin-micro-icon.blue,
+.admin-micro-icon.amber,
+.admin-micro-icon.purple,
+.admin-micro-icon.red,
+.admin-micro-icon.teal {
+  background: #fef2f2 !important;
+  color: var(--admin-red, #dc2626) !important;
+  border: 1px solid #fee2e2;
+}
 
 .admin-micro-val {
   font-size: 18px;
@@ -891,7 +916,15 @@
 
 .admin-action-icon {
   font-size: 18px;
-  color: var(--admin-red);
+  color: var(--admin-red, #dc2626) !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.admin-action-icon svg {
+  color: var(--admin-red, #dc2626) !important;
+  stroke: var(--admin-red, #dc2626) !important;
 }
 
 /* ---------- 2-Column Analytics & Lists Row ---------- */
@@ -931,12 +964,18 @@
   height: 34px;
   border-radius: 10px;
   background: #fee2e2;
-  color: var(--admin-red);
+  color: var(--admin-red, #dc2626);
+  border: 1px solid #fecaca;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 15px;
   flex-shrink: 0;
+}
+
+.admin-activity-icon svg {
+  color: var(--admin-red, #dc2626) !important;
+  stroke: var(--admin-red, #dc2626) !important;
 }
 
 .admin-activity-content {
@@ -1086,6 +1125,15 @@
 .admin-network-icon {
   font-size: 16px;
   margin-bottom: 4px;
+  color: var(--admin-red, #dc2626) !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.admin-network-icon svg {
+  color: var(--admin-red, #dc2626) !important;
+  stroke: var(--admin-red, #dc2626) !important;
 }
 
 .admin-network-val {
@@ -1138,7 +1186,15 @@
 .admin-module-icon {
   font-size: 20px;
   margin-bottom: 6px;
-  color: var(--admin-red);
+  color: var(--admin-red, #dc2626) !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.admin-module-icon svg {
+  color: var(--admin-red, #dc2626) !important;
+  stroke: var(--admin-red, #dc2626) !important;
 }
 
 .admin-module-name {

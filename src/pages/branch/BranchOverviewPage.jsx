@@ -1,5 +1,18 @@
 import React, { useState } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
+import {
+  Package,
+  CheckCircle2,
+  Truck,
+  Building2,
+  Clock,
+  Banknote,
+  Plus,
+  Bike,
+  Users,
+  Inbox,
+  Search,
+} from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
 import { StatusPill } from '../../components/common/StatusPill';
@@ -119,7 +132,7 @@ export function BranchOverviewPage() {
         </div>
 
         <div className="admin-date-card">
-          <div className="admin-date-icon-wrap">🏢</div>
+          <div className="admin-date-icon-wrap"><Building2 size={22} strokeWidth={2.2} /></div>
           <div className="admin-date-content">
             <h4>{currentBranch.name}</h4>
             <p>{currentBranch.district || currentBranch.province || 'Nepal'} Hub</p>
@@ -131,7 +144,7 @@ export function BranchOverviewPage() {
       <div className="admin-metrics-grid">
         <div className="admin-metric-card mint">
           <div className="admin-metric-top">
-            <span className="admin-metric-icon" style={{ color: 'var(--theme-color, #dc2626)' }}>📦</span>
+            <span className="admin-metric-icon"><Package size={18} strokeWidth={2.2} /></span>
           </div>
           <div>
             <div className="admin-metric-value">{branchShipments.length}</div>
@@ -142,7 +155,7 @@ export function BranchOverviewPage() {
 
         <div className="admin-metric-card mint">
           <div className="admin-metric-top">
-            <span className="admin-metric-icon" style={{ color: '#10b981' }}>✓</span>
+            <span className="admin-metric-icon"><CheckCircle2 size={18} strokeWidth={2.2} /></span>
           </div>
           <div>
             <div className="admin-metric-value">{deliveredToday}</div>
@@ -153,7 +166,7 @@ export function BranchOverviewPage() {
 
         <div className="admin-metric-card amber">
           <div className="admin-metric-top">
-            <span className="admin-metric-icon" style={{ color: '#f59e0b' }}>🚚</span>
+            <span className="admin-metric-icon"><Truck size={18} strokeWidth={2.2} /></span>
           </div>
           <div>
             <div className="admin-metric-value">{outForDelivery}</div>
@@ -164,7 +177,7 @@ export function BranchOverviewPage() {
 
         <div className="admin-metric-card yellow">
           <div className="admin-metric-top">
-            <span className="admin-metric-icon" style={{ color: '#ca8a04' }}>🏢</span>
+            <span className="admin-metric-icon"><Building2 size={18} strokeWidth={2.2} /></span>
           </div>
           <div>
             <div className="admin-metric-value">{inHub}</div>
@@ -175,7 +188,7 @@ export function BranchOverviewPage() {
 
         <div className="admin-metric-card rose">
           <div className="admin-metric-top">
-            <span className="admin-metric-icon" style={{ color: '#e11d48' }}>🕒</span>
+            <span className="admin-metric-icon"><Clock size={18} strokeWidth={2.2} /></span>
           </div>
           <div>
             <div className="admin-metric-value">{pendingAssign}</div>
@@ -186,7 +199,7 @@ export function BranchOverviewPage() {
 
         <div className="admin-metric-card sky">
           <div className="admin-metric-top">
-            <span className="admin-metric-icon" style={{ color: '#0284c7' }}>💰</span>
+            <span className="admin-metric-icon"><Banknote size={18} strokeWidth={2.2} /></span>
           </div>
           <div>
             <div className="admin-metric-value" style={{ fontSize: '18px' }}>
@@ -209,44 +222,44 @@ export function BranchOverviewPage() {
           <div className="admin-quick-actions-grid">
             <div
               className="admin-action-btn"
-              onClick={() => openModal('New Shipment', <NewShipmentModal defaultBranchId={currentBranch.id} />)}
+              onClick={() => navigate('/branch/orders/create')}
             >
-              <span className="admin-action-icon">+</span>
-              <span>New Shipment</span>
+              <span className="admin-action-icon"><Plus size={18} strokeWidth={2.5} /></span>
+              <span>Create New Order</span>
             </div>
             <div
               className="admin-action-btn"
               onClick={handleOpenAddRider}
             >
-              <span className="admin-action-icon">🛵</span>
+              <span className="admin-action-icon"><Bike size={18} strokeWidth={2.2} /></span>
               <span>Register Rider</span>
             </div>
             <div
               className="admin-action-btn"
               onClick={handleOpenAddVendor}
             >
-              <span className="admin-action-icon">👥</span>
+              <span className="admin-action-icon"><Users size={18} strokeWidth={2.2} /></span>
               <span>Register Vendor</span>
             </div>
             <div
               className="admin-action-btn"
               onClick={() => navigate('/branch/received-shipments')}
             >
-              <span className="admin-action-icon">📥</span>
+              <span className="admin-action-icon"><Inbox size={18} strokeWidth={2.2} /></span>
               <span>Receive Incoming</span>
             </div>
             <div
               className="admin-action-btn"
               onClick={() => navigate('/branch/cod-settlement')}
             >
-              <span className="admin-action-icon">💰</span>
+              <span className="admin-action-icon"><Banknote size={18} strokeWidth={2.2} /></span>
               <span>COD Settlement</span>
             </div>
             <div
               className="admin-action-btn"
               onClick={() => navigate('/branch/track')}
             >
-              <span className="admin-action-icon">🎯</span>
+              <span className="admin-action-icon"><Search size={18} strokeWidth={2.2} /></span>
               <span>Scan / Track</span>
             </div>
           </div>
@@ -266,17 +279,17 @@ export function BranchOverviewPage() {
 
           <div className="admin-network-stats-row" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
             <div className="admin-network-stat-box">
-              <div className="admin-network-icon">🛵</div>
+              <div className="admin-network-icon"><Bike size={18} strokeWidth={2.2} /></div>
               <div className="admin-network-val">{branchRiders.length}</div>
               <div className="admin-network-lbl">Riders</div>
             </div>
             <div className="admin-network-stat-box">
-              <div className="admin-network-icon">📦</div>
+              <div className="admin-network-icon"><Package size={18} strokeWidth={2.2} /></div>
               <div className="admin-network-val">{totalActive}</div>
               <div className="admin-network-lbl">Active Parcels</div>
             </div>
             <div className="admin-network-stat-box">
-              <div className="admin-network-icon">✓</div>
+              <div className="admin-network-icon"><CheckCircle2 size={18} strokeWidth={2.2} /></div>
               <div className="admin-network-val">{deliveredToday}</div>
               <div className="admin-network-lbl">Delivered Today</div>
             </div>

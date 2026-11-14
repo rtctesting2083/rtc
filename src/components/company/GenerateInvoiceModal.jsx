@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 
 export function GenerateInvoiceModal({ onDone = null }) {
-  const { customers = [], shipments = [], refreshData, companyData } = useCompany();
+  const { customers = [], shipments = [], refreshData, companyData, deliveryChargeSettings } = useCompany();
   const { closeModal } = useModal();
 
   const [customerId, setCustomerId] = useState(customers[0]?.id || '');
@@ -65,17 +65,27 @@ export function GenerateInvoiceModal({ onDone = null }) {
     return unbilled.filter((s) => selectedShipmentIds.includes(s.id));
   }, [unbilled, selectedShipmentIds]);
 
-  // Tax calculations pursuant to IRD 13% VAT rules
+  const p = deliveryChargeSettings?.pricing || deliveryChargeSettings || {};
+  const isTaxEnabled = p.tax?.enabled !== undefined
+    ? Boolean(p.tax.enabled)
+    : (p.tax_enabled !== undefined
+      ? Boolean(p.tax_enabled)
+      : (deliveryChargeSettings?.tax_enabled !== undefined ? Boolean(deliveryChargeSettings.tax_enabled) : true));
+  const configuredTaxPercent = Number(p.tax?.percent !== undefined ? p.tax.percent : (p.tax_percent !== undefined ? p.tax_percent : (deliveryChargeSettings?.tax_percent || 13.0)));
+
+  // Tax calculations pursuant to IRD rules (or non-taxable if tax disabled)
   const subtotal = useMemo(() => {
     return chosenShipments.reduce((sum, s) => sum + (Number(s.delivery_fee) || 0), 0);
   }, [chosenShipments]);
 
   const discountAmount = 0;
-  const nonTaxableAmount = 0;
-  const taxableAmount = Math.max(0, subtotal - discountAmount - nonTaxableAmount);
-  const vatRate = 13.0;
-  const vatAmount = Math.round(taxableAmount * (vatRate / 100) * 100) / 100;
-  const totalAmount = Math.round((taxableAmount + vatAmount + nonTaxableAmount) * 100) / 100;
+  const nonTaxableAmount = isTaxEnabled ? 0 : subtotal;
+  const taxableAmount = isTaxEnabled ? Math.max(0, subtotal - discountAmount) : 0;
+  const vatRate = isTaxEnabled ? configuredTaxPercent : 0.0;
+  const vatAmount = isTaxEnabled ? Math.round(taxableAmount * (vatRate / 100) * 100) / 100 : 0;
+  const totalAmount = isTaxEnabled
+    ? Math.round((taxableAmount + vatAmount + nonTaxableAmount) * 100) / 100
+    : subtotal;
   const amountInWords = numberToWordsEn(totalAmount);
 
   const fiscalYear = getNepaliFiscalYear(new Date());
@@ -456,12 +466,12 @@ export function GenerateInvoiceModal({ onDone = null }) {
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-            <span style={{ color: '#64748b' }}>जम्मा रकम (Taxable Delivery Charges):</span>
-            <b>{fmtMoney(taxableAmount)}</b>
+            <span style={{ color: '#64748b' }}>{isTaxEnabled ? 'जम्मा रकम (Taxable Delivery Charges):' : 'जम्मा रकम (Delivery Charges):'}</span>
+            <b>{fmtMoney(isTaxEnabled ? taxableAmount : subtotal)}</b>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', color: '#dc2626' }}>
-            <span>मूल्य अभिवृद्धि कर १३% (VAT 13%):</span>
-            <b>+ {fmtMoney(vatAmount)}</b>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', color: isTaxEnabled ? '#dc2626' : '#64748b' }}>
+            <span>{isTaxEnabled ? `मूल्य अभिवृद्धि कर ${vatRate}% (VAT ${vatRate}%):` : 'मूल्य अभिवृद्धि कर (VAT Disabled):'}</span>
+            <b>{isTaxEnabled ? `+ ${fmtMoney(vatAmount)}` : 'Rs. 0.00'}</b>
           </div>
           <div
             style={{

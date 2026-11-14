@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { NavLink } from 'react-router-dom';
+import { Shield, Clock } from 'lucide-react';
 import { useCompany } from '../../../context/CompanyContext';
 import { useModal } from '../../../context/ModalContext';
 import { PERMISSION_VIEWS, ALL_PERMISSION_KEYS } from '../../../utils/constants';
@@ -64,6 +66,67 @@ export function UserManagementSettingsPage() {
 
       <div className="banner">
         Create staff logins with specific roles so each employee only sees what their job requires. The company owner login retains full access.
+      </div>
+
+      {/* Inactivity Security Policy Banner */}
+      <div
+        style={{
+          background: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          borderRadius: '10px',
+          padding: '12px 18px',
+          marginTop: '12px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '10px',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div
+            style={{
+              background: '#fef2f2',
+              color: '#dc2626',
+              borderRadius: '50%',
+              width: '32px',
+              height: '32px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Clock size={16} />
+          </div>
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: '#1e293b' }}>
+              Inactivity Auto-Logout Policy
+            </div>
+            <div style={{ fontSize: '12px', color: '#64748b' }}>
+              System automatically logs out idle users after 10 minutes of inactivity for security.
+            </div>
+          </div>
+        </div>
+
+        <NavLink
+          to="/company/settings/security"
+          style={{
+            background: '#ffffff',
+            border: '1px solid #cbd5e1',
+            color: '#dc2626',
+            fontSize: '12px',
+            fontWeight: 700,
+            padding: '6px 12px',
+            borderRadius: '6px',
+            textDecoration: 'none',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+          }}
+        >
+          <Shield size={13} />
+          <span>Configure Security Settings ➔</span>
+        </NavLink>
       </div>
 
       {/* Roles Section */}

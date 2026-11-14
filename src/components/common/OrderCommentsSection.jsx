@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useCompany } from '../../context/CompanyContext';
 import { d1Api } from '../../utils/d1Api';
 import { formatDateTimeAMPM } from '../../utils/helpers';
-import { MessageSquare, Send, RefreshCw, Shield, Store, Building2, Bike, User, Clock } from 'lucide-react';
+import { MessageSquare, Send, RefreshCw, Shield, Store, Building2, Bike, User, Clock, Edit2, Trash2, Check, X } from 'lucide-react';
 import '../../pages/customer/VendorDashboard.css';
 
 /**
@@ -70,6 +70,10 @@ export function OrderCommentsSection({
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingCommentId, setEditingCommentId] = useState(null);
+  const [editingText, setEditingText] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const chatStreamRef = useRef(null);
 
   const tNumber = trackingNumber || order?.tracking_number || '';
@@ -206,6 +210,53 @@ export function OrderCommentsSection({
     const mm = String(d.getMinutes()).padStart(2, '0');
     const ss = String(d.getSeconds()).padStart(2, '0');
     return `${day}-${mon}-${y} ${hh}:${mm}:${ss}`;
+  };
+
+  // Edit Comment Handlers (Cloudflare D1)
+  const handleStartEdit = (comment) => {
+    setEditingCommentId(comment.id);
+    setEditingText(comment.comment || comment.text || '');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCommentId(null);
+    setEditingText('');
+  };
+
+  const handleSaveEdit = async (commentId) => {
+    const trimmed = editingText.trim();
+    if (!trimmed) {
+      alert('Comment text cannot be empty.');
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      await d1Api.updateOrderComment(commentId, trimmed);
+      setComments((prev) =>
+        prev.map((c) => (c.id === commentId ? { ...c, comment: trimmed, text: trimmed } : c))
+      );
+      setEditingCommentId(null);
+      setEditingText('');
+    } catch (err) {
+      alert(`Failed to update comment in D1: ${err.message}`);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    if (!window.confirm('Are you sure you want to delete this order comment from Cloudflare D1 database?')) {
+      return;
+    }
+    setDeletingId(commentId);
+    try {
+      await d1Api.deleteOrderComment(commentId);
+      setComments((prev) => prev.filter((c) => c.id !== commentId));
+    } catch (err) {
+      alert(`Failed to delete comment from D1: ${err.message}`);
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   if (variant === 'reference') {
@@ -355,11 +406,110 @@ export function OrderCommentsSection({
                     {initialLetter}
                   </div>
                   <div className="order-comment-bubble-body">
-                    <div className="order-comment-text">{c.comment || c.text}</div>
-                    <div className="order-comment-author-footer">
-                      <span className="order-comment-author-name">{c.author_name || 'Staff'}</span>
-                      <span className="order-comment-date-time">{timeStr}</span>
-                    </div>
+                    {editingCommentId === c.id ? (
+                      <div style={{ marginTop: '4px' }}>
+                        <textarea
+                          rows={2}
+                          value={editingText}
+                          onChange={(e) => setEditingText(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '6px 8px',
+                            fontSize: '12px',
+                            border: '1px solid #cbd5e1',
+                            borderRadius: '4px',
+                            boxSizing: 'border-box',
+                            fontFamily: 'inherit',
+                          }}
+                        />
+                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', marginTop: '6px' }}>
+                          <button
+                            type="button"
+                            onClick={handleCancelEdit}
+                            style={{
+                              background: '#f1f5f9',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: '4px',
+                              padding: '2px 8px',
+                              fontSize: '11px',
+                              cursor: 'pointer',
+                              color: '#64748b',
+                            }}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={savingEdit}
+                            onClick={() => handleSaveEdit(c.id)}
+                            style={{
+                              background: '#003b73',
+                              color: '#fff',
+                              border: 'none',
+                              borderRadius: '4px',
+                              padding: '2px 10px',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {savingEdit ? 'Saving...' : 'Save'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="order-comment-text">{c.comment || c.text}</div>
+                        <div className="order-comment-author-footer" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
+                          <div>
+                            <span className="order-comment-author-name">{c.author_name || 'Staff'}</span>
+                            <span className="order-comment-date-time">{timeStr}</span>
+                          </div>
+                          {(currentSessionType === 'company' || c.author_type === detectedType) && (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleStartEdit(c)}
+                                title="Edit Comment in Cloudflare D1"
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#0284c7',
+                                  cursor: 'pointer',
+                                  padding: '1px 4px',
+                                  fontSize: '11px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                }}
+                              >
+                                <Edit2 size={11} />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteComment(c.id)}
+                                title="Delete Comment from Cloudflare D1"
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#dc2626',
+                                  cursor: 'pointer',
+                                  padding: '1px 4px',
+                                  fontSize: '11px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                }}
+                              >
+                                <Trash2 size={11} />
+                                <span>Delete</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               );
@@ -589,25 +739,132 @@ export function OrderCommentsSection({
                     boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
                     wordBreak: 'break-word',
                     whiteSpace: 'pre-wrap',
+                    width: editingCommentId === c.id ? '100%' : 'auto',
                   }}
                 >
-                  {c.comment || c.text}
+                  {editingCommentId === c.id ? (
+                    <div>
+                      <textarea
+                        rows={2}
+                        value={editingText}
+                        onChange={(e) => setEditingText(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '6px 8px',
+                          fontSize: '12px',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '6px',
+                          boxSizing: 'border-box',
+                          fontFamily: 'inherit',
+                          background: '#ffffff',
+                        }}
+                      />
+                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', marginTop: '6px' }}>
+                        <button
+                          type="button"
+                          onClick={handleCancelEdit}
+                          style={{
+                            background: '#f1f5f9',
+                            border: '1px solid #cbd5e1',
+                            borderRadius: '4px',
+                            padding: '3px 8px',
+                            fontSize: '11px',
+                            cursor: 'pointer',
+                            color: '#64748b',
+                          }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={savingEdit}
+                          onClick={() => handleSaveEdit(c.id)}
+                          style={{
+                            background: 'var(--theme-color, #dc2626)',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '4px',
+                            padding: '3px 12px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {savingEdit ? 'Saving...' : 'Save Update'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    c.comment || c.text
+                  )}
                 </div>
 
-                {/* Date & Time (AM/PM) Timestamp */}
+                {/* Date & Time Timestamp + Edit / Delete Actions */}
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '4px',
-                    fontSize: '10.5px',
-                    color: '#94a3b8',
+                    justifyContent: isMe ? 'flex-end' : 'flex-start',
+                    gap: '10px',
                     marginTop: '2px',
-                    fontWeight: 500,
                   }}
                 >
-                  <Clock size={10} />
-                  <span>{timeDisplay}</span>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      fontSize: '10.5px',
+                      color: '#94a3b8',
+                      fontWeight: 500,
+                    }}
+                  >
+                    <Clock size={10} />
+                    <span>{timeDisplay}</span>
+                  </div>
+
+                  {(currentSessionType === 'company' || c.author_type === detectedType) && editingCommentId !== c.id && (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleStartEdit(c)}
+                        title="Edit Comment in Cloudflare D1"
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#0284c7',
+                          cursor: 'pointer',
+                          padding: '1px 3px',
+                          fontSize: '11px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '2px',
+                        }}
+                      >
+                        <Edit2 size={10} />
+                        <span>Edit</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteComment(c.id)}
+                        title="Delete Comment from Cloudflare D1"
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#dc2626',
+                          cursor: 'pointer',
+                          padding: '1px 3px',
+                          fontSize: '11px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '2px',
+                        }}
+                      >
+                        <Trash2 size={10} />
+                        <span>Delete</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             );

@@ -1,4 +1,4 @@
-import { CURRENCY } from './constants.js';
+import { CURRENCY, NEPAL_PROVINCES } from './constants.js';
 
 export function pad(n, size = 2) {
   return n.toString().padStart(size, '0');
@@ -374,9 +374,14 @@ export function calculateDeliveryCharge({
   const baseDeliveryCharge = Math.max(0, zoneSubtotal + speedFee - discountAmount);
   const deliveryFee = Math.max(0, baseDeliveryCharge + codFee + fragileFee + insuranceFee);
 
-  // 6. Tax
-  const taxPct = Number(p.tax_percent !== undefined ? p.tax_percent : 13);
-  const taxAmount = Math.round(deliveryFee * (taxPct / 100) * 100) / 100;
+  // 6. Tax (Added when invoices are generated or computed with rates)
+  const isTaxEnabled = p.tax?.enabled !== undefined
+    ? Boolean(p.tax.enabled)
+    : (p.tax_enabled !== undefined ? Boolean(p.tax_enabled) : true);
+  const taxPct = isTaxEnabled
+    ? Number(p.tax?.percent !== undefined ? p.tax.percent : (p.tax_percent !== undefined ? p.tax_percent : 13))
+    : 0;
+  const taxAmount = isTaxEnabled ? Math.round(deliveryFee * (taxPct / 100) * 100) / 100 : 0;
 
   return {
     matchedZone,
@@ -397,6 +402,7 @@ export function calculateDeliveryCharge({
     discountPercent,
     zoneSubtotal,
     deliveryFee,
+    taxEnabled: isTaxEnabled,
     taxPercent: taxPct,
     taxAmount,
     totalWithTax: Math.round((deliveryFee + taxAmount) * 100) / 100,
@@ -509,3 +515,84 @@ export function isToday(iso) {
          d.getMonth() === now.getMonth() &&
          d.getDate() === now.getDate();
 }
+
+export function getProvinceForDistrict(district) {
+  if (!district || typeof district !== 'string') return '';
+  const dNorm = district.trim().toLowerCase();
+  if (NEPAL_PROVINCES && typeof NEPAL_PROVINCES === 'object') {
+    for (const [prov, distList] of Object.entries(NEPAL_PROVINCES)) {
+      if (Array.isArray(distList) && distList.some((d) => d.toLowerCase() === dNorm)) {
+        return prov;
+      }
+    }
+  }
+  return '';
+}
+
+export function formatAddressWithDistrictProvince(address, branch) {
+  const rawAddr = (address || '').trim();
+  if (!rawAddr || rawAddr === '—' || rawAddr === '-') {
+    return '—';
+  }
+
+  // 1. Resolve district from branch or address
+  let district = branch?.district || branch?.address?.district || '';
+  if (!district && branch?.name) {
+    const match = branch.name.match(/\(\s*([^)]+?)\s*\)/);
+    if (match && match[1]) {
+      district = match[1].trim();
+    }
+  }
+
+  // 2. Resolve province
+  let province = branch?.province || branch?.address?.province || '';
+  if (!province && district) {
+    province = getProvinceForDistrict(district);
+  }
+
+  if (!district && !province) {
+    return rawAddr;
+  }
+
+  // 3. Clean trailing repetitive mentions from rawAddr
+  let base = rawAddr;
+  if (district) {
+    const distRegex = new RegExp(`[,\\s]+${district}\\s*$`, 'i');
+    if (distRegex.test(base)) {
+      base = base.replace(distRegex, '').trim();
+    }
+  }
+  if (province) {
+    const provRegex = new RegExp(`[,\\s]+${province}\\s*$`, 'i');
+    if (provRegex.test(base)) {
+      base = base.replace(provRegex, '').trim();
+    }
+  }
+
+  const parts = [district, province].filter(Boolean);
+  if (parts.length === 0) return rawAddr;
+
+  const cleanBase = base.replace(/[,/-\s]+$/, '').trim();
+  if (!cleanBase) {
+    return parts.join(', ');
+  }
+
+  return `${cleanBase}, ${parts.join(', ')}`;
+}
+
+/**
+ * Check if a vendor / merchant is verified.
+ * Returns true only if verified flag is active and verification_status is 'verified'.
+ * Unverified vendors are restricted from creating orders, pickups, and balance requests.
+ */
+export function isVendorVerified(vendor) {
+  if (!vendor || typeof vendor !== 'object') return false;
+  if (vendor.verified === true || vendor.verified === 1 || vendor.verified === '1' || vendor.verified === 'true') {
+    return true;
+  }
+  if (vendor.verification_status === 'verified') {
+    return true;
+  }
+  return false;
+}
+

@@ -1,15 +1,19 @@
 import React, { useState } from 'react';
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
-import { calcFee, addressSummary } from '../../utils/helpers';
+import { calcFee, addressSummary, trackingNumber } from '../../utils/helpers';
 import { OrderCreatedSuccessDialog } from '../common/OrderCreatedSuccessDialog';
 import { printShipmentLabel } from '../../utils/print';
+import { AddressFields } from '../common/AddressFields';
+import { parseNepalAddress, formatNepalAddress } from '../../utils/nepalAddressData';
+import { Check } from 'lucide-react';
 
 export function NewShipmentModal({ presetBranchId = null, defaultBranchId = null, onDone = null }) {
   const effectiveBranchId = presetBranchId || defaultBranchId;
   const {
     customers,
     branches,
+    shipments = [],
     orderTypes = [],
     deliveryServiceTypes = [],
     productCategories = [],
@@ -62,6 +66,33 @@ export function NewShipmentModal({ presetBranchId = null, defaultBranchId = null
   const [receiverName, setReceiverName] = useState('');
   const [receiverPhone, setReceiverPhone] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [useNepalAddressFilter, setUseNepalAddressFilter] = useState(false);
+  const [nepalAddress, setNepalAddress] = useState({
+    province: '',
+    district: '',
+    municipality: '',
+    ward: '',
+    tole: '',
+  });
+
+  const handleNepalAddressChange = (newAddress) => {
+    setNepalAddress(newAddress);
+    const formatted = formatNepalAddress(newAddress);
+    setDeliveryAddress(formatted);
+
+    // Auto-match destination branch if district matches and no destBranchId set
+    if (newAddress.district && (!destBranchId || destBranchId === '')) {
+      const matchBranch = (branches || []).find((b) => {
+        const bDist = (b.district || b.address?.district || '').toLowerCase();
+        const bName = (b.name || '').toLowerCase();
+        const targetDist = newAddress.district.toLowerCase();
+        return bDist === targetDist || bName.includes(targetDist);
+      });
+      if (matchBranch) {
+        setDestBranchId(String(matchBranch.id));
+      }
+    }
+  };
 
   // Package Details
   const [packageType, setPackageType] = useState('non_fragile'); // 'non_fragile' or 'fragile'
@@ -200,7 +231,7 @@ export function NewShipmentModal({ presetBranchId = null, defaultBranchId = null
     const fee = calcFee(dist, priority, chargeSettings());
     const autoPickup = `${originName} Counter Drop-off`;
     const finalDelivery = deliveryAddress.trim() || `${destName} Counter Collection`;
-    const trkNumber = `RTC-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const trkNumber = trackingNumber(shipments);
 
     const shipmentPayload = {
       tracking_number: trkNumber,
@@ -600,19 +631,95 @@ export function NewShipmentModal({ presetBranchId = null, defaultBranchId = null
         </label>
       </div>
 
-      <label>
-        {deliveryMode === 'branch_to_door' ? 'Delivery Address (Doorstep) *' : 'Destination Collection Point / Address *'}
-        <input
-          value={deliveryAddress}
-          onChange={(e) => setDeliveryAddress(e.target.value)}
-          placeholder={
-            deliveryMode === 'branch_to_door'
-              ? 'Street, Tole, City / Municipality, House No'
-              : `${destName} Counter Collection Point`
-          }
-          required
-        />
-      </label>
+      {/* Delivery Address with Nepal Address Filter */}
+      <div style={{ marginBottom: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', flexWrap: 'wrap', gap: '8px' }}>
+          <span style={{ fontSize: '13px', fontWeight: 600 }}>
+            {deliveryMode === 'branch_to_door' ? 'Delivery Address (Doorstep) *' : 'Destination Collection Point / Address *'}
+          </span>
+          {deliveryMode === 'branch_to_door' && (
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!useNepalAddressFilter && deliveryAddress) {
+                    setNepalAddress(parseNepalAddress(deliveryAddress));
+                  }
+                  setUseNepalAddressFilter(true);
+                }}
+                style={{
+                  padding: '3px 10px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  borderRadius: '5px',
+                  border: useNepalAddressFilter ? '1.5px solid #2563eb' : '1px solid #cbd5e1',
+                  backgroundColor: useNepalAddressFilter ? '#eff6ff' : '#ffffff',
+                  color: useNepalAddressFilter ? '#1d4ed8' : '#64748b',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                <span>🇳🇵 Nepal Address Filter</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setUseNepalAddressFilter(false)}
+                style={{
+                  padding: '3px 10px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  borderRadius: '5px',
+                  border: !useNepalAddressFilter ? '1.5px solid #2563eb' : '1px solid #cbd5e1',
+                  backgroundColor: !useNepalAddressFilter ? '#eff6ff' : '#ffffff',
+                  color: !useNepalAddressFilter ? '#1d4ed8' : '#64748b',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                <span>✏️ Direct Input</span>
+              </button>
+              {useNepalAddressFilter && (
+                <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '2px' }}>
+                  <Check size={12} /> Active
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {deliveryMode === 'branch_to_door' && useNepalAddressFilter ? (
+          <div
+            style={{
+              padding: '12px',
+              backgroundColor: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+            }}
+          >
+            <AddressFields
+              value={nepalAddress}
+              onChange={handleNepalAddressChange}
+              required={false}
+              hidePreview={false}
+            />
+          </div>
+        ) : (
+          <input
+            value={deliveryAddress}
+            onChange={(e) => setDeliveryAddress(e.target.value)}
+            placeholder={
+              deliveryMode === 'branch_to_door'
+                ? 'Street, Tole, City / Municipality, House No'
+                : `${destName} Counter Collection Point`
+            }
+            required
+          />
+        )}
+      </div>
 
       {/* Package & Billing Details */}
       <div className="form-section-divider">📦 Package & Billing Details</div>

@@ -1,7 +1,11 @@
 import React from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AdminProfileModal } from '../../components/company/AdminProfileModal';
 
 export function AdminProfilePage() {
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') || 'profile';
+
   return (
     <div style={{ padding: '24px 32px' }}>
       <div style={{ marginBottom: '20px' }}>
@@ -22,7 +26,7 @@ export function AdminProfilePage() {
           boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
         }}
       >
-        <AdminProfileModal />
+        <AdminProfileModal initialTab={initialTab} />
       </div>
     </div>
   );

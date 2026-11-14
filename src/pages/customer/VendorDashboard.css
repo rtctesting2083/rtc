@@ -508,16 +508,17 @@
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 5px 10px;
-  font-size: 12px;
+  padding: 6px 10px;
+  font-size: 12.5px;
   color: #64748b;
   text-decoration: none;
   background: none;
   border: none;
   text-align: left;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
+  font-weight: 500;
 }
 
 .vendor-sub-icon {
@@ -541,8 +542,9 @@
 
 .vendor-sub-item.active {
   color: var(--vendor-red, #dc2626);
-  font-weight: 600;
+  font-weight: 700;
   background: #fef2f2;
+  box-shadow: inset 3px 0 0 #dc2626;
 }
 
 /* Bottom Sidebar User Pill */
@@ -1349,30 +1351,37 @@
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  padding: 16px 20px;
-  margin-bottom: 20px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
   display: flex;
-  justify-content: space-between;
   align-items: flex-end;
-  gap: 16px;
-  flex-wrap: wrap;
+  gap: 8px;
+  flex-wrap: nowrap;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  overflow: visible;
+  position: relative;
+  z-index: 60;
 }
 
 .order-filter-fields {
   display: flex;
   align-items: flex-end;
-  gap: 16px;
-  flex-wrap: wrap;
+  gap: 8px;
+  flex-wrap: nowrap;
   flex: 1;
+  min-width: 0;
+  overflow: visible;
+  position: relative;
 }
 
 .filter-field-group {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  min-width: 160px;
+  gap: 4px;
+  min-width: 0;
   flex: 1;
+  position: relative;
+  overflow: visible;
 }
 
 .filter-label {
@@ -1380,6 +1389,9 @@
   font-weight: 700;
   color: #64748b;
   letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .filter-date-wrapper {
@@ -1391,11 +1403,12 @@
 .filter-input,
 .filter-select {
   width: 100%;
+  height: 34px;
   background: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
-  padding: 7px 12px;
-  font-size: 12.5px;
+  padding: 6px 8px;
+  font-size: 12px;
   color: #1e293b;
   outline: none;
   transition: all 0.15s ease;
@@ -1421,8 +1434,9 @@
 
 .order-filter-actions {
   display: flex;
-  gap: 8px;
-  align-items: center;
+  gap: 6px;
+  align-items: flex-end;
+  flex-shrink: 0;
 }
 
 .filter-btn-apply {
@@ -1430,10 +1444,12 @@
   color: #ffffff;
   border: none;
   border-radius: 6px;
-  padding: 8px 22px;
-  font-size: 12.5px;
+  height: 34px;
+  padding: 0 16px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
   transition: background 0.15s ease;
 }
 
@@ -1446,10 +1462,12 @@
   border: 1px solid #fecaca;
   color: #ef4444;
   border-radius: 6px;
-  padding: 8px 22px;
-  font-size: 12.5px;
+  height: 34px;
+  padding: 0 14px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
   transition: all 0.15s ease;
 }
 
@@ -1566,15 +1584,17 @@
   background: none;
   border: none;
   padding: 0;
-  font-size: 12.5px;
+  font-size: 11.5px;
   font-weight: 700;
   color: #2563eb;
   cursor: pointer;
   text-align: left;
+  white-space: nowrap;
 }
 
 .order-id-link:hover {
   text-decoration: underline;
+  color: #1d4ed8;
 }
 
 .order-ref-text {
@@ -1619,9 +1639,11 @@
 }
 
 .order-status-date {
-  font-size: 10px;
-  color: #94a3b8;
+  font-size: 10.5px;
+  color: #64748b;
+  font-weight: 500;
   margin-top: 3px;
+  line-height: 1.2;
 }
 
 /* Customers Column */
@@ -1666,11 +1688,19 @@
 .order-type-badge.forward {
   background: #dcfce7;
   color: #16a34a;
+  border: 1px solid #bbf7d0;
 }
 
 .order-type-badge.return {
-  background: #fef3c7;
-  color: #d97706;
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
+.order-type-badge.exchange {
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
 }
 
 /* Destination Hub Column */
@@ -1738,17 +1768,21 @@
 }
 
 /* Responsive adjustments for Order List */
-@media (max-width: 1024px) {
+@media (max-width: 900px) {
   .order-filter-panel {
-    flex-direction: column;
-    align-items: stretch;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .order-filter-fields {
+    flex-wrap: wrap;
   }
   .order-filter-actions {
     justify-content: flex-end;
+    width: 100%;
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 600px) {
   .order-list-page-container {
     padding: 14px 12px 28px;
   }
@@ -1834,7 +1868,7 @@
 .order-detail-tracking-code {
   font-size: 18px;
   font-weight: 700;
-  color: #ea580c; /* Orange-red matching screenshot */
+  color: var(--theme-color, #dc2626);
   letter-spacing: 0.02em;
 }
 
@@ -3125,6 +3159,7 @@
 .branch-combobox-wrapper {
   position: relative;
   width: 100%;
+  box-sizing: border-box;
 }
 
 .branch-combobox-trigger {
@@ -3132,11 +3167,13 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  width: 100%;
   height: 38px;
   padding: 6px 12px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
   background-color: #ffffff;
+  box-sizing: border-box;
   cursor: pointer;
   transition: all 0.15s ease;
   user-select: none;
@@ -3154,21 +3191,29 @@
 .branch-combobox-pin {
   font-size: 14px;
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
 }
 
 .branch-combobox-input {
+  flex: 1 1 auto;
+  min-width: 0;
   width: 100%;
-  border: none;
-  outline: none;
+  height: 100%;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
   font-size: 13px;
   color: #111827;
-  background: transparent;
-  padding: 0;
+  background: transparent !important;
+  padding: 0 4px;
   font-family: inherit;
+  box-sizing: border-box;
 }
 
 .branch-combobox-selected-text {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 13px;
   color: #111827;
   overflow: hidden;
@@ -3197,6 +3242,7 @@
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .branch-clear-btn {
@@ -3226,6 +3272,8 @@
   top: calc(100% + 4px);
   left: 0;
   right: 0;
+  width: 100%;
+  box-sizing: border-box;
   z-index: 100;
   background: #ffffff;
   border: 1px solid #cbd5e1;

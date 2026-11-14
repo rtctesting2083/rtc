@@ -358,22 +358,8 @@ export function SettlementDetailReportModal({ settlement, onClose }) {
                 })
               ) : (
                 <tr>
-                  <td style={{ textAlign: 'center' }}>1</td>
-                  <td className="mono font-semibold">RTC-20261105-1</td>
-                  <td style={{ fontSize: '11.5px', color: '#64748b' }}>11/5/2026</td>
-                  <td>
-                    <div><b>Jafar Ali</b></div>
-                    <div style={{ fontSize: '11px', color: '#64748b' }}>9847060846</div>
-                  </td>
-                  <td style={{ fontSize: '11.5px' }}>New Road, Kathmandu</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600, color: '#16a34a' }}>
-                    {fmtMoney(settlement.total_cod || 5000)}
-                  </td>
-                  <td style={{ textAlign: 'right', color: 'var(--theme-color, #dc2626)' }}>
-                    - {fmtMoney(settlement.delivery_charges_deducted || 180)}
-                  </td>
-                  <td style={{ textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>
-                    {fmtMoney(settlement.net_payable || 4820)}
+                  <td colSpan="8" style={{ textAlign: 'center', padding: '24px 16px', color: '#64748b', fontSize: '13px' }}>
+                    No shipment records matched for this settlement statement.
                   </td>
                 </tr>
               )}

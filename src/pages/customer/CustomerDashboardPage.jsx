@@ -252,50 +252,7 @@ export function CustomerDashboardPage() {
   };
 
   const handleOpenBulkModal = () => {
-    openModal(
-      'Bulk Order Import',
-      <div style={{ padding: '8px' }}>
-        <p style={{ fontSize: '13px', color: '#6b7280', marginBottom: '14px' }}>
-          Upload an Excel or CSV file containing customer names, addresses, phones, and COD amounts.
-        </p>
-        <div style={{ border: '2px dashed #cbd5e1', borderRadius: '8px', padding: '28px', textAlign: 'center', background: '#f8fafc', marginBottom: '16px' }}>
-          <FileSpreadsheet size={36} style={{ color: '#059669', margin: '0 auto 8px' }} />
-          <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b' }}>
-            Drag and drop your spreadsheet here
-          </div>
-          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-            Supports .xlsx, .xls, .csv up to 10 MB
-          </div>
-          <button
-            type="button"
-            onClick={() => alert('Select file from your device')}
-            style={{ marginTop: '12px', padding: '6px 14px', fontSize: '12.5px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}
-          >
-            Browse Files
-          </button>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <button
-            type="button"
-            onClick={() => alert('Sample template downloaded (RTC_Bulk_Order_Template.csv)')}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: 'var(--theme-color, #dc2626)', fontSize: '12.5px', cursor: 'pointer', fontWeight: 500 }}
-          >
-            <Download size={14} /> Download Sample Template
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              alert('File uploaded successfully. 24 orders queued for booking.');
-              closeModal();
-            }}
-            style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', background: 'var(--theme-color, #dc2626)', color: '#fff', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}
-          >
-            Import Orders
-          </button>
-        </div>
-      </div>,
-      'medium',
-    );
+    navigate('/customer/orders/import');
   };
 
   /* ── 7-Day Trend Bar Chart Data (Computed Dynamically from Database) ── */

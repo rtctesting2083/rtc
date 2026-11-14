@@ -108,6 +108,11 @@ export function defaultSuggestedPricing() {
       enabled: true,
       tiers: [{ min_shipments: 200, percent: 10 }],
     },
+    tax: {
+      enabled: true,
+      percent: 13,
+    },
+    tax_enabled: true,
     tax_percent: 13,
   };
 }
@@ -154,16 +159,31 @@ export function DeliveryChargesSettingsPage() {
     const sourceServices = s?.pricing?.services || s?.services || def.services;
     const mergedServices = mergeServiceTypesWithPricing(deliveryServiceTypes, sourceServices);
 
+    const isTaxEnabled = s?.pricing?.tax?.enabled !== undefined
+      ? Boolean(s.pricing.tax.enabled)
+      : (s?.pricing?.tax_enabled !== undefined
+        ? Boolean(s.pricing.tax_enabled)
+        : (s?.tax_enabled !== undefined ? Boolean(s.tax_enabled) : def.tax_enabled));
+
+    const taxPercent = s?.pricing?.tax?.percent !== undefined
+      ? s.pricing.tax.percent
+      : (s?.tax_percent !== undefined ? s.tax_percent : def.tax_percent);
+
     if (!s || !s.pricing) {
       return {
         ...def,
+        tax_enabled: isTaxEnabled,
+        tax_percent: taxPercent,
+        tax: { enabled: isTaxEnabled, percent: taxPercent },
         services: mergedServices,
       };
     }
     return {
       ...def,
       ...s.pricing,
-      tax_percent: s.tax_percent !== undefined ? s.tax_percent : def.tax_percent,
+      tax_enabled: isTaxEnabled,
+      tax_percent: taxPercent,
+      tax: { enabled: isTaxEnabled, percent: taxPercent },
       services: mergedServices,
     };
   }, [deliveryChargeSettings, deliveryServiceTypes]);
@@ -181,10 +201,22 @@ export function DeliveryChargesSettingsPage() {
     const sourceServices = s?.pricing?.services || s?.services || def.services;
     const mergedServices = mergeServiceTypesWithPricing(deliveryServiceTypes, sourceServices);
 
+    const isTaxEnabled = s?.pricing?.tax?.enabled !== undefined
+      ? Boolean(s.pricing.tax.enabled)
+      : (s?.pricing?.tax_enabled !== undefined
+        ? Boolean(s.pricing.tax_enabled)
+        : (s?.tax_enabled !== undefined ? Boolean(s.tax_enabled) : def.tax_enabled));
+
+    const taxPercent = s?.pricing?.tax?.percent !== undefined
+      ? s.pricing.tax.percent
+      : (s?.tax_percent !== undefined ? s.tax_percent : def.tax_percent);
+
     setPricing((prev) => ({
       ...def,
       ...(s?.pricing || {}),
-      tax_percent: s?.tax_percent !== undefined ? s.tax_percent : (prev.tax_percent || def.tax_percent),
+      tax_enabled: isTaxEnabled,
+      tax_percent: taxPercent,
+      tax: { enabled: isTaxEnabled, percent: taxPercent },
       services: mergedServices,
     }));
   }, [deliveryChargeSettings, deliveryServiceTypes]);
@@ -323,14 +355,28 @@ export function DeliveryChargesSettingsPage() {
     }
 
     setIsSaving(true);
+    const isTaxEnabled = pricing.tax?.enabled !== undefined
+      ? Boolean(pricing.tax.enabled)
+      : (pricing.tax_enabled !== undefined ? Boolean(pricing.tax_enabled) : true);
+    const taxPercent = Number(pricing.tax?.percent !== undefined ? pricing.tax.percent : (pricing.tax_percent !== undefined ? pricing.tax_percent : 13));
+
     // Save in format compatible with both D1 backend and frontend
     const payload = {
       base_fee: pricing.zones[0]?.base || 120,
       per_km_fee: 15,
       per_kg_fee: pricing.zones[0]?.extra_per_kg || 60,
       express_multiplier: 1 + (Number(pricing.services?.find((s) => s.name === 'Express')?.surcharge_percent) || 30) / 100,
-      tax_percent: Number(pricing.tax_percent) || 13,
-      pricing: { ...pricing },
+      tax_enabled: isTaxEnabled,
+      tax_percent: taxPercent,
+      pricing: {
+        ...pricing,
+        tax_enabled: isTaxEnabled,
+        tax_percent: taxPercent,
+        tax: {
+          enabled: isTaxEnabled,
+          percent: taxPercent,
+        },
+      },
       services: pricing.services,
     };
 
@@ -976,6 +1022,30 @@ export function DeliveryChargesSettingsPage() {
           Tax is added when invoices are generated (it isn't part of the delivery charge shown on an order).
         </p>
 
+        <label className="cs-switch" style={{ marginBottom: '14px' }}>
+          <input
+            type="checkbox"
+            checked={
+              pricing.tax?.enabled !== undefined
+                ? Boolean(pricing.tax.enabled)
+                : (pricing.tax_enabled !== undefined ? Boolean(pricing.tax_enabled) : true)
+            }
+            onChange={(e) => {
+              const isEnabled = e.target.checked;
+              updatePricing({
+                tax_enabled: isEnabled,
+                tax: {
+                  ...(pricing.tax || {}),
+                  enabled: isEnabled,
+                  percent: pricing.tax?.percent !== undefined ? pricing.tax.percent : (pricing.tax_percent !== undefined ? pricing.tax_percent : 13),
+                },
+              });
+            }}
+          />
+          <span className="cs-switch-track" />
+          <span>Enable tax on invoices</span>
+        </label>
+
         <div className="cs-card" style={{ maxWidth: '280px' }}>
           <label className="cs-field">
             Tax on invoices
@@ -984,11 +1054,35 @@ export function DeliveryChargesSettingsPage() {
                 type="number"
                 min="0"
                 step="any"
-                value={pricing.tax_percent === '' ? '' : pricing.tax_percent}
-                onChange={(e) => updatePricing({ tax_percent: e.target.value === '' ? '' : Number(e.target.value) })}
+                disabled={
+                  pricing.tax?.enabled !== undefined
+                    ? !pricing.tax.enabled
+                    : (pricing.tax_enabled !== undefined ? !pricing.tax_enabled : false)
+                }
+                value={
+                  pricing.tax?.percent !== undefined
+                    ? (pricing.tax.percent === '' ? '' : pricing.tax.percent)
+                    : (pricing.tax_percent === '' ? '' : pricing.tax_percent)
+                }
+                onChange={(e) => {
+                  const val = e.target.value === '' ? '' : Number(e.target.value);
+                  updatePricing({
+                    tax_percent: val,
+                    tax: {
+                      ...(pricing.tax || {}),
+                      enabled: pricing.tax?.enabled !== undefined ? pricing.tax.enabled : (pricing.tax_enabled !== undefined ? pricing.tax_enabled : true),
+                      percent: val,
+                    },
+                  });
+                }}
               />
               <em>%</em>
             </span>
+            <small>
+              {pricing.tax?.enabled !== undefined
+                ? (pricing.tax.enabled ? 'Tax (VAT) active on invoices' : 'Tax is currently disabled')
+                : (pricing.tax_enabled !== false ? 'Tax (VAT) active on invoices' : 'Tax is currently disabled')}
+            </small>
           </label>
         </div>
       </section>

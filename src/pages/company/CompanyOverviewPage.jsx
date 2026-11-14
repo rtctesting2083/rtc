@@ -15,6 +15,10 @@ import {
   Sliders,
   UserCheck,
   FileText,
+  CheckCircle2,
+  Truck,
+  AlertTriangle,
+  MapPin,
 } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
@@ -226,7 +230,7 @@ export function CompanyOverviewPage() {
         </div>
 
         <div className="admin-date-card">
-          <div className="admin-date-icon-wrap">🕒</div>
+          <div className="admin-date-icon-wrap"><Clock size={22} strokeWidth={2.2} /></div>
           <div className="admin-date-content">
             <h4>
               {new Date().toLocaleDateString('en-US', {
@@ -246,7 +250,7 @@ export function CompanyOverviewPage() {
         {/* Total Shipments */}
         <div className="admin-metric-card mint">
           <div className="admin-metric-top">
-            <span className="admin-metric-icon" style={{ color: 'var(--theme-color, #dc2626)' }}>📦</span>
+            <span className="admin-metric-icon"><Package size={18} strokeWidth={2.2} /></span>
           </div>
           <div>
             <div className="admin-metric-value">{totalShipments}</div>
@@ -258,7 +262,7 @@ export function CompanyOverviewPage() {
         {/* Delivered */}
         <div className="admin-metric-card mint">
           <div className="admin-metric-top">
-            <span className="admin-metric-icon" style={{ color: '#10b981' }}>✓</span>
+            <span className="admin-metric-icon"><CheckCircle2 size={18} strokeWidth={2.2} /></span>
           </div>
           <div>
             <div className="admin-metric-value">{deliveredCount}</div>
@@ -270,7 +274,7 @@ export function CompanyOverviewPage() {
         {/* In Progress */}
         <div className="admin-metric-card amber">
           <div className="admin-metric-top">
-            <span className="admin-metric-icon" style={{ color: '#f59e0b' }}>🚚</span>
+            <span className="admin-metric-icon"><Truck size={18} strokeWidth={2.2} /></span>
           </div>
           <div>
             <div className="admin-metric-value">{inProgressCount}</div>
@@ -282,7 +286,7 @@ export function CompanyOverviewPage() {
         {/* Pending */}
         <div className="admin-metric-card yellow">
           <div className="admin-metric-top">
-            <span className="admin-metric-icon" style={{ color: '#ca8a04' }}>🕒</span>
+            <span className="admin-metric-icon"><Clock size={18} strokeWidth={2.2} /></span>
           </div>
           <div>
             <div className="admin-metric-value">{pendingCount}</div>
@@ -294,7 +298,7 @@ export function CompanyOverviewPage() {
         {/* Revenue */}
         <div className="admin-metric-card sky">
           <div className="admin-metric-top">
-            <span className="admin-metric-icon" style={{ color: '#0284c7' }}>💵</span>
+            <span className="admin-metric-icon"><Banknote size={18} strokeWidth={2.2} /></span>
           </div>
           <div>
             <div className="admin-metric-value" style={{ fontSize: '18px' }}>
@@ -308,7 +312,7 @@ export function CompanyOverviewPage() {
         {/* Riders Active */}
         <div className="admin-metric-card rose">
           <div className="admin-metric-top">
-            <span className="admin-metric-icon" style={{ color: '#e11d48' }}>🛵</span>
+            <span className="admin-metric-icon"><Bike size={18} strokeWidth={2.2} /></span>
           </div>
           <div>
             <div className="admin-metric-value">
@@ -342,32 +346,32 @@ export function CompanyOverviewPage() {
 
           <div className="admin-micro-stats-grid">
             <div className="admin-micro-stat">
-              <div className="admin-micro-icon green">📦</div>
+              <div className="admin-micro-icon"><Package size={15} strokeWidth={2.2} /></div>
               <div className="admin-micro-val">{bookedToday}</div>
               <div className="admin-micro-lbl">Booked</div>
             </div>
             <div className="admin-micro-stat">
-              <div className="admin-micro-icon blue">✓</div>
+              <div className="admin-micro-icon"><CheckCircle2 size={15} strokeWidth={2.2} /></div>
               <div className="admin-micro-val">{deliveredToday}</div>
               <div className="admin-micro-lbl">Delivered</div>
             </div>
             <div className="admin-micro-stat">
-              <div className="admin-micro-icon amber">🚚</div>
+              <div className="admin-micro-icon"><Truck size={15} strokeWidth={2.2} /></div>
               <div className="admin-micro-val">{outToday}</div>
               <div className="admin-micro-lbl">Out for delivery</div>
             </div>
             <div className="admin-micro-stat">
-              <div className="admin-micro-icon purple">🕒</div>
+              <div className="admin-micro-icon"><Clock size={15} strokeWidth={2.2} /></div>
               <div className="admin-micro-val">{pendingToday}</div>
               <div className="admin-micro-lbl">Pending</div>
             </div>
             <div className="admin-micro-stat">
-              <div className="admin-micro-icon red">⚠️</div>
+              <div className="admin-micro-icon"><AlertTriangle size={15} strokeWidth={2.2} /></div>
               <div className="admin-micro-val">{failedToday}</div>
               <div className="admin-micro-lbl">Failed / returned</div>
             </div>
             <div className="admin-micro-stat">
-              <div className="admin-micro-icon teal">📍</div>
+              <div className="admin-micro-icon"><MapPin size={15} strokeWidth={2.2} /></div>
               <div className="admin-micro-val">0</div>
               <div className="admin-micro-lbl">Pickup requests</div>
             </div>
@@ -539,10 +543,10 @@ export function CompanyOverviewPage() {
           <div className="admin-quick-actions-grid">
             <div
               className="admin-action-btn"
-              onClick={() => openModal('New Shipment', <NewShipmentModal />)}
+              onClick={() => navigate('/company/orders/create')}
             >
               <span className="admin-action-icon"><Plus size={18} strokeWidth={2.5} /></span>
-              <span>New Shipment</span>
+              <span>Create New Order</span>
             </div>
             <div
               className="admin-action-btn"
@@ -639,7 +643,7 @@ export function CompanyOverviewPage() {
           <div className="admin-activity-list">
             {shipments.slice(0, 4).map((s) => (
               <div key={s.id} className="admin-activity-item">
-                <div className="admin-activity-icon">🚚</div>
+                <div className="admin-activity-icon"><Truck size={16} strokeWidth={2.2} /></div>
                 <div className="admin-activity-content">
                   <div className="admin-activity-title">
                     {s.tracking_number} — <span style={{ textTransform: 'capitalize' }}>{s.status.replace(/_/g, ' ')}</span>
@@ -717,22 +721,22 @@ export function CompanyOverviewPage() {
 
           <div className="admin-network-stats-row">
             <div className="admin-network-stat-box">
-              <div className="admin-network-icon">📄</div>
+              <div className="admin-network-icon"><Building2 size={18} strokeWidth={2.2} /></div>
               <div className="admin-network-val">{branches.length || 5}</div>
               <div className="admin-network-lbl">Branches</div>
             </div>
             <div className="admin-network-stat-box">
-              <div className="admin-network-icon">🛵</div>
+              <div className="admin-network-icon"><Bike size={18} strokeWidth={2.2} /></div>
               <div className="admin-network-val">{totalRiders}</div>
               <div className="admin-network-lbl">Riders</div>
             </div>
             <div className="admin-network-stat-box">
-              <div className="admin-network-icon">👥</div>
+              <div className="admin-network-icon"><Users size={18} strokeWidth={2.2} /></div>
               <div className="admin-network-val">{customers.length || 3}</div>
               <div className="admin-network-lbl">Vendors</div>
             </div>
             <div className="admin-network-stat-box">
-              <div className="admin-network-icon">🧾</div>
+              <div className="admin-network-icon"><Receipt size={18} strokeWidth={2.2} /></div>
               <div className="admin-network-val">{invoices.filter((i) => i.status === 'unpaid').length}</div>
               <div className="admin-network-lbl">Unpaid bills</div>
             </div>

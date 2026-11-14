@@ -829,6 +829,780 @@
 .role-rider { background: #f1f5f9; color: #0f172a; }
 
 /* ══════════════════════════════════════════════════════════════════════════
+   Customer Order Tracking & Portal Tab Switcher (Red & White Brand Palette)
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.rtc-portal-tab-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  background: #f1f5f9;
+  padding: 4px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  border: 1px solid #e2e8f0;
+}
+
+.rtc-tab-switch-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.rtc-tab-switch-btn:hover {
+  color: #0f172a;
+}
+
+.rtc-tab-switch-btn.active {
+  background: #ffffff;
+  color: #dc2626;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.rtc-tab-live-badge {
+  font-size: 9.5px;
+  font-weight: 800;
+  background: #dc2626;
+  color: #ffffff;
+  padding: 1.5px 5px;
+  border-radius: 4px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  animation: rtcPulseBadge 2s infinite;
+}
+
+@keyframes rtcPulseBadge {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.05); }
+}
+
+/* Quick Order Tracking Banner inside Sign In view */
+.rtc-quick-track-banner {
+  background: linear-gradient(135deg, #fff7f7 0%, #fef2f2 100%);
+  border: 1.5px dashed #fca5a5;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin: 16px 0 16px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.rtc-quick-track-banner:hover {
+  background: #fee2e2;
+  border-color: #dc2626;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.1);
+}
+
+.rtc-quick-track-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rtc-quick-track-icon-wrap {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #fee2e2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.rtc-quick-track-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #991b1b;
+}
+
+.rtc-quick-track-sub {
+  font-size: 11.5px;
+  color: #64748b;
+  margin-top: 1px;
+}
+
+.rtc-quick-track-cta {
+  font-size: 12px;
+  font-weight: 700;
+  color: #dc2626;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #ffffff;
+  border: 1px solid #fecaca;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CUSTOMER TRACKING VIEW
+   ══════════════════════════════════════════════════════════════════════════ */
+.rtc-track-view-container {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: rtcFadeIn 0.22s ease-out;
+}
+
+@keyframes rtcFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.rtc-track-search-form {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.rtc-track-input-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.rtc-track-input-icon {
+  position: absolute;
+  left: 12px;
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.rtc-track-input {
+  width: 100%;
+  padding: 11px 36px 11px 38px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #0f172a;
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 9px;
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+}
+
+.rtc-track-input:focus {
+  border-color: #dc2626;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+}
+
+.rtc-track-clear-btn {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.rtc-track-clear-btn:hover {
+  color: #0f172a;
+  background: #f1f5f9;
+}
+
+.rtc-track-submit-btn {
+  background: #dc2626;
+  color: #ffffff;
+  border: none;
+  border-radius: 9px;
+  padding: 0 18px;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 6px rgba(220, 38, 38, 0.25);
+}
+
+.rtc-track-submit-btn:hover:not(:disabled) {
+  background: #b91c1c;
+  transform: translateY(-1px);
+}
+
+.rtc-track-submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Sample numbers pills */
+.rtc-track-samples-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-top: -2px;
+}
+
+.rtc-track-samples-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.rtc-track-sample-chip {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #dc2626;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.rtc-track-sample-chip:hover {
+  background: #fee2e2;
+  border-color: #dc2626;
+  transform: translateY(-1px);
+}
+
+/* Error Card */
+.rtc-track-error-card {
+  background: #fef2f2;
+  border: 1px solid #f87171;
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  animation: rtcFadeIn 0.2s ease;
+}
+
+.rtc-track-error-ico {
+  color: #dc2626;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.rtc-track-error-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #991b1b;
+}
+
+.rtc-track-error-desc {
+  font-size: 12.5px;
+  color: #b91c1c;
+  margin-top: 3px;
+  line-height: 1.4;
+}
+
+.rtc-track-error-hint {
+  font-size: 11.5px;
+  color: #64748b;
+  margin-top: 6px;
+  background: #ffffff;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #fecaca;
+}
+
+/* Loading card */
+.rtc-track-loading-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 36px 16px;
+  background: #f8fafc;
+  border: 1.5px dashed #cbd5e1;
+  border-radius: 10px;
+  gap: 10px;
+}
+
+.rtc-track-loading-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.rtc-spin-anim {
+  animation: rtcSpin 1s linear infinite;
+}
+
+@keyframes rtcSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   TRACKED RESULT VIEW
+   ══════════════════════════════════════════════════════════════════════════ */
+.rtc-track-result-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: rtcFadeIn 0.25s ease;
+}
+
+/* Header Card */
+.rtc-track-header-card {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  color: #ffffff;
+  border-radius: 12px;
+  padding: 16px 18px;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+}
+
+.rtc-track-header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.rtc-track-id-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #94a3b8;
+  letter-spacing: 0.5px;
+}
+
+.rtc-track-id-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.rtc-track-id-code {
+  font-size: 17px;
+  font-weight: 800;
+  color: #ffffff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: 0.4px;
+}
+
+.rtc-track-copy-btn {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  border-radius: 5px;
+  padding: 3px 7px;
+  font-size: 10.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.rtc-track-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.rtc-track-ref-id {
+  font-size: 11px;
+  color: #cbd5e1;
+  display: block;
+  margin-top: 3px;
+}
+
+.rtc-track-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.rtc-track-route-strip {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rtc-track-route-point {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rtc-track-route-hub {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.rtc-track-route-arrow-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.rtc-track-route-transit-tag {
+  font-size: 10px;
+  font-weight: 700;
+  color: #fca5a5;
+  text-transform: uppercase;
+}
+
+/* Stepper Milestones Card */
+.rtc-track-stepper-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.rtc-track-stepper-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 14px;
+}
+
+.rtc-track-stepper-steps {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  position: relative;
+}
+
+.rtc-track-step-node {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  flex: 1;
+}
+
+.rtc-track-step-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.rtc-track-step-node.completed .rtc-track-step-dot {
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.rtc-track-step-node.active .rtc-track-step-dot {
+  background: #dc2626;
+  color: #ffffff;
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.22);
+}
+
+.rtc-track-step-line {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background: #e2e8f0;
+  z-index: 1;
+}
+
+.rtc-track-step-line.completed {
+  background: #16a34a;
+}
+
+.rtc-track-step-meta {
+  margin-top: 6px;
+}
+
+.rtc-track-step-name {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #334155;
+  line-height: 1.2;
+}
+
+.rtc-track-step-node.active .rtc-track-step-name {
+  color: #dc2626;
+  font-weight: 800;
+}
+
+.rtc-track-step-time {
+  font-size: 9.5px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+/* Details 2x2 Grid */
+.rtc-track-details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.rtc-track-detail-box {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.rtc-track-detail-lbl {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+
+.rtc-track-detail-val {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.25;
+}
+
+.rtc-track-detail-sub {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 2px;
+  word-break: break-word;
+}
+
+/* Rider Banner */
+.rtc-track-rider-banner {
+  background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rtc-track-rider-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rtc-track-rider-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  background: #fee2e2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.rtc-track-rider-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #c2410c;
+  text-transform: uppercase;
+}
+
+.rtc-track-rider-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #9a3412;
+}
+
+.rtc-track-rider-call-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #ea580c;
+  color: #ffffff;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Timeline scan card */
+.rtc-track-timeline-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px 14px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.rtc-track-timeline-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #0f172a;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.rtc-track-timeline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rtc-track-event-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  position: relative;
+}
+
+.rtc-track-event-bullet {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #dc2626;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+
+.rtc-track-event-content {
+  flex: 1;
+}
+
+.rtc-track-event-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.rtc-track-event-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.rtc-track-event-time {
+  font-size: 10.5px;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.rtc-track-event-loc {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  color: #64748b;
+  margin-top: 1px;
+}
+
+/* Footer Action Buttons */
+.rtc-track-footer-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.rtc-track-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.rtc-track-action-btn.secondary {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+.rtc-track-action-btn.secondary:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.rtc-track-action-btn.primary {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.rtc-track-action-btn.primary:hover {
+  background: #b91c1c;
+}
+
+/* Responsive adjustment */
+@media (max-width: 540px) {
+  .rtc-track-details-grid {
+    grid-template-columns: 1fr;
+  }
+  .rtc-track-stepper-steps {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .rtc-track-step-line {
+    display: none;
+  }
+  .rtc-track-footer-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
    Responsive Breakpoints
    ══════════════════════════════════════════════════════════════════════════ */
 @media (max-width: 860px) {

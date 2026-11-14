@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useCompany } from '../../context/CompanyContext';
 import { useAuth } from '../../context/AuthContext';
 import { useModal } from '../../context/ModalContext';
-import { fmtDate, fmtMoney, formatDateTimeAMPM } from '../../utils/helpers';
+import { fmtDate, fmtMoney, formatDateTimeAMPM, formatAddressWithDistrictProvince } from '../../utils/helpers';
 import { printShipmentLabel } from '../../utils/print';
 import { d1Api } from '../../utils/d1Api';
 import { OrderCommentsSection } from './OrderCommentsSection';
+import { CreateOrderModal } from '../customer/CreateOrderModal';
 import {
   Copy,
   Check,
@@ -23,7 +25,8 @@ import {
 } from 'lucide-react';
 import '../../pages/customer/VendorDashboard.css';
 
-export function ShipmentDetailModal({ shipment, onClose }) {
+export function ShipmentDetailModal({ shipment, onClose, onEditOrder }) {
+  const navigate = useNavigate();
   const { session } = useAuth() || {};
   const {
     company,
@@ -34,7 +37,7 @@ export function ShipmentDetailModal({ shipment, onClose }) {
     updateVendorOrder,
     updateShipment,
   } = useCompany();
-  const { closeModal } = useModal();
+  const { openModal, closeModal } = useModal();
   const [activeTab, setActiveTab] = useState('details'); // 'details' | 'proof'
   const [copied, setCopied] = useState(false);
   const [editingDesc, setEditingDesc] = useState(false);
@@ -185,6 +188,33 @@ export function ShipmentDetailModal({ shipment, onClose }) {
     else closeModal();
   };
 
+  const handleOpenEditDirect = () => {
+    handleClose();
+    const vendorCustomer = findCustomer(shipment?.customer_id || shipment?.vendor_id) || {
+      id: shipment?.customer_id || shipment?.vendor_id || 1,
+      name: shipment?.sender_name || shipment?.vendor_name || 'Sender',
+      phone: shipment?.sender_phone || shipment?.vendor_phone || '',
+      branch_id: shipment?.branch_id || shipment?.origin_branch_id,
+    };
+    openModal(
+      `Edit Order — ${shipment.tracking_number || shipment.id}`,
+      <CreateOrderModal
+        currentCustomer={vendorCustomer}
+        orderToEdit={shipment}
+        onClose={closeModal}
+        onOrderUpdated={async () => {
+          closeModal();
+          await fetchLiveTrackingFromD1();
+          if (typeof onEditOrder === 'function') {
+            onEditOrder(shipment);
+          }
+        }}
+      />,
+      'xxwide',
+      { hideHeader: true }
+    );
+  };
+
   const handleCopy = () => {
     if (navigator?.clipboard?.writeText) {
       navigator.clipboard.writeText(shipment.tracking_number);
@@ -281,6 +311,16 @@ export function ShipmentDetailModal({ shipment, onClose }) {
   const originHubName = getHubName(originBranch, 'Butwal Hub');
   const destHubName = getHubName(destBranch, 'Kathmandu Hub');
 
+  // Reason parser for Exchange and Reverse orders
+  const notesText = String(shipment.notes || '');
+  const pkgDescText = String(shipment.package_description || '');
+  const isExchange = String(shipment.order_type || '').toLowerCase().includes('exchange') || /\[EXCHANGE ORDER\]/i.test(notesText);
+  const isReturn = String(shipment.order_type || '').toLowerCase().includes('return') || String(shipment.order_type || '').toLowerCase().includes('reverse') || /\[REVERSE ORDER\]/i.test(notesText);
+  const exchangeReasonMatch = notesText.match(/Reason:\s*([^|]+)/i) || pkgDescText.match(/Reason:\s*([^|)]+)/i);
+  const exchangeReasonStr = exchangeReasonMatch ? exchangeReasonMatch[1].trim() : '';
+  const returnReasonMatch = notesText.match(/Reason:\s*([^|]+)/i) || pkgDescText.match(/\(([^)]+)\)$/);
+  const returnReasonStr = returnReasonMatch ? returnReasonMatch[1].trim() : '';
+
   // Top banner subtext: e.g. "Out for Delivery At Phedikhola Hub" or "Pending At Kathmandu Hub"
   const bannerSubtext = `${statusLabel} At ${destHubName}`;
 
@@ -361,6 +401,37 @@ export function ShipmentDetailModal({ shipment, onClose }) {
             <Printer size={13} />
             <span>Print Label</span>
           </button>
+          {['pending', 'pickup_requested'].includes(String(shipment.status || '').toLowerCase()) && (
+            <button
+              type="button"
+              className="order-detail-print-btn"
+              onClick={() => {
+                if (typeof onEditOrder === 'function') {
+                  handleClose();
+                  onEditOrder(shipment);
+                } else {
+                  handleOpenEditDirect();
+                }
+              }}
+              style={{
+                background: '#fef3c7',
+                color: '#b45309',
+                border: '1px solid #fde68a',
+                borderRadius: '6px',
+                padding: '4px 12px',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}
+              title="Correct order details before pickup"
+            >
+              <Edit2 size={13} />
+              <span>Edit Order</span>
+            </button>
+          )}
           <button
             type="button"
             className="order-detail-close-btn"
@@ -446,12 +517,26 @@ export function ShipmentDetailModal({ shipment, onClose }) {
                 </div>
                 <div className="kv-row">
                   <span className="kv-label">Delivery Address</span>
-                  <span className="kv-val">{shipment.delivery_address || 'Kalanki'}</span>
+                  <span className="kv-val">
+                    {formatAddressWithDistrictProvince(shipment.delivery_address, destBranch)}
+                  </span>
                 </div>
                 <div className="kv-row">
                   <span className="kv-label">Delivery Type</span>
                   <span className="kv-val">{shipment.order_type || shipment.service_type || 'Delivery Order'}</span>
                 </div>
+                {isExchange && exchangeReasonStr && (
+                  <div className="kv-row" style={{ background: '#eff6ff', borderRadius: '4px', padding: '3px 6px' }}>
+                    <span className="kv-label" style={{ color: '#1d4ed8', fontWeight: 600 }}>Exchange Reason</span>
+                    <span className="kv-val" style={{ color: '#1d4ed8', fontWeight: 600 }}>{exchangeReasonStr}</span>
+                  </div>
+                )}
+                {isReturn && returnReasonStr && (
+                  <div className="kv-row" style={{ background: '#fef2f2', borderRadius: '4px', padding: '3px 6px' }}>
+                    <span className="kv-label" style={{ color: '#dc2626', fontWeight: 600 }}>Return Reason</span>
+                    <span className="kv-val" style={{ color: '#dc2626', fontWeight: 600 }}>{returnReasonStr}</span>
+                  </div>
+                )}
                 <div className="kv-row">
                   <span className="kv-label">Destination Branch Ph:</span>
                   <span className="kv-val">{destBranch.phone || '01-000301'}</span>
