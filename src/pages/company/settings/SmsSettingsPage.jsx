@@ -37,7 +37,7 @@ import d1Api from '../../../utils/d1Api';
 import './SmsSettingsPage.css';
 
 const DEFAULT_TEMPLATES = {
-  order_created: 'Namaste {receiver_name}, your parcel #{tracking_number} has been booked with {company_name}. COD Amount: {cod_amount}. Track live: https://rtccourrier.pages.dev/track',
+  order_created: 'Namaste {receiver_name}, your parcel #{tracking_number} (Order ID: #{order_id}) has been booked with {company_name}. COD Amount: {cod_amount}. Track live: {tracking_link}',
   out_for_delivery: 'Dear {receiver_name}, your order #{tracking_number} is OUT FOR DELIVERY by rider {rider_name} ({rider_phone}). COD Amount: {cod_amount}. - {company_name}',
   delivered: 'Dear {receiver_name}, your parcel #{tracking_number} has been successfully DELIVERED. Thank you for choosing {company_name}!',
   cancelled: 'Dear {receiver_name}, your order #{tracking_number} has been CANCELLED/RETURNED. For assistance, contact {company_name}.',
@@ -46,12 +46,14 @@ const DEFAULT_TEMPLATES = {
 
 const SAMPLE_VARS = {
   receiver_name: 'Suman Shrestha',
-  tracking_number: 'RTC-20261112-0089',
+  tracking_number: 'RTC-20261114-21',
+  order_id: '1089',
   cod_amount: 'Rs. 2,450',
   rider_name: 'Bikash Thapa',
   rider_phone: '9841234567',
   company_name: 'RTC Courier',
   vendor_name: 'Everest Footwear',
+  tracking_link: 'https://rtccourrier.pages.dev/track?track=RTC-20261114-21',
 };
 
 const TEMPLATE_CONFIGS = [
@@ -63,7 +65,7 @@ const TEMPLATE_CONFIGS = [
     icon: Package,
     toggleKey: 'notify_order_created',
     tplKey: 'tpl_order_created',
-    variables: ['{receiver_name}', '{tracking_number}', '{cod_amount}', '{company_name}'],
+    variables: ['{receiver_name}', '{tracking_number}', '{order_id}', '{cod_amount}', '{tracking_link}', '{company_name}'],
   },
   {
     id: 'out_for_delivery',
@@ -73,7 +75,7 @@ const TEMPLATE_CONFIGS = [
     icon: Truck,
     toggleKey: 'notify_out_for_delivery',
     tplKey: 'tpl_out_for_delivery',
-    variables: ['{receiver_name}', '{tracking_number}', '{cod_amount}', '{rider_name}', '{rider_phone}', '{company_name}'],
+    variables: ['{receiver_name}', '{tracking_number}', '{order_id}', '{cod_amount}', '{rider_name}', '{rider_phone}', '{tracking_link}', '{company_name}'],
   },
   {
     id: 'delivered',
@@ -83,7 +85,7 @@ const TEMPLATE_CONFIGS = [
     icon: CheckCheck,
     toggleKey: 'notify_delivered',
     tplKey: 'tpl_delivered',
-    variables: ['{receiver_name}', '{tracking_number}', '{company_name}'],
+    variables: ['{receiver_name}', '{tracking_number}', '{order_id}', '{tracking_link}', '{company_name}'],
   },
   {
     id: 'cancelled',
@@ -171,7 +173,13 @@ export function SmsSettingsPage() {
           notify_delivered: res.settings.notify_delivered !== undefined ? Number(res.settings.notify_delivered) : 1,
           notify_cancelled: res.settings.notify_cancelled !== undefined ? Number(res.settings.notify_cancelled) : 1,
           notify_vendor_verified: res.settings.notify_vendor_verified !== undefined ? Number(res.settings.notify_vendor_verified) : 1,
-          tpl_order_created: res.settings.tpl_order_created || res.settings.template_order_created || DEFAULT_TEMPLATES.order_created,
+          tpl_order_created: (() => {
+            const val = res.settings.tpl_order_created || res.settings.template_order_created || '';
+            if (!val || val.includes('rtccourier.com.np')) {
+              return DEFAULT_TEMPLATES.order_created;
+            }
+            return val;
+          })(),
           tpl_out_for_delivery: res.settings.tpl_out_for_delivery || res.settings.template_out_for_delivery || DEFAULT_TEMPLATES.out_for_delivery,
           tpl_delivered: res.settings.tpl_delivered || res.settings.template_delivered || DEFAULT_TEMPLATES.delivered,
           tpl_cancelled: res.settings.tpl_cancelled || res.settings.template_cancelled || DEFAULT_TEMPLATES.cancelled,
@@ -330,6 +338,8 @@ export function SmsSettingsPage() {
     Object.entries(SAMPLE_VARS).forEach(([varKey, val]) => {
       rendered = rendered.split(`{${varKey}}`).join(val);
     });
+    // Sanitize any accidental double https:// if user prefixed the variable with https://
+    rendered = rendered.replace(/https?:\/\/https?:\/\//gi, 'https://');
     return rendered;
   }, [settings, currentTemplateConfig]);
 
@@ -660,6 +670,13 @@ export function SmsSettingsPage() {
                     </button>
                   ))}
                 </div>
+
+                <div style={{ marginTop: '10px', fontSize: '11px', color: '#64748b', background: '#f8fafc', padding: '6px 10px', borderRadius: '4px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ color: '#16a34a', fontWeight: 700 }}>✓ Direct Tracking Link:</span>
+                  <span>
+                    <code>{'{tracking_link}'}</code> automatically produces <code>https://rtccourrier.pages.dev/track?track=RTC-XXXXXX</code> for 1-tap mobile redirection.
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -709,7 +726,24 @@ export function SmsSettingsPage() {
                     <div className="sms-bubble-tag">
                       <Bell size={10} /> {currentTemplateConfig.name}
                     </div>
-                    <p className="sms-bubble-text">{renderedPhoneMessage}</p>
+                    <p className="sms-bubble-text">
+                      {renderedPhoneMessage.split(/(https?:\/\/[^\s]+)/g).map((part, i) =>
+                        /^https?:\/\//i.test(part) ? (
+                          <a
+                            key={i}
+                            href={part}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ color: '#2563eb', textDecoration: 'underline', wordBreak: 'break-all' }}
+                            title="Click to test live tracking page"
+                          >
+                            {part}
+                          </a>
+                        ) : (
+                          part
+                        )
+                      )}
+                    </p>
                     <div className="sms-bubble-time">11:30 AM · Delivered</div>
                   </div>
                 </div>

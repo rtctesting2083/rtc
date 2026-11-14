@@ -113,14 +113,11 @@ export function AuthProvider({ children }) {
           (bCode && idLower === bCode)
         ) {
           if (b.password === password) {
-            if (b.verification_status === 'rejected') {
-              throw new Error('This branch account verification has been rejected by RTC Admin.');
-            }
-            if (b.verified === false || b.verification_status === 'pending') {
-              throw new Error('This branch account is pending verification by RTC Admin. Please wait for approval.');
-            }
             if (b.status === 'inactive' || b.status === 'disabled') {
               throw new Error('This branch account has been disabled.');
+            }
+            if (b.verification_status === 'rejected') {
+              throw new Error('This branch account verification has been rejected by RTC Admin.');
             }
             const newSession = {
               type: 'branch',
@@ -143,8 +140,11 @@ export function AuthProvider({ children }) {
             (su.email && su.email.toLowerCase() === idLower)
           ) {
             if (su.password === password) {
-              if (b.verified === false || b.verification_status === 'pending') {
-                throw new Error('The parent branch is pending verification by RTC Admin.');
+              if (b.status === 'inactive' || b.status === 'disabled') {
+                throw new Error('This branch account has been disabled.');
+              }
+              if (b.verification_status === 'rejected') {
+                throw new Error('The parent branch is rejected by RTC Admin.');
               }
               if (su.active === false) {
                 throw new Error('This branch staff account has been disabled.');

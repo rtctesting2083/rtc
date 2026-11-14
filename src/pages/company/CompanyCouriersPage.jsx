@@ -6,6 +6,7 @@ import { RiderFormModal } from '../../components/company/RiderFormModal';
 import { RiderProfileModal } from '../../components/rider/RiderProfileModal';
 import { DocumentPreviewModal } from '../../components/common/DocumentPreviewModal';
 import { DatabaseDocumentsModal } from '../../components/company/DatabaseDocumentsModal';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import {
   Bike,
   Search,
@@ -104,6 +105,40 @@ export function CompanyCouriersPage() {
     });
     return Array.from(set).sort();
   }, [couriers]);
+
+  const branchFilterOptions = useMemo(() => {
+    return [
+      { value: 'all', label: 'Select Branch (All)' },
+      ...branches
+        .filter((b) => b && b.status !== 'inactive' && b.status !== 'disabled')
+        .map((b) => ({
+          value: String(b.id),
+          label: b.name,
+          subtext: b.branch_code ? `(${b.branch_code})` : (b.district ? `(${b.district})` : null),
+        })),
+    ];
+  }, [branches]);
+
+  const vehicleFilterOptions = useMemo(() => {
+    return [
+      { value: 'all', label: 'All Vehicle Types' },
+      ...distinctVehicles.map((vh) => ({ value: vh, label: vh })),
+    ];
+  }, [distinctVehicles]);
+
+  const verificationFilterOptions = useMemo(() => [
+    { value: 'all', label: 'All Verification' },
+    { value: 'verified', label: 'Verified (Approved)' },
+    { value: 'pending', label: 'Pending Verification' },
+    { value: 'rejected', label: 'Rejected' },
+  ], []);
+
+  const dutyStatusFilterOptions = useMemo(() => [
+    { value: 'all', label: 'All Duty Statuses' },
+    { value: 'available', label: 'Available' },
+    { value: 'on_duty', label: 'On Duty' },
+    { value: 'offline', label: 'Offline' },
+  ], []);
 
   // Overall metric summaries
   const metrics = useMemo(() => {
@@ -557,31 +592,15 @@ export function CompanyCouriersPage() {
               >
                 Branch / Hub
               </label>
-              <select
+              <SearchableSelect
                 value={draftBranch}
-                onChange={(e) => setDraftBranch(e.target.value)}
-                style={{
-                  width: '100%',
-                  height: '38px',
-                  padding: '0 10px',
-                  borderRadius: '6px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '12.5px',
-                  color: '#1e293b',
-                  background: '#ffffff',
-                  fontWeight: 500,
-                  outline: 'none',
-                }}
-              >
-                <option value="all">Select Branch (All)</option>
-                {branches
-                  .filter((b) => b && b.status !== 'inactive' && b.status !== 'disabled')
-                  .map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-              </select>
+                onChange={(val) => setDraftBranch(val)}
+                options={branchFilterOptions}
+                placeholder="Select Branch (All)"
+                searchPlaceholder="Search branch or code..."
+                height="38px"
+                minDropdownWidth="260px"
+              />
             </div>
 
             {/* 2. Vehicle Type Dropdown */}
@@ -599,29 +618,14 @@ export function CompanyCouriersPage() {
               >
                 Vehicle Type
               </label>
-              <select
+              <SearchableSelect
                 value={draftVehicle}
-                onChange={(e) => setDraftVehicle(e.target.value)}
-                style={{
-                  width: '100%',
-                  height: '38px',
-                  padding: '0 10px',
-                  borderRadius: '6px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '12.5px',
-                  color: '#1e293b',
-                  background: '#ffffff',
-                  fontWeight: 500,
-                  outline: 'none',
-                }}
-              >
-                <option value="all">All Vehicle Types</option>
-                {distinctVehicles.map((vh) => (
-                  <option key={vh} value={vh}>
-                    {vh}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setDraftVehicle(val)}
+                options={vehicleFilterOptions}
+                placeholder="All Vehicle Types"
+                searchPlaceholder="Search vehicle..."
+                height="38px"
+              />
             </div>
 
             {/* 3. KYC Verification Status Dropdown */}
@@ -639,27 +643,14 @@ export function CompanyCouriersPage() {
               >
                 Verification
               </label>
-              <select
+              <SearchableSelect
                 value={draftVerification}
-                onChange={(e) => setDraftVerification(e.target.value)}
-                style={{
-                  width: '100%',
-                  height: '38px',
-                  padding: '0 10px',
-                  borderRadius: '6px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '12.5px',
-                  color: '#1e293b',
-                  background: '#ffffff',
-                  fontWeight: 500,
-                  outline: 'none',
-                }}
-              >
-                <option value="all">All Verification</option>
-                <option value="verified">Verified (Approved)</option>
-                <option value="pending">Pending Verification</option>
-                <option value="rejected">Rejected</option>
-              </select>
+                onChange={(val) => setDraftVerification(val)}
+                options={verificationFilterOptions}
+                placeholder="All Verification"
+                searchPlaceholder="Search verification..."
+                height="38px"
+              />
             </div>
 
             {/* 4. Availability Status Dropdown */}
@@ -677,27 +668,14 @@ export function CompanyCouriersPage() {
               >
                 Duty Status
               </label>
-              <select
+              <SearchableSelect
                 value={draftStatus}
-                onChange={(e) => setDraftStatus(e.target.value)}
-                style={{
-                  width: '100%',
-                  height: '38px',
-                  padding: '0 10px',
-                  borderRadius: '6px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '12.5px',
-                  color: '#1e293b',
-                  background: '#ffffff',
-                  fontWeight: 500,
-                  outline: 'none',
-                }}
-              >
-                <option value="all">All Duty Statuses</option>
-                <option value="available">Available</option>
-                <option value="on_duty">On Duty</option>
-                <option value="offline">Offline</option>
-              </select>
+                onChange={(val) => setDraftStatus(val)}
+                options={dutyStatusFilterOptions}
+                placeholder="All Duty Statuses"
+                searchPlaceholder="Search status..."
+                height="38px"
+              />
             </div>
 
             {/* 5. Search Keyword Input */}
@@ -1022,16 +1000,13 @@ export function CompanyCouriersPage() {
                 <th style={{ padding: '12px 16px', fontWeight: 700 }}>Mobile Number</th>
                 <th style={{ padding: '12px 16px', fontWeight: 700 }}>Vehicle</th>
                 <th style={{ padding: '12px 16px', fontWeight: 700 }}>Branch / Hub</th>
-                <th style={{ padding: '12px 16px', fontWeight: 700 }}>KYC Status</th>
-                <th style={{ padding: '12px 16px', fontWeight: 700 }}>Duty Status</th>
-                <th style={{ padding: '12px 16px', fontWeight: 700 }}>Account</th>
-                <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'center', width: '210px' }}>Actions</th>
+                <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'center', width: '190px' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredCouriers.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ padding: '60px 20px', textAlign: 'center', color: '#64748b' }}>
+                  <td colSpan={6} style={{ padding: '60px 20px', textAlign: 'center', color: '#64748b' }}>
                     <Bike size={40} style={{ opacity: 0.35, margin: '0 auto 10px', display: 'block' }} />
                     <div style={{ fontWeight: 800, fontSize: '15px', color: '#0f172a' }}>
                       No Rider Records Found
@@ -1087,76 +1062,33 @@ export function CompanyCouriersPage() {
 
                       {/* Rider */}
                       <td style={{ padding: '12px 16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          {c.photo ? (
-                            <img
-                              src={c.photo}
-                              alt=""
-                              onClick={() => handlePreviewRiderDocs(c)}
-                              title="Click to preview rider photo & documents 🔍"
+                        <div>
+                          <div
+                            onClick={() => handleOpenProfile(c)}
+                            style={{
+                              fontWeight: 700,
+                              color: '#0f172a',
+                              fontSize: '13.5px',
+                              cursor: 'pointer',
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.color = '#dc2626')}
+                            onMouseLeave={(e) => (e.currentTarget.style.color = '#0f172a')}
+                          >
+                            {c.name}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                            <span
                               style={{
-                                width: '32px',
-                                height: '32px',
-                                borderRadius: '50%',
-                                objectFit: 'cover',
-                                cursor: 'pointer',
-                                border: '2px solid #fee2e2',
-                                flexShrink: 0,
-                              }}
-                            />
-                          ) : (
-                            <div
-                              style={{
-                                width: '32px',
-                                height: '32px',
-                                borderRadius: '50%',
-                                background: '#fee2e2',
-                                color: '#dc2626',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontWeight: 700,
-                                fontSize: '13px',
-                                flexShrink: 0,
+                                fontFamily: 'monospace',
+                                fontSize: '11px',
+                                color: '#64748b',
+                                background: '#f1f5f9',
+                                padding: '1px 5px',
+                                borderRadius: '3px',
                               }}
                             >
-                              {c.name?.charAt(0)?.toUpperCase() || 'R'}
-                            </div>
-                          )}
-
-                          <div>
-                            <div
-                              onClick={() => handleOpenProfile(c)}
-                              style={{
-                                fontWeight: 700,
-                                color: '#0f172a',
-                                fontSize: '13.5px',
-                                cursor: 'pointer',
-                              }}
-                              onMouseEnter={(e) => (e.currentTarget.style.color = '#dc2626')}
-                              onMouseLeave={(e) => (e.currentTarget.style.color = '#0f172a')}
-                            >
-                              {c.name}
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-                              <span
-                                style={{
-                                  fontFamily: 'monospace',
-                                  fontSize: '11px',
-                                  color: '#64748b',
-                                  background: '#f1f5f9',
-                                  padding: '1px 5px',
-                                  borderRadius: '3px',
-                                }}
-                              >
-                                {c.rider_id || `RD-${c.id}`}
-                              </span>
-                              {c.email && (
-                                <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                                  {c.email}
-                                </span>
-                              )}
-                            </div>
+                              {c.rider_id || `RD-${c.id}`}
+                            </span>
                           </div>
                         </div>
                       </td>
@@ -1224,87 +1156,9 @@ export function CompanyCouriersPage() {
                         </span>
                       </td>
 
-                      {/* KYC Status */}
-                      <td style={{ padding: '12px 16px' }}>
-                        {isVerified ? (
-                          <span
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              background: '#dcfce7',
-                              color: '#15803d',
-                              border: '1px solid #bbf7d0',
-                              padding: '2px 8px',
-                              borderRadius: '12px',
-                              fontSize: '11px',
-                              fontWeight: 700,
-                            }}
-                          >
-                            <CheckCircle2 size={12} /> Verified
-                          </span>
-                        ) : isPending ? (
-                          <span
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              background: '#fef3c7',
-                              color: '#b45309',
-                              border: '1px solid #fde68a',
-                              padding: '2px 8px',
-                              borderRadius: '12px',
-                              fontSize: '11px',
-                              fontWeight: 700,
-                            }}
-                          >
-                            <AlertCircle size={12} /> Pending
-                          </span>
-                        ) : (
-                          <span
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              background: '#fee2e2',
-                              color: '#b91c1c',
-                              border: '1px solid #fca5a5',
-                              padding: '2px 8px',
-                              borderRadius: '12px',
-                              fontSize: '11px',
-                              fontWeight: 700,
-                            }}
-                          >
-                            <ShieldAlert size={12} /> Rejected
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Duty Status */}
-                      <td style={{ padding: '12px 16px' }}>
-                        <StatusPill status={c.status} type="rider" />
-                      </td>
-
-                      {/* Account Active */}
-                      <td style={{ padding: '12px 16px' }}>
-                        <span
-                          style={{
-                            display: 'inline-block',
-                            padding: '2px 7px',
-                            borderRadius: '4px',
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            background: c.active !== false ? '#f0fdf4' : '#fef2f2',
-                            color: c.active !== false ? '#16a34a' : '#dc2626',
-                          }}
-                        >
-                          {c.active !== false ? 'Active' : 'Disabled'}
-                        </span>
-                      </td>
-
                       {/* Actions */}
                       <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                        <div style={{ display: 'inline-flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                        <div style={{ display: 'inline-flex', gap: '5px', flexWrap: 'nowrap', justifyContent: 'center' }}>
                           <button
                             type="button"
                             onClick={() => handleOpenProfile(c)}
@@ -1325,29 +1179,6 @@ export function CompanyCouriersPage() {
                           >
                             <Eye size={12} /> Profile
                           </button>
-
-                          {hasDocs && (
-                            <button
-                              type="button"
-                              onClick={() => handlePreviewRiderDocs(c)}
-                              title="Preview rider photos & driving license"
-                              style={{
-                                padding: '4px 8px',
-                                borderRadius: '5px',
-                                border: '1px solid #bfdbfe',
-                                background: '#eff6ff',
-                                color: '#1d4ed8',
-                                fontSize: '11.5px',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '3px',
-                              }}
-                            >
-                              🪪 Docs
-                            </button>
-                          )}
 
                           <button
                             type="button"
@@ -1389,24 +1220,6 @@ export function CompanyCouriersPage() {
                             }}
                           >
                             <Key size={12} /> PW
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => toggleCourierActive(c.id)}
-                            title={c.active !== false ? 'Disable account' : 'Enable account'}
-                            style={{
-                              padding: '4px 8px',
-                              borderRadius: '5px',
-                              border: 'none',
-                              background: c.active !== false ? '#fee2e2' : '#dcfce7',
-                              color: c.active !== false ? '#dc2626' : '#15803d',
-                              fontSize: '11.5px',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            {c.active !== false ? 'Disable' : 'Enable'}
                           </button>
                         </div>
                       </td>

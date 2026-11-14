@@ -130,6 +130,32 @@ export function RiderProfileModal({ rider }) {
         <div><span className="muted">Email:</span> {rider.email || '—'}</div>
         <div><span className="muted">Assigned Branch:</span> {branch ? branch.name : 'All branches'}</div>
         <div><span className="muted">Address:</span> {addressSummary(rider.address)}</div>
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: '6px', marginTop: '4px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px' }}>
+          <div>
+            <span className="muted">Compensation Model:</span>{' '}
+            <b>{rider.compensation_type === 'SALARY' ? 'Fixed Salary' : 'Commission-Based'}</b>
+          </div>
+          <div>
+            <span className="muted">Rate / Salary:</span>{' '}
+            <b>
+              {rider.compensation_type === 'SALARY'
+                ? `Rs. ${Number(rider.base_salary || 0).toLocaleString()} / mo`
+                : `${rider.commission_rate ?? 15}% per delivery`}
+            </b>
+          </div>
+          <div>
+            <span className="muted">Operational Duty:</span>{' '}
+            <b style={{ color: rider.duty_status === 'AVAILABLE' ? 'var(--success)' : '#d97706' }}>
+              {rider.duty_status || 'AVAILABLE'}
+            </b>
+          </div>
+          <div>
+            <span className="muted">License No:</span> <b>{rider.driving_license_number || '—'}</b>
+          </div>
+          <div>
+            <span className="muted">Vehicle Plate:</span> <b>{rider.vehicle_plate_number || '—'}</b>
+          </div>
+        </div>
       </div>
 
       {rider.license_photo && (

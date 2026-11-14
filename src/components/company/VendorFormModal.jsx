@@ -33,6 +33,10 @@ export function VendorFormModal({
   const [vendorCategory, setVendorCategory] = useState(initialVendor?.vendor_category || 'General Merchandise');
   const [branchId, setBranchId] = useState(initialVendor?.branch_id || defaultBranchId || '');
   const [address, setAddress] = useState(initialVendor?.address || emptyAddress());
+  const [tradeName, setTradeName] = useState(initialVendor?.trade_name || initialVendor?.name || '');
+  const [panVatNumber, setPanVatNumber] = useState(initialVendor?.pan_vat_number || initialVendor?.pan || '');
+  const [isVatRegistered, setIsVatRegistered] = useState(Boolean(initialVendor?.is_vat_registered));
+  const [codPayoutSchedule, setCodPayoutSchedule] = useState(initialVendor?.cod_payout_schedule || 'WEEKLY');
   const [bankDetails, setBankDetails] = useState(
     initialVendor?.bank_details || { bank_name: '', branch_name: '', account_holder_name: '', account_number: '' }
   );
@@ -84,6 +88,11 @@ export function VendorFormModal({
 
     const payload = {
       name: name.trim(),
+      trade_name: tradeName.trim() || name.trim(),
+      pan_vat_number: panVatNumber.trim(),
+      is_vat_registered: isVatRegistered,
+      cod_payout_schedule: codPayoutSchedule,
+      bank_account_holder: bankDetails.account_holder_name || '',
       phone: phone.trim(),
       phone2: phone2.trim(),
       password,
@@ -167,18 +176,58 @@ export function VendorFormModal({
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px' }}>
-          {/* Business Name - Full Width */}
-          <div style={{ gridColumn: '1 / -1' }}>
+          {/* Business Name */}
+          <div>
             <label style={labelStyle}>
-              Business / Store Name <span style={{ color: '#dc2626' }}>*</span>
+              Registered Business Name <span style={{ color: '#dc2626' }}>*</span>
             </label>
             <input
               style={inputStyle}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Kathmandu Valley Traders"
+              placeholder="e.g. Kathmandu Valley Traders Pvt. Ltd."
               required
             />
+          </div>
+
+          {/* Trade / Brand Name */}
+          <div>
+            <label style={labelStyle}>
+              Trade / Store Name <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 400 }}>(Display Name)</span>
+            </label>
+            <input
+              style={inputStyle}
+              value={tradeName}
+              onChange={(e) => setTradeName(e.target.value)}
+              placeholder="e.g. KVT Fashion Store"
+            />
+          </div>
+
+          {/* PAN / VAT Number */}
+          <div>
+            <label style={labelStyle}>
+              PAN / VAT Number (9 Digits)
+            </label>
+            <input
+              style={inputStyle}
+              value={panVatNumber}
+              onChange={(e) => setPanVatNumber(e.target.value)}
+              placeholder="e.g. 601234567"
+              maxLength={15}
+            />
+          </div>
+
+          {/* VAT Registered Checkbox */}
+          <div style={{ display: 'flex', alignItems: 'center', marginTop: '22px' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12.5px', fontWeight: 600, color: '#1e293b' }}>
+              <input
+                type="checkbox"
+                checked={isVatRegistered}
+                onChange={(e) => setIsVatRegistered(e.target.checked)}
+                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+              />
+              <span>VAT Registered Merchant (IRD Tax Compliance)</span>
+            </label>
           </div>
 
           {/* Login Phone */}
@@ -384,6 +433,20 @@ export function VendorFormModal({
               onChange={(e) => handleBankChange('account_number', e.target.value)}
               placeholder="Bank account number"
             />
+          </div>
+          <div>
+            <label style={labelStyle}>COD Settlement Payout Cycle</label>
+            <select
+              style={inputStyle}
+              value={codPayoutSchedule}
+              onChange={(e) => setCodPayoutSchedule(e.target.value)}
+            >
+              <option value="DAILY">Daily (Immediate Day-End Payout)</option>
+              <option value="TWICE_WEEKLY">Twice a Week (Tuesday & Friday)</option>
+              <option value="WEEKLY">Weekly (Every Sunday)</option>
+              <option value="BI_WEEKLY">Bi-Weekly (Every 15 Days)</option>
+              <option value="MONTHLY">Monthly (Month End)</option>
+            </select>
           </div>
         </div>
       </div>

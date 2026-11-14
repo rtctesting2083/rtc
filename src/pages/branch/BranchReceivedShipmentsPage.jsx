@@ -7,6 +7,7 @@ import { StatusPill } from '../../components/common/StatusPill';
 import { ShipmentDetailModal } from '../../components/common/ShipmentDetailModal';
 import { AssignRiderModal } from '../../components/company/AssignRiderModal';
 import { ForwardShipmentModal } from '../../components/company/ForwardShipmentModal';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { printShipmentLabel } from '../../utils/print';
 import { fmtMoney, fmtDate } from '../../utils/helpers';
 import { ADVANCE_TO } from '../../utils/constants';
@@ -41,6 +42,21 @@ export function BranchReceivedShipmentsPage() {
       (c) => Number(c.branch_id) === Number(currentBranch.id)
     );
   }, [couriers, currentBranch.id]);
+
+  const clientTypeFilterOptions = useMemo(() => [
+    { value: 'all', label: 'All Clients' },
+    { value: 'walk_in', label: 'Walk-in' },
+    { value: 'vendor', label: 'Vendor' },
+  ], []);
+
+  const riderFilterOptions = useMemo(() => [
+    { value: '', label: 'All Branch Riders' },
+    ...branchRiders.map((r) => ({
+      value: String(r.id),
+      label: r.name,
+      subtext: r.phone ? `(${r.phone})` : null,
+    })),
+  ], [branchRiders]);
 
   // All shipments received by this branch
   const receivedShipments = useMemo(() => {
@@ -504,28 +520,25 @@ export function BranchReceivedShipmentsPage() {
 
           {/* Search & Filter Dropdowns */}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-            <select
+            <SearchableSelect
               value={clientTypeFilter}
-              onChange={(e) => setClientTypeFilter(e.target.value)}
-              style={{ padding: '6px 10px', fontSize: '12px' }}
-            >
-              <option value="all">All Clients</option>
-              <option value="walk_in">Walk-in</option>
-              <option value="vendor">Vendor</option>
-            </select>
+              onChange={(val) => setClientTypeFilter(val || 'all')}
+              options={clientTypeFilterOptions}
+              placeholder="All Clients"
+              searchPlaceholder="Search client..."
+              height="32px"
+              minDropdownWidth="140px"
+            />
 
-            <select
+            <SearchableSelect
               value={riderFilter}
-              onChange={(e) => setRiderFilter(e.target.value)}
-              style={{ padding: '6px 10px', fontSize: '12px' }}
-            >
-              <option value="">All Branch Riders</option>
-              {branchRiders.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setRiderFilter(val || '')}
+              options={riderFilterOptions}
+              placeholder="All Branch Riders"
+              searchPlaceholder="Search rider..."
+              height="32px"
+              minDropdownWidth="200px"
+            />
 
             <input
               type="search"

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useCompany } from '../../context/CompanyContext';
@@ -72,6 +72,17 @@ export function LoginPage({ defaultTab = 'login' }) {
   const [trackSearched, setTrackSearched] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedTrackNum, setCopiedTrackNum] = useState(false);
+  const trackResultRef = useRef(null);
+
+  useEffect(() => {
+    if (trackedOrder && trackResultRef.current) {
+      setTimeout(() => {
+        try {
+          trackResultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } catch (e) {}
+      }, 100);
+    }
+  }, [trackedOrder]);
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -227,20 +238,26 @@ export function LoginPage({ defaultTab = 'login' }) {
           return cl.slice(0, 4) + '****' + cl.slice(-2);
         };
 
+        const resolvedAddress = localMatch.delivery_address || localMatch.receiver_address || localMatch.destination_city || localMatch.receiver_district || '';
         setTrackedOrder({
           id: localMatch.id,
           tracking_number: localMatch.tracking_number,
           vendor_reference_id: localMatch.vendor_reference_id || null,
           status: localMatch.status || 'pending',
           package_description: localMatch.package_description || 'Standard Parcel',
-          weight: localMatch.weight || 1,
+          service_type: localMatch.service_type || localMatch.order_type || localMatch.delivery_service_type || 'Door to Door Delivery',
+          weight: localMatch.weight || localMatch.weight_kg || 1,
           cod_amount: Number(localMatch.cod_amount || 0),
           delivery_fee: Number(localMatch.delivery_fee || 0),
+          sender_name: localMatch.sender_name || localMatch.vendor_name || null,
+          sender_address: localMatch.pickup_address || localMatch.sender_address || null,
+          sender_phone_masked: localMatch.sender_phone ? mask(localMatch.sender_phone) : null,
           receiver_name: localMatch.receiver_name,
           receiver_phone_masked: mask(localMatch.receiver_phone),
           receiver_district: localMatch.receiver_district,
           destination_city: localMatch.destination_city || localMatch.receiver_district,
-          receiver_address: localMatch.receiver_address,
+          receiver_address: resolvedAddress,
+          delivery_address: resolvedAddress,
           origin_branch_name: originB?.name || localMatch.origin_branch_name || 'Central Hub',
           destination_branch_name: destB?.name || localMatch.destination_hub || localMatch.dest_branch_name || 'Destination Branch',
           rider_name: localMatch.rider_name || null,
@@ -467,11 +484,31 @@ export function LoginPage({ defaultTab = 'login' }) {
 
   return (
     <div className="rtc-login-container">
-      <div className="rtc-login-card">
+      <div className={`rtc-login-card ${trackedOrder ? 'has-tracked-order' : ''}`}>
+        {/* Mobile Segmented Portal Tabs (< 960px) */}
+        <div className="rtc-mobile-portal-tabs">
+          <button
+            type="button"
+            className={`rtc-mobile-tab-btn ${activeTab === 'track' ? 'active' : ''}`}
+            onClick={() => setActiveTab('track')}
+          >
+            <Search size={15} />
+            <span>{lang === 'en' ? 'Track Order' : 'अर्डर ट्र्याक'}</span>
+          </button>
+          <button
+            type="button"
+            className={`rtc-mobile-tab-btn ${activeTab === 'login' ? 'active' : ''}`}
+            onClick={() => setActiveTab('login')}
+          >
+            <Lock size={15} />
+            <span>{lang === 'en' ? 'Sign In' : 'लगइन गर्नुहोस्'}</span>
+          </button>
+        </div>
+
         {/* ══════════════════════════════════════════════════════════════════
             LEFT PANEL: Customer Self-Service Order Tracking
             ══════════════════════════════════════════════════════════════════ */}
-        <div className="rtc-login-hero rtc-track-panel">
+        <div className={`rtc-login-hero rtc-track-panel ${activeTab !== 'track' ? 'mobile-hidden' : ''}`}>
           <div className="rtc-track-panel-header">
             <div className="rtc-track-panel-badge">
               <span className="rtc-track-live-pulse-dot" />
@@ -625,7 +662,7 @@ export function LoginPage({ defaultTab = 'login' }) {
 
           {/* Tracking Result View */}
           {trackedOrder && !trackingLoading && (
-            <div className="rtc-track-result-wrapper">
+            <div className="rtc-track-result-wrapper" ref={trackResultRef}>
               {/* Header Card */}
               <div className="rtc-track-header-card">
                 <div className="rtc-track-header-top">
@@ -673,15 +710,15 @@ export function LoginPage({ defaultTab = 'login' }) {
                 {/* Route Banner */}
                 <div className="rtc-track-route-strip">
                   <div className="rtc-track-route-point">
-                    <Building size={14} color="#dc2626" />
+                    <Building size={14} color="#ffffff" />
                     <span className="rtc-track-route-hub">{trackedOrder.origin_branch_name || 'Central Hub'}</span>
                   </div>
                   <div className="rtc-track-route-arrow-line">
                     <span className="rtc-track-route-transit-tag">{lang === 'en' ? 'RTC Express Linehaul' : 'एक्सप्रेस लाइनहल'}</span>
-                    <ChevronRight size={14} color="#dc2626" />
+                    <ChevronRight size={14} color="#ffffff" />
                   </div>
                   <div className="rtc-track-route-point">
-                    <MapPin size={14} color="#16a34a" />
+                    <MapPin size={14} color="#ffffff" />
                     <span className="rtc-track-route-hub">{trackedOrder.destination_branch_name || trackedOrder.destination_city || 'Destination Hub'}</span>
                   </div>
                 </div>
@@ -718,21 +755,24 @@ export function LoginPage({ defaultTab = 'login' }) {
 
               {/* Order Details Grid */}
               <div className="rtc-track-details-grid">
-                {/* Destination / Address */}
-                <div className="rtc-track-detail-box">
+                {/* 1. Recipient Delivery Address (Full Width Span) */}
+                <div className="rtc-track-detail-box rtc-track-full-col">
                   <div className="rtc-track-detail-lbl">
                     <MapPin size={13} color="#dc2626" />
-                    <span>{lang === 'en' ? 'Delivery Address' : 'डेलिभरी ठेगाना'}</span>
+                    <span>{lang === 'en' ? 'Delivery Address (Recipient)' : 'डेलिभरी ठेगाना (प्राप्तकर्ता)'}</span>
                   </div>
-                  <div className="rtc-track-detail-val">
-                    {trackedOrder.destination_city || trackedOrder.receiver_district}
+                  <div className="rtc-track-detail-val rtc-track-address-val">
+                    {trackedOrder.delivery_address || trackedOrder.receiver_address || trackedOrder.destination_city || trackedOrder.receiver_district || (lang === 'en' ? 'Address on file' : 'ठेगाना उपलब्ध')}
                   </div>
-                  <div className="rtc-track-detail-sub">
-                    {trackedOrder.receiver_address || trackedOrder.receiver_district}
-                  </div>
+                  {(trackedOrder.destination_branch_name || trackedOrder.destination_city) && (
+                    <div className="rtc-track-detail-sub">
+                      {lang === 'en' ? 'Destination Branch: ' : 'गन्तव्य शाखा: '}
+                      {trackedOrder.destination_branch_name || trackedOrder.destination_city}
+                    </div>
+                  )}
                 </div>
 
-                {/* Recipient */}
+                {/* 2. Recipient */}
                 <div className="rtc-track-detail-box">
                   <div className="rtc-track-detail-lbl">
                     <User size={13} color="#dc2626" />
@@ -746,7 +786,41 @@ export function LoginPage({ defaultTab = 'login' }) {
                   )}
                 </div>
 
-                {/* Cash on Delivery (COD) */}
+                {/* 3. Sender Information (Name & Address) */}
+                <div className="rtc-track-detail-box">
+                  <div className="rtc-track-detail-lbl">
+                    <Building size={13} color="#dc2626" />
+                    <span>{lang === 'en' ? 'Sender' : 'पठाउने व्यक्ति / बिक्रेता'}</span>
+                  </div>
+                  <div className="rtc-track-detail-val">
+                    {trackedOrder.sender_name || (lang === 'en' ? 'RTC Registered Merchant' : 'दर्ता भएको बिक्रेता')}
+                  </div>
+                  {(trackedOrder.sender_address || trackedOrder.pickup_address) ? (
+                    <div className="rtc-track-detail-sub" title={trackedOrder.sender_address || trackedOrder.pickup_address}>
+                      {trackedOrder.sender_address || trackedOrder.pickup_address}
+                    </div>
+                  ) : trackedOrder.origin_branch_name ? (
+                    <div className="rtc-track-detail-sub">
+                      {trackedOrder.origin_branch_name}
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* 4. Delivery Service Types */}
+                <div className="rtc-track-detail-box">
+                  <div className="rtc-track-detail-lbl">
+                    <Truck size={13} color="#dc2626" />
+                    <span>{lang === 'en' ? 'Delivery Service Types' : 'डेलिभरी सेवा प्रकार'}</span>
+                  </div>
+                  <div className="rtc-track-detail-val">
+                    {trackedOrder.service_type || trackedOrder.order_type || (lang === 'en' ? 'Door to Door Delivery' : 'घरदैलो डेलिभरी')}
+                  </div>
+                  <div className="rtc-track-detail-sub">
+                    {trackedOrder.weight ? `${trackedOrder.weight} kg` : '1.0 kg'} {trackedOrder.package_description ? `• ${trackedOrder.package_description}` : '• Standard Express'}
+                  </div>
+                </div>
+
+                {/* 5. Cash on Delivery (COD) */}
                 <div className="rtc-track-detail-box">
                   <div className="rtc-track-detail-lbl">
                     <Banknote size={13} color="#16a34a" />
@@ -759,20 +833,6 @@ export function LoginPage({ defaultTab = 'login' }) {
                   </div>
                   <div className="rtc-track-detail-sub">
                     {trackedOrder.cod_amount > 0 ? (lang === 'en' ? 'Pay upon delivery' : 'सामान पाएपछि बुझाउने') : (lang === 'en' ? 'No COD payment needed' : 'भुक्तानी भइसकेको')}
-                  </div>
-                </div>
-
-                {/* Parcel Package Description */}
-                <div className="rtc-track-detail-box">
-                  <div className="rtc-track-detail-lbl">
-                    <Package size={13} color="#dc2626" />
-                    <span>{lang === 'en' ? 'Parcel Details' : 'पार्सल विवरण'}</span>
-                  </div>
-                  <div className="rtc-track-detail-val">
-                    {trackedOrder.package_description || (lang === 'en' ? 'Standard Box' : 'पार्सल')}
-                  </div>
-                  <div className="rtc-track-detail-sub">
-                    {trackedOrder.weight ? `${trackedOrder.weight} kg` : '1.0 kg'} • RTC Verified
                   </div>
                 </div>
               </div>
@@ -877,7 +937,7 @@ export function LoginPage({ defaultTab = 'login' }) {
         {/* ══════════════════════════════════════════════════════════════════
             RIGHT PANEL: Authentication Form Section
             ══════════════════════════════════════════════════════════════════ */}
-        <div className="rtc-login-form-side">
+        <div className={`rtc-login-form-side ${activeTab !== 'login' ? 'mobile-hidden' : ''}`}>
           {/* Top Bar: Language Toggle & Night/Day Mode Toggle */}
           <div className="rtc-login-top-bar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
             <ThemeToggleBtn variant="pill" style={{ color: 'var(--text, #0f172a)' }} />

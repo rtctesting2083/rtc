@@ -225,13 +225,6 @@ export function CompanyLayout() {
           Icon: Users,
           path: '/company/customer-list',
         },
-        {
-          key: 'verification',
-          label: 'Vendor Verification',
-          Icon: ShieldCheck,
-          path: '/company/verification',
-          badge: pendingVerificationsCount,
-        },
       ],
     },
     {

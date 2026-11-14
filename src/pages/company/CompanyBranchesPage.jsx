@@ -15,12 +15,55 @@ import {
   ChevronRight,
   ShieldCheck,
   ShieldAlert,
+  Network,
 } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { useAuth } from '../../context/AuthContext';
 import { useModal } from '../../context/ModalContext';
 import { BranchFormModal } from '../../components/company/BranchFormModal';
+import { BranchHierarchyModal } from '../../components/company/BranchHierarchyModal';
+import { BranchHierarchyQuickModal } from '../../components/company/BranchHierarchyQuickModal';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { addressSummary } from '../../utils/helpers';
+
+const normalizeTierString = (rawTier) => {
+  if (rawTier === 0 || rawTier === '0' || rawTier === 'CENTRAL' || rawTier === 'CENTRAL_OFFICE') {
+    return 'CENTRAL_OFFICE';
+  }
+  if (rawTier === 1 || rawTier === '1' || rawTier === 'PROVINCE' || rawTier === 'PROVINCE_HUB') {
+    return 'PROVINCE_HUB';
+  }
+  if (rawTier === 2 || rawTier === '2' || rawTier === 'DISTRICT' || rawTier === 'DISTRICT_HUB') {
+    return 'DISTRICT_HUB';
+  }
+  if (rawTier === 3 || rawTier === '3' || rawTier === 'MUNICIPALITY' || rawTier === 'MUNICIPALITY_BRANCH') {
+    return 'MUNICIPALITY_BRANCH';
+  }
+  if (rawTier === 4 || rawTier === '4' || rawTier === 'WARD' || rawTier === 'WARD_BRANCH') {
+    return 'WARD_BRANCH';
+  }
+  return 'MUNICIPALITY_BRANCH';
+};
+
+const formatTierName = (tier, branchType) => {
+  if (typeof tier === 'string') {
+    if (tier === 'CENTRAL_OFFICE' || tier === 'CENTRAL') return 'Central Office';
+    if (tier === 'PROVINCE_HUB' || tier === 'PROVINCE') return 'Province Hub';
+    if (tier === 'DISTRICT_HUB' || tier === 'DISTRICT') return 'District Hub';
+    if (tier === 'MUNICIPALITY_BRANCH' || tier === 'MUNICIPALITY') return 'Municipality Branch';
+    if (tier === 'WARD_BRANCH' || tier === 'WARD') return 'Ward Branch';
+    return tier.replace(/_/g, ' ');
+  }
+  if (typeof tier === 'number') {
+    if (tier === 0) return 'Central Office';
+    if (tier === 1) return 'Province Hub';
+    if (tier === 2) return 'District Hub';
+    if (tier === 3) return 'Municipality Branch';
+    if (tier === 4) return 'Ward Branch';
+    return `Tier ${tier}`;
+  }
+  return branchType === 'head_office' ? 'Head Office' : 'Local Hub / Branch';
+};
 
 export function CompanyBranchesPage() {
   const {
@@ -39,6 +82,35 @@ export function CompanyBranchesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'active' | 'inactive'
   const [provinceFilter, setProvinceFilter] = useState('all');
+  const [tierFilter, setTierFilter] = useState('all'); // 'all' | 'CENTRAL_OFFICE' | 'PROVINCE_HUB' | 'DISTRICT_HUB' | 'MUNICIPALITY_BRANCH' | 'WARD_BRANCH'
+  const [modelTypeFilter, setModelTypeFilter] = useState('all'); // 'all' | 'OWNED' | 'FRANCHISE'
+  const [parentFilter, setParentFilter] = useState('all'); // 'all' | 'null' | specific parent_branch_id
+  const [hierarchyModalOpen, setHierarchyModalOpen] = useState(false);
+
+  // Fast ID -> Branch map for parent hub lookups
+  const branchMap = useMemo(() => {
+    const map = new Map();
+    rawBranches.forEach((b) => {
+      map.set(Number(b.id), b);
+    });
+    return map;
+  }, [rawBranches]);
+
+  // List of candidate parent hubs for filter dropdown (Centrals, Provinces, Districts)
+  const parentHubOptions = useMemo(() => {
+    return rawBranches
+      .filter((b) => {
+        const t = normalizeTierString(b.tier);
+        return (
+          t === 'CENTRAL_OFFICE' ||
+          t === 'PROVINCE_HUB' ||
+          t === 'DISTRICT_HUB' ||
+          b.branch_type === 'head_office' ||
+          Number(b.id) <= 84
+        );
+      })
+      .sort((a, b) => Number(a.id) - Number(b.id));
+  }, [rawBranches]);
 
   // Multi-select for Bulk Actions
   const [selectedBranchIds, setSelectedBranchIds] = useState([]);
@@ -84,6 +156,42 @@ export function CompanyBranchesPage() {
     return Array.from(set).sort();
   }, [rawBranches]);
 
+  const statusFilterOptions = useMemo(() => [
+    { value: 'all', label: `All Statuses (${rawBranches.length})` },
+    { value: 'active', label: `Enabled Only (${stats.active})` },
+    { value: 'inactive', label: `Disabled Only (${stats.inactive})` },
+  ], [rawBranches.length, stats.active, stats.inactive]);
+
+  const tierFilterOptions = useMemo(() => [
+    { value: 'all', label: 'All Administrative Tiers' },
+    { value: 'CENTRAL_OFFICE', label: '🏢 Central Office (Root)' },
+    { value: 'PROVINCE_HUB', label: '🏛️ Province Hub' },
+    { value: 'DISTRICT_HUB', label: '🏬 District Hub' },
+    { value: 'MUNICIPALITY_BRANCH', label: '🏘️ Municipality Branch' },
+    { value: 'WARD_BRANCH', label: '📍 Ward Branch' },
+  ], []);
+
+  const modelTypeFilterOptions = useMemo(() => [
+    { value: 'all', label: 'All Ownership Models' },
+    { value: 'OWNED', label: '🏢 Company Owned' },
+    { value: 'FRANCHISE', label: '🤝 Franchise Partner' },
+  ], []);
+
+  const parentHubFilterOptions = useMemo(() => [
+    { value: 'all', label: 'All Parent Hubs' },
+    { value: 'null', label: 'Independent (Root / No Parent)' },
+    ...parentHubOptions.map((p) => ({
+      value: String(p.id),
+      label: `Reports to: ${p.name}`,
+      subtext: `ID: ${p.id}`,
+    })),
+  ], [parentHubOptions]);
+
+  const provinceFilterOptions = useMemo(() => [
+    { value: 'all', label: 'All Provinces' },
+    ...provinces.map((p) => ({ value: p, label: p })),
+  ], [provinces]);
+
   // Filtered branches
   const filteredBranches = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -94,6 +202,27 @@ export function CompanyBranchesPage() {
       if (statusFilter === 'active' && !isActive) return false;
       if (statusFilter === 'inactive' && isActive) return false;
 
+      // Tier filter
+      if (tierFilter !== 'all') {
+        const bTier = normalizeTierString(b.tier);
+        if (bTier !== tierFilter) return false;
+      }
+
+      // Ownership Model filter
+      if (modelTypeFilter !== 'all') {
+        const bModel = b.model_type === 'FRANCHISE' ? 'FRANCHISE' : 'OWNED';
+        if (bModel !== modelTypeFilter) return false;
+      }
+
+      // Parent Hub filter
+      if (parentFilter !== 'all') {
+        if (parentFilter === 'null') {
+          if (b.parent_branch_id) return false;
+        } else {
+          if (String(b.parent_branch_id || '') !== String(parentFilter)) return false;
+        }
+      }
+
       // Province filter
       if (provinceFilter !== 'all') {
         const p = (b.province || b.address?.province || '').toLowerCase();
@@ -103,24 +232,38 @@ export function CompanyBranchesPage() {
       // Search query
       if (q) {
         const name = (b.name || '').toLowerCase();
+        const nameNp = (b.name_np || '').toLowerCase();
+        const code = (b.branch_code || '').toLowerCase();
+        const idStr = String(b.id || '');
         const phone = (b.phone || '').toLowerCase();
         const contact = (b.contact_person || '').toLowerCase();
         const district = (b.district || b.address?.district || '').toLowerCase();
         const municipality = (b.municipality || b.address?.municipality || '').toLowerCase();
         const province = (b.province || b.address?.province || '').toLowerCase();
+        const tierName = formatTierName(b.tier, b.branch_type).toLowerCase();
+        const modelName = (b.model_type === 'FRANCHISE' ? 'franchise' : 'owned');
+        const parentBranch = b.parent_branch_id ? branchMap.get(Number(b.parent_branch_id)) : null;
+        const parentName = parentBranch ? parentBranch.name.toLowerCase() : '';
+
         const match =
           name.includes(q) ||
+          nameNp.includes(q) ||
+          code.includes(q) ||
+          idStr === q ||
           phone.includes(q) ||
           contact.includes(q) ||
           district.includes(q) ||
           municipality.includes(q) ||
-          province.includes(q);
+          province.includes(q) ||
+          tierName.includes(q) ||
+          modelName.includes(q) ||
+          parentName.includes(q);
         if (!match) return false;
       }
 
       return true;
     });
-  }, [branches, searchQuery, statusFilter, provinceFilter]);
+  }, [rawBranches, searchQuery, statusFilter, provinceFilter, tierFilter, modelTypeFilter, parentFilter, branchMap]);
 
   // Paginated branches
   const paginatedBranches = useMemo(() => {
@@ -220,11 +363,38 @@ export function CompanyBranchesPage() {
 
   // Modal actions
   const handleOpenAdd = () => {
-    openModal('Add Branch', <BranchFormModal />);
+    openModal(
+      'Add Branch',
+      <BranchFormModal
+        onDone={() => {
+          showFeedback('success', 'New branch registered successfully.');
+        }}
+      />
+    );
   };
 
   const handleOpenEdit = (branch) => {
-    openModal(`Edit Branch — ${branch.name}`, <BranchFormModal initialBranch={branch} />);
+    openModal(
+      `Edit Branch — ${branch.name}`,
+      <BranchFormModal
+        initialBranch={branch}
+        onDone={() => {
+          showFeedback('success', `Branch "${branch.name}" updated successfully.`);
+        }}
+      />
+    );
+  };
+
+  const handleOpenQuickHierarchy = (branch) => {
+    openModal(
+      `Hierarchy & Ownership — ${branch.name}`,
+      <BranchHierarchyQuickModal
+        branch={branch}
+        onDone={() => {
+          showFeedback('success', `Hierarchy and ownership model for "${branch.name}" updated successfully.`);
+        }}
+      />
+    );
   };
 
   const handleViewAsAdmin = (branchId) => {
@@ -273,6 +443,35 @@ export function CompanyBranchesPage() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button
+            type="button"
+            onClick={() => setHierarchyModalOpen(true)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 14px',
+              fontWeight: 600,
+              fontSize: '13px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              background: '#ffffff',
+              border: '1px solid #dc2626',
+              color: '#dc2626',
+              boxShadow: '0 1px 2px rgba(220, 38, 38, 0.08)',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#fef2f2';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#ffffff';
+            }}
+          >
+            <Network size={15} />
+            🌳 Hierarchy Tree Explorer
+          </button>
+
           <button
             type="button"
             className="btn-primary"
@@ -437,62 +636,95 @@ export function CompanyBranchesPage() {
           </div>
 
           {/* Status Filter */}
-          <select
+          <SearchableSelect
             value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
+            onChange={(val) => {
+              setStatusFilter(val || 'all');
               setCurrentPage(1);
             }}
-            style={{
-              padding: '7px 10px',
-              fontSize: '12.5px',
-              border: '1px solid #cbd5e1',
-              borderRadius: '6px',
-              background: '#ffffff',
-              color: '#334155',
-              cursor: 'pointer',
+            options={statusFilterOptions}
+            placeholder="All Statuses"
+            searchPlaceholder="Search status..."
+            height="32px"
+            minDropdownWidth="180px"
+          />
+
+          {/* Tier Filter */}
+          <SearchableSelect
+            value={tierFilter}
+            onChange={(val) => {
+              setTierFilter(val || 'all');
+              setCurrentPage(1);
             }}
-          >
-            <option value="all">All Statuses ({rawBranches.length})</option>
-            <option value="active">Enabled Only ({stats.active})</option>
-            <option value="inactive">Disabled Only ({stats.inactive})</option>
-          </select>
+            options={tierFilterOptions}
+            placeholder="All Administrative Tiers"
+            searchPlaceholder="Search tier..."
+            height="32px"
+            minDropdownWidth="220px"
+          />
+
+          {/* Ownership Model Filter */}
+          <SearchableSelect
+            value={modelTypeFilter}
+            onChange={(val) => {
+              setModelTypeFilter(val || 'all');
+              setCurrentPage(1);
+            }}
+            options={modelTypeFilterOptions}
+            placeholder="All Ownership Models"
+            searchPlaceholder="Search model..."
+            height="32px"
+            minDropdownWidth="190px"
+          />
+
+          {/* Parent Hub Filter */}
+          {parentHubOptions.length > 0 && (
+            <SearchableSelect
+              value={parentFilter}
+              onChange={(val) => {
+                setParentFilter(val || 'all');
+                setCurrentPage(1);
+              }}
+              options={parentHubFilterOptions}
+              placeholder="All Parent Hubs"
+              searchPlaceholder="Search parent hub..."
+              height="32px"
+              minDropdownWidth="260px"
+            />
+          )}
 
           {/* Province Filter */}
           {provinces.length > 0 && (
-            <select
+            <SearchableSelect
               value={provinceFilter}
-              onChange={(e) => {
-                setProvinceFilter(e.target.value);
+              onChange={(val) => {
+                setProvinceFilter(val || 'all');
                 setCurrentPage(1);
               }}
-              style={{
-                padding: '7px 10px',
-                fontSize: '12.5px',
-                border: '1px solid #cbd5e1',
-                borderRadius: '6px',
-                background: '#ffffff',
-                color: '#334155',
-                cursor: 'pointer',
-              }}
-            >
-              <option value="all">All Provinces</option>
-              {provinces.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
+              options={provinceFilterOptions}
+              placeholder="All Provinces"
+              searchPlaceholder="Search province..."
+              height="32px"
+              minDropdownWidth="170px"
+            />
           )}
 
           {/* Reset Filters Button */}
-          {(searchQuery || statusFilter !== 'all' || provinceFilter !== 'all') && (
+          {(searchQuery ||
+            statusFilter !== 'all' ||
+            provinceFilter !== 'all' ||
+            tierFilter !== 'all' ||
+            modelTypeFilter !== 'all' ||
+            parentFilter !== 'all') && (
             <button
               type="button"
               onClick={() => {
                 setSearchQuery('');
                 setStatusFilter('all');
                 setProvinceFilter('all');
+                setTierFilter('all');
+                setModelTypeFilter('all');
+                setParentFilter('all');
                 setCurrentPage(1);
               }}
               style={{
@@ -742,25 +974,113 @@ export function CompanyBranchesPage() {
 
                     {/* Branch Name */}
                     <td style={{ padding: '10px 12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
                         <Building2
                           size={16}
-                          style={{ color: isActive ? '#059669' : '#94a3b8', flexShrink: 0 }}
+                          style={{ color: isActive ? '#059669' : '#94a3b8', flexShrink: 0, marginTop: '3px' }}
                         />
                         <div>
-                          <div
-                            style={{
-                              fontWeight: 600,
-                              fontSize: '13px',
-                              color: isActive ? '#0f172a' : '#64748b',
-                              textDecoration: !isActive ? 'line-through' : 'none',
-                            }}
-                          >
-                            {b.name}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span
+                              style={{
+                                fontWeight: 600,
+                                fontSize: '13px',
+                                color: isActive ? '#0f172a' : '#64748b',
+                                textDecoration: !isActive ? 'line-through' : 'none',
+                              }}
+                            >
+                              {b.name}
+                            </span>
+                            {b.name_np && (
+                              <span style={{ fontSize: '11.5px', color: '#64748b' }}>
+                                ({b.name_np})
+                              </span>
+                            )}
+                            {b.branch_code && (
+                              <span
+                                style={{
+                                  fontSize: '10.5px',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  background: '#f1f5f9',
+                                  color: '#334155',
+                                  fontFamily: 'monospace',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {b.branch_code}
+                              </span>
+                            )}
+                            {b.model_type === 'FRANCHISE' ? (
+                              <span
+                                style={{
+                                  fontSize: '10px',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  background: '#fef3c7',
+                                  color: '#92400e',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                Franchise
+                              </span>
+                            ) : (
+                              <span
+                                style={{
+                                  fontSize: '10px',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  background: '#eff6ff',
+                                  color: '#1e40af',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                Owned
+                              </span>
+                            )}
                           </div>
-                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                            {b.branch_type === 'head_office' ? 'Head Office' : 'Local Hub / Branch'}
-                            {b.id && ` • ID: ${b.id}`}
+                          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '3px', display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 600, color: '#475569' }}>
+                              {formatTierName(b.tier, b.branch_type)}
+                            </span>
+                            {b.id && <span style={{ color: '#94a3b8' }}>• ID: {b.id}</span>}
+                            {b.parent_branch_id ? (
+                              (() => {
+                                const pBranch = branchMap.get(Number(b.parent_branch_id));
+                                return (
+                                  <span
+                                    title={`Reports to parent hub: ${pBranch ? pBranch.name : `Hub #${b.parent_branch_id}`} (ID: ${b.parent_branch_id})`}
+                                    style={{
+                                      fontSize: '10.5px',
+                                      padding: '1px 6px',
+                                      borderRadius: '4px',
+                                      background: '#f1f5f9',
+                                      color: '#334155',
+                                      border: '1px solid #e2e8f0',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                    }}
+                                  >
+                                    <Network size={11} color="#dc2626" />
+                                    <span>Parent: <strong>{pBranch ? pBranch.name : `Hub #${b.parent_branch_id}`}</strong></span>
+                                  </span>
+                                );
+                              })()
+                            ) : normalizeTierString(b.tier) === 'CENTRAL_OFFICE' ? (
+                              <span
+                                style={{
+                                  fontSize: '10px',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  background: '#ecfdf5',
+                                  color: '#065f46',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                Root Central Entity
+                              </span>
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -902,6 +1222,26 @@ export function CompanyBranchesPage() {
                         <button
                           type="button"
                           className="btn-secondary"
+                          style={{
+                            fontSize: '11px',
+                            padding: '4px 7px',
+                            borderRadius: '4px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                            color: '#1e293b',
+                            borderColor: '#cbd5e1',
+                          }}
+                          onClick={() => handleOpenQuickHierarchy(b)}
+                          title="Quickly edit Administrative Tier, Ownership Model, and Parent Hub"
+                        >
+                          <Network size={12} color="#dc2626" />
+                          Hierarchy
+                        </button>
+
+                        <button
+                          type="button"
+                          className="btn-secondary"
                           style={{ fontSize: '11.5px', padding: '4px 8px', borderRadius: '4px' }}
                           onClick={() => handleOpenEdit(b)}
                         >
@@ -1022,6 +1362,15 @@ export function CompanyBranchesPage() {
           </div>
         )}
       </div>
+
+      {hierarchyModalOpen && (
+        <BranchHierarchyModal
+          onClose={() => setHierarchyModalOpen(false)}
+          onSelectBranch={(branch) => {
+            setSearchQuery(branch.name);
+          }}
+        />
+      )}
     </div>
   );
 }

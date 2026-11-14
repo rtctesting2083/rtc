@@ -1394,10 +1394,14 @@ export const d1Api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(branchPayload),
       });
-      if (!res.ok) return null;
-      return await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to create branch');
+      }
+      return data;
     } catch (e) {
-      return null;
+      console.warn('d1Api.addBranch error:', e.message);
+      throw e;
     }
   },
 
@@ -1409,10 +1413,14 @@ export const d1Api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: Number(branchId), ...branchPayload }),
       });
-      if (!res.ok) return null;
-      return await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to update branch');
+      }
+      return data;
     } catch (e) {
-      return null;
+      console.warn('d1Api.updateBranch error:', e.message);
+      throw e;
     }
   },
 
@@ -1433,6 +1441,97 @@ export const d1Api = {
     } catch (e) {
       console.warn('Failed to bulk update branches in D1:', e);
       return null;
+    }
+  },
+
+  // ── Hierarchy & Nepal 4-Tier Administrative Structure Methods ───────────────
+  getBranchTree: async (branchId) => {
+    try {
+      const res = await fetch(`/api/hierarchy/branches/${branchId}/tree`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.success ? data.tree : null;
+    } catch (e) {
+      return null;
+    }
+  },
+
+  getBranchDescendants: async (branchId) => {
+    try {
+      const res = await fetch(`/api/hierarchy/branches/${branchId}/descendants`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.success ? data.descendants : [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  getBranchAncestors: async (branchId) => {
+    try {
+      const res = await fetch(`/api/hierarchy/branches/${branchId}/ancestors`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.success ? data.ancestors : [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  getBranchRidersHierarchy: async (branchId) => {
+    try {
+      const res = await fetch(`/api/hierarchy/branches/${branchId}/riders`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.success ? data.riders : [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  getBranchVendorsHierarchy: async (branchId) => {
+    try {
+      const res = await fetch(`/api/hierarchy/branches/${branchId}/vendors`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.success ? data.vendors : [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  getGeoProvinces: async () => {
+    try {
+      const res = await fetch('/api/hierarchy/geo/provinces');
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.success ? data.provinces : [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  getGeoDistricts: async (provinceId = null) => {
+    try {
+      const url = '/api/hierarchy/geo/districts' + (provinceId ? `?province_id=${provinceId}` : '');
+      const res = await fetch(url);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.success ? data.districts : [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  getGeoLocalLevels: async (districtId = null) => {
+    try {
+      const url = '/api/hierarchy/geo/local-levels' + (districtId ? `?district_id=${districtId}` : '');
+      const res = await fetch(url);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.success ? data.local_levels : [];
+    } catch (e) {
+      return [];
     }
   },
 

@@ -5,6 +5,7 @@ import { useModal } from '../../context/ModalContext';
 import { VendorFormModal } from '../../components/company/VendorFormModal';
 import { DocumentPreviewModal } from '../../components/common/DocumentPreviewModal';
 import { DatabaseDocumentsModal } from '../../components/company/DatabaseDocumentsModal';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { addressSummary, isVendorVerified } from '../../utils/helpers';
 import { VENDOR_DOCUMENTS } from '../../utils/constants';
 import {
@@ -139,6 +140,35 @@ export function CompanyCustomersPage() {
 
     return { total, activeVendors, verifiedKyc, pendingKyc };
   }, [customers]);
+
+  const vendorTypeFilterOptions = useMemo(() => [
+    { value: 'all', label: 'Select Vendor Type (All)' },
+    ...vendorTypes.map((vt) => ({ value: vt.name, label: vt.name })),
+  ], [vendorTypes]);
+
+  const vendorCategoryFilterOptions = useMemo(() => [
+    { value: 'all', label: 'Select Category (All)' },
+    ...vendorCategories.map((vc) => ({ value: vc.name, label: vc.name })),
+  ], [vendorCategories]);
+
+  const customerBranchFilterOptions = useMemo(() => [
+    { value: 'all', label: 'Select Branch (All)' },
+    { value: 'hq', label: 'Headquarters / Unassigned' },
+    ...branches
+      .filter((b) => b && b.status !== 'inactive' && b.status !== 'disabled')
+      .map((b) => ({
+        value: String(b.id),
+        label: b.name,
+        subtext: b.branch_code ? `(${b.branch_code})` : (b.district ? `(${b.district})` : null),
+      })),
+  ], [branches]);
+
+  const kycStatusFilterOptions = useMemo(() => [
+    { value: 'all', label: 'Select KYC Status (All)' },
+    { value: 'verified', label: 'Verified (Approved)' },
+    { value: 'pending', label: 'Pending Verification' },
+    { value: 'rejected', label: 'Rejected / Incomplete' },
+  ], []);
 
   // Filtered customers
   const filteredCustomers = useMemo(() => {
@@ -631,29 +661,14 @@ export function CompanyCustomersPage() {
               >
                 Vendor Type
               </label>
-              <select
+              <SearchableSelect
                 value={draftType}
-                onChange={(e) => setDraftType(e.target.value)}
-                style={{
-                  width: '100%',
-                  height: '38px',
-                  padding: '0 10px',
-                  borderRadius: '6px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '12.5px',
-                  color: '#1e293b',
-                  background: '#ffffff',
-                  fontWeight: 500,
-                  outline: 'none',
-                }}
-              >
-                <option value="all">Select Vendor Type (All)</option>
-                {vendorTypes.map((vt) => (
-                  <option key={vt.id} value={vt.name}>
-                    {vt.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setDraftType(val)}
+                options={vendorTypeFilterOptions}
+                placeholder="Select Vendor Type (All)"
+                searchPlaceholder="Search vendor type..."
+                height="38px"
+              />
             </div>
 
             {/* 2. Vendor Category Dropdown */}
@@ -671,29 +686,14 @@ export function CompanyCustomersPage() {
               >
                 Vendor Category
               </label>
-              <select
+              <SearchableSelect
                 value={draftCategory}
-                onChange={(e) => setDraftCategory(e.target.value)}
-                style={{
-                  width: '100%',
-                  height: '38px',
-                  padding: '0 10px',
-                  borderRadius: '6px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '12.5px',
-                  color: '#1e293b',
-                  background: '#ffffff',
-                  fontWeight: 500,
-                  outline: 'none',
-                }}
-              >
-                <option value="all">Select Category (All)</option>
-                {vendorCategories.map((vc) => (
-                  <option key={vc.id} value={vc.name}>
-                    {vc.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setDraftCategory(val)}
+                options={vendorCategoryFilterOptions}
+                placeholder="Select Category (All)"
+                searchPlaceholder="Search category..."
+                height="38px"
+              />
             </div>
 
             {/* 3. Branch Dropdown */}
@@ -711,32 +711,15 @@ export function CompanyCustomersPage() {
               >
                 Branch / Hub
               </label>
-              <select
+              <SearchableSelect
                 value={draftBranch}
-                onChange={(e) => setDraftBranch(e.target.value)}
-                style={{
-                  width: '100%',
-                  height: '38px',
-                  padding: '0 10px',
-                  borderRadius: '6px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '12.5px',
-                  color: '#1e293b',
-                  background: '#ffffff',
-                  fontWeight: 500,
-                  outline: 'none',
-                }}
-              >
-                <option value="all">Select Branch (All)</option>
-                {branches
-                  .filter((b) => b && b.status !== 'inactive' && b.status !== 'disabled')
-                  .map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                <option value="hq">Headquarters / Unassigned</option>
-              </select>
+                onChange={(val) => setDraftBranch(val)}
+                options={customerBranchFilterOptions}
+                placeholder="Select Branch (All)"
+                searchPlaceholder="Search branch..."
+                height="38px"
+                minDropdownWidth="260px"
+              />
             </div>
 
             {/* 4. KYC Status Dropdown */}
@@ -754,28 +737,14 @@ export function CompanyCustomersPage() {
               >
                 KYC Status
               </label>
-              <select
+              <SearchableSelect
                 value={draftKycStatus}
-                onChange={(e) => setDraftKycStatus(e.target.value)}
-                style={{
-                  width: '100%',
-                  height: '38px',
-                  padding: '0 10px',
-                  borderRadius: '6px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '12.5px',
-                  color: '#1e293b',
-                  background: '#ffffff',
-                  fontWeight: 500,
-                  outline: 'none',
-                }}
-              >
-                <option value="all">Select KYC Status (All)</option>
-                <option value="verified">Verified (Approved)</option>
-                <option value="pending">Pending Verification</option>
-                <option value="has_docs">Has Documents Uploaded</option>
-                <option value="0_of_5">No Documents (0/5)</option>
-              </select>
+                onChange={(val) => setDraftKycStatus(val)}
+                options={kycStatusFilterOptions}
+                placeholder="Select KYC Status (All)"
+                searchPlaceholder="Search KYC status..."
+                height="38px"
+              />
             </div>
 
             {/* 5. Search Vendor Input */}
@@ -1100,16 +1069,14 @@ export function CompanyCustomersPage() {
                 <th style={{ padding: '12px 16px', fontWeight: 700 }}>Login Phone</th>
                 <th style={{ padding: '12px 16px', fontWeight: 700 }}>Type & Category</th>
                 <th style={{ padding: '12px 16px', fontWeight: 700 }}>Branch / Hub</th>
-                <th style={{ padding: '12px 16px', fontWeight: 700 }}>KYC Documents</th>
-                <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'center' }}>Verification</th>
                 <th style={{ padding: '12px 16px', fontWeight: 700 }}>Status</th>
-                <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'center', width: '280px' }}>Actions</th>
+                <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'center', width: '150px' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ padding: '60px 20px', textAlign: 'center', color: '#64748b' }}>
+                  <td colSpan={7} style={{ padding: '60px 20px', textAlign: 'center', color: '#64748b' }}>
                     <Store size={40} style={{ opacity: 0.35, margin: '0 auto 10px', display: 'block' }} />
                     <div style={{ fontWeight: 800, fontSize: '15px', color: '#0f172a' }}>
                       No Vendor Records Found
@@ -1345,77 +1312,6 @@ export function CompanyCustomersPage() {
                         </div>
                       </td>
 
-                      {/* KYC Documents */}
-                      <td style={{ padding: '12px 16px' }}>
-                        {docKeys.length > 0 ? (
-                          <button
-                            type="button"
-                            onClick={() => handlePreviewVendorDocs(c)}
-                            style={{
-                              background: isVerified ? '#f0fdf4' : '#eff6ff',
-                              color: isVerified ? '#15803d' : '#1d4ed8',
-                              border: `1px solid ${isVerified ? '#bbf7d0' : '#bfdbfe'}`,
-                              borderRadius: '12px',
-                              padding: '3px 10px',
-                              fontSize: '11.5px',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                            }}
-                            title="Click to preview uploaded KYC documents 🔍"
-                          >
-                            {isVerified ? <CheckCircle2 size={12} /> : <Eye size={12} />}
-                            <span>{docKeys.length} / 5 Docs</span>
-                          </button>
-                        ) : (
-                          <span
-                            style={{
-                              display: 'inline-block',
-                              padding: '2px 8px',
-                              borderRadius: '12px',
-                              background: '#f1f5f9',
-                              color: '#94a3b8',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                            }}
-                          >
-                            0 / 5 Docs
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Verification Status */}
-                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                        <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
-                          <span
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              padding: '3px 10px',
-                              borderRadius: '12px',
-                              background: isVerified ? '#f0fdf4' : '#fef2f2',
-                              color: isVerified ? '#15803d' : '#dc2626',
-                              border: `1px solid ${isVerified ? '#bbf7d0' : '#fecaca'}`,
-                              fontSize: '11.5px',
-                              fontWeight: 700,
-                            }}
-                          >
-                            {isVerified ? (
-                              <ShieldCheck size={13} style={{ color: '#16a34a' }} />
-                            ) : (
-                              <ShieldAlert size={13} style={{ color: '#dc2626' }} />
-                            )}
-                            {isVerified ? 'Verified' : 'Unverified'}
-                          </span>
-                          <span style={{ fontSize: '10px', color: isVerified ? '#16a34a' : '#dc2626', fontWeight: 600 }}>
-                            {isVerified ? 'Orders Allowed' : 'Orders Blocked'}
-                          </span>
-                        </div>
-                      </td>
-
                       {/* Status */}
                       <td style={{ padding: '12px 16px' }}>
                         <span
@@ -1435,162 +1331,49 @@ export function CompanyCustomersPage() {
 
                       {/* Actions */}
                       <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                        <div style={{ display: 'inline-flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                          {/* Verification Action Button */}
-                          {isVerified ? (
-                            <button
-                              type="button"
-                              onClick={() => handleToggleVerification(c, false)}
-                              disabled={verifyingId === c.id}
-                              title="Unverify this merchant (Will restrict order creation and transactions)"
-                              style={{
-                                padding: '4px 8px',
-                                borderRadius: '5px',
-                                border: '1px solid #fca5a5',
-                                background: '#fff1f2',
-                                color: '#b91c1c',
-                                fontSize: '11.5px',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '3px',
-                                transition: 'all 0.15s',
-                              }}
-                            >
-                              <ShieldAlert size={12} /> Unverify
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleToggleVerification(c, true)}
-                              disabled={verifyingId === c.id}
-                              title="Verify this merchant (Grants permission to create orders and request pickups)"
-                              style={{
-                                padding: '4px 10px',
-                                borderRadius: '5px',
-                                border: '1px solid #86efac',
-                                background: '#16a34a',
-                                color: '#ffffff',
-                                fontSize: '11.5px',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                boxShadow: '0 1px 2px rgba(22, 163, 74, 0.25)',
-                                transition: 'all 0.15s',
-                              }}
-                            >
-                              <ShieldCheck size={13} /> Verify Vendor
-                            </button>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => navigate('/company/vendor-orders')}
-                            title="View orders for this vendor"
-                            style={{
-                              padding: '4px 8px',
-                              borderRadius: '5px',
-                              border: '1px solid #cbd5e1',
-                              background: '#ffffff',
-                              color: '#334155',
-                              fontSize: '11.5px',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '3px',
-                            }}
-                          >
-                            <Package size={12} /> Orders
-                          </button>
-
+                        <div style={{ display: 'inline-flex', gap: '6px', justifyContent: 'center' }}>
                           <button
                             type="button"
                             onClick={() => handleOpenView(c)}
                             title="View full vendor profile"
                             style={{
-                              padding: '4px 8px',
+                              padding: '5px 10px',
                               borderRadius: '5px',
                               border: '1px solid #cbd5e1',
                               background: '#ffffff',
                               color: '#334155',
-                              fontSize: '11.5px',
+                              fontSize: '12px',
                               fontWeight: 600,
                               cursor: 'pointer',
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '3px',
+                              gap: '4px',
+                              transition: 'all 0.15s ease',
                             }}
                           >
-                            <Eye size={12} /> View
+                            <Eye size={13} /> View
                           </button>
-
-                          {docKeys.length > 0 && (
-                            <button
-                              type="button"
-                              onClick={() => handlePreviewVendorDocs(c)}
-                              title="Preview KYC documents"
-                              style={{
-                                padding: '4px 8px',
-                                borderRadius: '5px',
-                                border: '1px solid #bfdbfe',
-                                background: '#eff6ff',
-                                color: '#1d4ed8',
-                                fontSize: '11.5px',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '3px',
-                              }}
-                            >
-                              🪪 Docs
-                            </button>
-                          )}
 
                           <button
                             type="button"
                             onClick={() => handleOpenEdit(c)}
                             title="Edit vendor"
                             style={{
-                              padding: '4px 8px',
+                              padding: '5px 10px',
                               borderRadius: '5px',
                               border: '1px solid #cbd5e1',
                               background: '#ffffff',
                               color: '#334155',
-                              fontSize: '11.5px',
+                              fontSize: '12px',
                               fontWeight: 600,
                               cursor: 'pointer',
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '3px',
+                              gap: '4px',
+                              transition: 'all 0.15s ease',
                             }}
                           >
-                            <Edit size={12} /> Edit
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleOpenResetPw(c)}
-                            title="Reset portal password"
-                            style={{
-                              padding: '4px 8px',
-                              borderRadius: '5px',
-                              border: '1px solid #cbd5e1',
-                              background: '#ffffff',
-                              color: '#64748b',
-                              fontSize: '11.5px',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '3px',
-                            }}
-                          >
-                            <Key size={12} /> PW
+                            <Edit size={13} /> Edit
                           </button>
                         </div>
                       </td>
@@ -1765,6 +1548,23 @@ function VendorProfileModal({ customer, onPreviewDocs, onToggleVerification }) {
           <div><span style={{ color: '#64748b', fontSize: '11px', display: 'block' }}>Alt Phone:</span> <b style={{ color: '#334155' }}>{customer.phone2 || '—'}</b></div>
           <div><span style={{ color: '#64748b', fontSize: '11px', display: 'block' }}>Email Address:</span> <b style={{ color: '#334155' }}>{customer.email || '—'}</b></div>
           <div><span style={{ color: '#64748b', fontSize: '11px', display: 'block' }}>Contact Person:</span> <b style={{ color: '#334155' }}>{customer.contact_person || '—'}</b></div>
+          <div>
+            <span style={{ color: '#64748b', fontSize: '11px', display: 'block', marginBottom: '2px' }}>PAN / VAT Number:</span>{' '}
+            <b style={{ color: '#0f172a', fontFamily: 'monospace' }}>
+              {customer.pan_vat_number || customer.pan || '—'}
+            </b>
+            {customer.is_vat_registered ? (
+              <span style={{ marginLeft: '6px', fontSize: '10.5px', padding: '1px 5px', borderRadius: '3px', background: '#ecfdf5', color: '#047857', fontWeight: 600 }}>
+                VAT Registered
+              </span>
+            ) : null}
+          </div>
+          <div>
+            <span style={{ color: '#64748b', fontSize: '11px', display: 'block', marginBottom: '2px' }}>COD Settlement Cycle:</span>{' '}
+            <span style={{ padding: '2px 7px', borderRadius: '4px', background: '#eff6ff', color: '#1e40af', fontWeight: 600, fontSize: '11px' }}>
+              {customer.cod_payout_schedule || 'WEEKLY'}
+            </span>
+          </div>
           <div>
             <span style={{ color: '#64748b', fontSize: '11px', display: 'block', marginBottom: '2px' }}>Vendor Type:</span>{' '}
             <span style={{ padding: '2px 7px', borderRadius: '4px', background: '#fee2e2', color: '#dc2626', fontWeight: 700, fontSize: '11px' }}>

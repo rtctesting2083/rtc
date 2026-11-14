@@ -1595,16 +1595,23 @@ export async function onRequest(context) {
         const docVatPan = documents?.vat_pan?.file || '';
         const docContactPhoto = documents?.contact_photo?.file || '';
 
+        const panVat = body.pan_vat_number || body.pan || '';
+        const isVat = body.is_vat_registered !== undefined ? (body.is_vat_registered ? 1 : 0) : 0;
+        const codPayout = body.cod_payout_schedule || 'WEEKLY';
+        const tradeName = body.trade_name || name.trim();
+        const bankAcHolder = bank_details.account_holder_name || body.bank_account_holder || '';
+
         const insertStmt = await db
           .prepare(`
             INSERT INTO vendors (
               company_id, branch_id, registered_by_type, vendor_code, name, phone, phone2,
               password, email, contact_person, vendor_type, vendor_category,
+              trade_name, pan_vat_number, is_vat_registered, cod_payout_schedule, bank_account_holder,
               province, district, municipality, ward, tole,
               bank_name, bank_branch, account_holder_name, account_number,
               doc_kyc, doc_agreement, doc_citizenship, doc_vat_pan, doc_contact_photo,
               status, verified, verification_status, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
           `)
           .bind(
             Number(company_id),
@@ -1619,6 +1626,11 @@ export async function onRequest(context) {
             contact_person.trim(),
             vendor_type || 'E-Commerce / Online Store',
             vendor_category || 'General Merchandise',
+            tradeName,
+            panVat,
+            isVat,
+            codPayout,
+            bankAcHolder,
             address.province || '',
             address.district || '',
             address.municipality || '',
@@ -1696,6 +1708,12 @@ export async function onRequest(context) {
           if (documents.contact_photo !== undefined) docContactPhoto = documents.contact_photo?.file ?? (typeof documents.contact_photo === 'string' ? documents.contact_photo : '');
         }
 
+        const panVat = body.pan_vat_number !== undefined ? body.pan_vat_number : (body.pan !== undefined ? body.pan : (current.pan_vat_number || ''));
+        const isVat = body.is_vat_registered !== undefined ? (body.is_vat_registered ? 1 : 0) : (current.is_vat_registered ?? 0);
+        const codPayout = body.cod_payout_schedule || current.cod_payout_schedule || 'WEEKLY';
+        const tradeName = body.trade_name !== undefined ? body.trade_name : (current.trade_name || name);
+        const bankAcHolder = acHolder || current.bank_account_holder || '';
+
         await db
           .prepare(`
             UPDATE vendors SET 
@@ -1707,6 +1725,11 @@ export async function onRequest(context) {
               contact_person = ?,
               vendor_type = ?,
               vendor_category = ?,
+              trade_name = ?,
+              pan_vat_number = ?,
+              is_vat_registered = ?,
+              cod_payout_schedule = ?,
+              bank_account_holder = ?,
               branch_id = ?,
               province = ?,
               district = ?,
@@ -1737,6 +1760,11 @@ export async function onRequest(context) {
             contactPerson,
             vendorType,
             vendorCategory,
+            tradeName,
+            panVat,
+            isVat,
+            codPayout,
+            bankAcHolder,
             branchId,
             province,
             district,
@@ -4794,6 +4822,74 @@ export async function onRequest(context) {
       }
     }
 
+    // =========================================================================
+    // HIERARCHY & NEPAL 4-TIER ADMINISTRATIVE API
+    // =========================================================================
+    if (path === 'hierarchy' || path.startsWith('hierarchy/')) {
+      const { BranchHierarchyService } = await import('./services/BranchHierarchyService.js');
+      const hierarchyService = new BranchHierarchyService(db);
+
+      // GET /api/hierarchy/geo/provinces
+      if (path === 'hierarchy/geo/provinces' && method === 'GET') {
+        const provinces = await hierarchyService.getGeoProvinces();
+        return jsonResponse({ success: true, provinces });
+      }
+
+      // GET /api/hierarchy/geo/districts?province_id=5
+      if (path === 'hierarchy/geo/districts' && method === 'GET') {
+        const provinceId = url.searchParams.get('province_id');
+        const districts = await hierarchyService.getGeoDistricts(provinceId);
+        return jsonResponse({ success: true, districts });
+      }
+
+      // GET /api/hierarchy/geo/local-levels?district_id=1
+      if (path === 'hierarchy/geo/local-levels' && method === 'GET') {
+        const districtId = url.searchParams.get('district_id');
+        const localLevels = await hierarchyService.getGeoLocalLevels(districtId);
+        return jsonResponse({ success: true, local_levels: localLevels });
+      }
+
+      // Match /api/hierarchy/branches/:id/tree
+      const treeMatch = path.match(/^hierarchy\/branches\/(\d+)\/tree$/);
+      if (treeMatch && method === 'GET') {
+        const branchId = Number(treeMatch[1]);
+        const tree = await hierarchyService.getNestedBranchTree(branchId);
+        return jsonResponse({ success: true, branch_id: branchId, tree });
+      }
+
+      // Match /api/hierarchy/branches/:id/descendants
+      const descMatch = path.match(/^hierarchy\/branches\/(\d+)\/descendants$/);
+      if (descMatch && method === 'GET') {
+        const branchId = Number(descMatch[1]);
+        const descendants = await hierarchyService.getDescendantBranches(branchId);
+        return jsonResponse({ success: true, branch_id: branchId, total: descendants.length, descendants });
+      }
+
+      // Match /api/hierarchy/branches/:id/ancestors
+      const ancMatch = path.match(/^hierarchy\/branches\/(\d+)\/ancestors$/);
+      if (ancMatch && method === 'GET') {
+        const branchId = Number(ancMatch[1]);
+        const ancestors = await hierarchyService.getAncestorChain(branchId);
+        return jsonResponse({ success: true, branch_id: branchId, ancestors });
+      }
+
+      // Match /api/hierarchy/branches/:id/riders
+      const ridersMatch = path.match(/^hierarchy\/branches\/(\d+)\/riders$/);
+      if (ridersMatch && method === 'GET') {
+        const branchId = Number(ridersMatch[1]);
+        const riders = await hierarchyService.getRidersUnderHierarchy(branchId);
+        return jsonResponse({ success: true, branch_id: branchId, total: riders.length, riders });
+      }
+
+      // Match /api/hierarchy/branches/:id/vendors
+      const vendorsMatch = path.match(/^hierarchy\/branches\/(\d+)\/vendors$/);
+      if (vendorsMatch && method === 'GET') {
+        const branchId = Number(vendorsMatch[1]);
+        const vendors = await hierarchyService.getVendorsUnderHierarchy(branchId);
+        return jsonResponse({ success: true, branch_id: branchId, total: vendors.length, vendors });
+      }
+    }
+
     // 6. Branches endpoint: read and write on D1 table 'branches'
     if (path === 'branches' || path.startsWith('branches/')) {
       const companyId = url.searchParams.get('company_id') || 1;
@@ -4829,14 +4925,21 @@ export async function onRequest(context) {
           return {
             id: b.id,
             company_id: b.company_id,
+            branch_code: b.branch_code || `RTC-BR-${String(b.id).padStart(3, '0')}`,
             name: b.name,
+            name_np: b.name_np || '',
+            model_type: b.model_type || 'OWNED',
             phone: b.phone,
             password: b.password,
             email: b.email || '',
             contact_person: b.contact_person || '',
             branch_type: b.branch_type || 'local_branch',
-            tier: b.tier || 3,
+            tier: b.tier || (b.id <= 7 ? 'PROVINCE_HUB' : (b.id <= 84 ? 'DISTRICT_HUB' : 'MUNICIPALITY_BRANCH')),
             parent_branch_id: b.parent_branch_id || null,
+            province_id: b.province_id || null,
+            district_id: b.district_id || null,
+            local_level_id: b.local_level_id || null,
+            ward_number: b.ward_number || null,
             address,
             province: b.province || address.province || '',
             district: b.district || address.district || '',
@@ -4844,8 +4947,8 @@ export async function onRequest(context) {
             staffRoles,
             staffUsers,
             status: b.status || 'active',
-            verified: b.verified === 1 || b.verified === true || b.verified === 'true' || b.verification_status === 'verified',
-            verification_status: b.verification_status || (b.verified === 1 ? 'verified' : 'pending'),
+            verified: b.verification_status === 'rejected' ? false : (b.verified === 1 || b.verified === true || b.verified === 'true' || b.verification_status === 'verified' || b.status !== 'inactive'),
+            verification_status: b.verification_status === 'rejected' ? 'rejected' : 'verified',
             created_at: b.created_at,
             updated_at: b.updated_at,
           };
@@ -4856,128 +4959,492 @@ export async function onRequest(context) {
 
       // POST /api/branches (Create or Update branch)
       if (method === 'POST') {
-        const body = await request.json();
-        const cid = Number(body.company_id || companyId);
-        const name = (body.name || '').trim();
-        const phone = (body.phone || '').trim();
-        const password = body.password || '';
-        const email = (body.email || '').trim();
-        const contact_person = (body.contact_person || '').trim();
-        const address = body.address || {};
-        const province = address.province || body.province || '';
-        const district = address.district || body.district || '';
-        const municipality = address.municipality || body.municipality || '';
-        const ward = address.ward || body.ward || '';
-        const tole = address.tole || body.tole || '';
-        const address_json = JSON.stringify(address);
-        const staff_roles_json = JSON.stringify(body.staffRoles || []);
-        const staff_users_json = JSON.stringify(body.staffUsers || []);
+        try {
+          const body = await request.json();
+          const { BranchHierarchyService } = await import('./services/BranchHierarchyService.js');
+          const hierarchyService = new BranchHierarchyService(db);
 
-        const verified = body.verified !== undefined ? (body.verified ? 1 : 0) : 0;
-        const verification_status = body.verification_status || (verified ? 'verified' : 'pending');
-        const status = body.status || (verified ? 'active' : 'pending_verification');
+          const normalizeBranchTier = (t) => {
+            if (t === 0 || t === '0' || t === 'CENTRAL' || t === 'CENTRAL_OFFICE') return 'CENTRAL_OFFICE';
+            if (t === 1 || t === '1' || t === 'PROVINCE' || t === 'PROVINCE_HUB') return 'PROVINCE_HUB';
+            if (t === 2 || t === '2' || t === 'DISTRICT' || t === 'DISTRICT_HUB') return 'DISTRICT_HUB';
+            if (t === 3 || t === '3' || t === 'MUNICIPALITY' || t === 'MUNICIPALITY_BRANCH') return 'MUNICIPALITY_BRANCH';
+            if (t === 4 || t === '4' || t === 'WARD' || t === 'WARD_BRANCH') return 'WARD_BRANCH';
+            return 'MUNICIPALITY_BRANCH';
+          };
 
-        if (body.id) {
+          const toNullableInt = (val) => {
+            if (val === undefined || val === null || val === '' || String(val).trim() === '') return null;
+            const n = Number(val);
+            return isNaN(n) ? null : n;
+          };
+
+          const cid = Number(body.company_id || companyId);
+          const branchId = toNullableInt(body.id);
+          const name = (body.name || '').trim();
+          const name_np = (body.name_np || '').trim() || null;
+          const phone = (body.phone || '').trim();
+          const email = (body.email || '').trim();
+          const contact_person = (body.contact_person || '').trim();
+          const tier = normalizeBranchTier(body.tier);
+          const model_type = body.model_type === 'FRANCHISE' ? 'FRANCHISE' : 'OWNED';
+          let parent_branch_id = toNullableInt(body.parent_branch_id);
+
+          if (!name) {
+            return jsonResponse({ success: false, error: 'Branch name is required.' }, 400);
+          }
+          if (!phone) {
+            return jsonResponse({ success: false, error: 'Branch phone number is required.' }, 400);
+          }
+
+          // Duplicate phone check
+          const dupPhone = await db
+            .prepare('SELECT id, name FROM branches WHERE phone = ? AND id != ?')
+            .bind(phone, branchId || 0)
+            .first();
+          if (dupPhone) {
+            return jsonResponse(
+              { success: false, error: `A branch with phone "${phone}" already exists (${dupPhone.name} • ID: ${dupPhone.id}).` },
+              400
+            );
+          }
+
+          // Hierarchy validation
+          if (tier === 'CENTRAL_OFFICE') {
+            parent_branch_id = null;
+            const existingCentral = await db
+              .prepare("SELECT id, name FROM branches WHERE tier IN ('CENTRAL', 'CENTRAL_OFFICE', 0) AND id != ?")
+              .bind(branchId || 0)
+              .first();
+            if (existingCentral) {
+              return jsonResponse(
+                { success: false, error: `A Central Office already exists ("${existingCentral.name}" • ID: ${existingCentral.id}). Only one root Central Office is allowed.` },
+                400
+              );
+            }
+          } else if (parent_branch_id) {
+            if (branchId && parent_branch_id === branchId) {
+              return jsonResponse({ success: false, error: 'A branch cannot select itself as its parent hub/branch.' }, 400);
+            }
+            if (branchId) {
+              const isLoop = await hierarchyService.isDescendantOrSelf(branchId, parent_branch_id);
+              if (isLoop) {
+                return jsonResponse(
+                  { success: false, error: 'Circular hierarchy loop detected: A branch cannot select itself or any of its child/descendant branches as its parent.' },
+                  400
+                );
+              }
+            }
+            const parentRow = await db.prepare('SELECT id, name, tier FROM branches WHERE id = ?').bind(parent_branch_id).first();
+            if (!parentRow) {
+              return jsonResponse({ success: false, error: `Selected parent branch (ID ${parent_branch_id}) does not exist.` }, 400);
+            }
+            const parentTier = normalizeBranchTier(parentRow.tier);
+            if (tier === 'PROVINCE_HUB' && parentTier !== 'CENTRAL_OFFICE') {
+              return jsonResponse({ success: false, error: 'Hierarchy Rule: A Province Hub must have the Central Office as its parent.' }, 400);
+            }
+            if (tier === 'DISTRICT_HUB' && !['CENTRAL_OFFICE', 'PROVINCE_HUB'].includes(parentTier)) {
+              return jsonResponse({ success: false, error: 'Hierarchy Rule: A District Hub parent must be either Central Office or a Province Hub.' }, 400);
+            }
+            if (tier === 'MUNICIPALITY_BRANCH' && !['CENTRAL_OFFICE', 'PROVINCE_HUB', 'DISTRICT_HUB'].includes(parentTier)) {
+              return jsonResponse({ success: false, error: 'Hierarchy Rule: A Municipality Branch parent must be Central Office, a Province Hub, or a District Hub.' }, 400);
+            }
+            if (tier === 'WARD_BRANCH' && parentTier === 'WARD_BRANCH') {
+              return jsonResponse({ success: false, error: 'Hierarchy Rule: A Ward Branch cannot have another Ward Branch as its parent.' }, 400);
+            }
+          }
+
+          // Location Foreign Keys & Tier-Based Reset
+          let province_id = toNullableInt(body.province_id);
+          let district_id = toNullableInt(body.district_id);
+          let local_level_id = toNullableInt(body.local_level_id);
+          let ward_number = toNullableInt(body.ward_number);
+
+          if (tier === 'CENTRAL_OFFICE') {
+            province_id = null;
+            district_id = null;
+            local_level_id = null;
+            ward_number = null;
+          } else if (tier === 'PROVINCE_HUB') {
+            district_id = null;
+            local_level_id = null;
+            ward_number = null;
+          } else if (tier === 'DISTRICT_HUB') {
+            local_level_id = null;
+            ward_number = null;
+          } else if (tier === 'MUNICIPALITY_BRANCH') {
+            ward_number = null;
+          }
+
+          const address = body.address || {};
+          const province = tier === 'CENTRAL_OFFICE' ? '' : (address.province || body.province || '');
+          const district = ['CENTRAL_OFFICE', 'PROVINCE_HUB'].includes(tier) ? '' : (address.district || body.district || '');
+          const municipality = ['CENTRAL_OFFICE', 'PROVINCE_HUB', 'DISTRICT_HUB'].includes(tier) ? '' : (address.municipality || body.municipality || '');
+          const ward = tier === 'WARD_BRANCH' ? String(ward_number || address.ward || body.ward || '') : '';
+          const tole = address.tole || body.tole || '';
+          const address_json = JSON.stringify({ ...address, province, district, municipality, ward, tole });
+          const staff_roles_json = JSON.stringify(body.staffRoles || []);
+          const staff_users_json = JSON.stringify(body.staffUsers || []);
+
+          let branch_code = (body.branch_code || '').trim().toUpperCase();
+
+          if (branchId) {
+            // Fetch current password if omitted
+            const current = (await db.prepare('SELECT * FROM branches WHERE id = ?').bind(branchId).first()) || {};
+            const password = body.password ? body.password : (current.password || 'Branch@123');
+            const verified = body.verified !== undefined ? (body.verified ? 1 : 0) : (current.verified ?? 1);
+            const verification_status = body.verification_status || current.verification_status || 'verified';
+            const status = body.status || current.status || 'active';
+            if (!branch_code) {
+              branch_code = current.branch_code || `RTC-BR-${String(branchId).padStart(3, '0')}`;
+            }
+
+            await db
+              .prepare(`
+                UPDATE branches SET
+                  branch_code = ?,
+                  name = ?,
+                  name_np = ?,
+                  tier = ?,
+                  model_type = ?,
+                  parent_branch_id = ?,
+                  phone = ?,
+                  password = ?,
+                  email = ?,
+                  contact_person = ?,
+                  province_id = ?,
+                  district_id = ?,
+                  local_level_id = ?,
+                  ward_number = ?,
+                  province = ?,
+                  district = ?,
+                  municipality = ?,
+                  ward = ?,
+                  tole = ?,
+                  address_json = ?,
+                  staff_roles_json = ?,
+                  staff_users_json = ?,
+                  status = ?,
+                  verified = ?,
+                  verification_status = ?,
+                  updated_at = datetime('now')
+                WHERE id = ? AND company_id = ?
+              `)
+              .bind(
+                branch_code,
+                name,
+                name_np,
+                tier,
+                model_type,
+                parent_branch_id,
+                phone,
+                password,
+                email,
+                contact_person,
+                province_id,
+                district_id,
+                local_level_id,
+                ward_number,
+                province,
+                district,
+                municipality,
+                ward,
+                tole,
+                address_json,
+                staff_roles_json,
+                staff_users_json,
+                status,
+                verified,
+                verification_status,
+                branchId,
+                cid
+              )
+              .run();
+
+            return jsonResponse({
+              success: true,
+              id: branchId,
+              branch_code,
+              message: 'Branch updated successfully in D1 database',
+            });
+          }
+
+          // CREATE NEW BRANCH
+          const password = body.password || 'Branch@123';
+          const verified = body.verified !== undefined ? (body.verified ? 1 : 0) : 1;
+          const verification_status = body.verification_status || 'verified';
+          const status = body.status || 'active';
+
+          const res = await db
+            .prepare(`
+              INSERT INTO branches (
+                company_id, branch_code, name, name_np, tier, model_type, parent_branch_id,
+                phone, password, email, contact_person,
+                province_id, district_id, local_level_id, ward_number,
+                province, district, municipality, ward, tole,
+                address_json, staff_roles_json, staff_users_json,
+                status, verified, verification_status, branch_type,
+                created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            `)
+            .bind(
+              cid,
+              branch_code || 'TEMP',
+              name,
+              name_np,
+              tier,
+              model_type,
+              parent_branch_id,
+              phone,
+              password,
+              email,
+              contact_person,
+              province_id,
+              district_id,
+              local_level_id,
+              ward_number,
+              province,
+              district,
+              municipality,
+              ward,
+              tole,
+              address_json,
+              staff_roles_json,
+              staff_users_json,
+              status,
+              verified,
+              verification_status,
+              tier === 'CENTRAL_OFFICE' ? 'head_office' : 'local_branch'
+            )
+            .run();
+
+          const newId = res.meta.last_row_id;
+          if (!branch_code) {
+            branch_code = `RTC-BR-${String(newId).padStart(3, '0')}`;
+            await db.prepare('UPDATE branches SET branch_code = ? WHERE id = ?').bind(branch_code, newId).run();
+          }
+
+          return jsonResponse({
+            success: true,
+            id: newId,
+            branch_code,
+            message: 'Branch created successfully in D1 database',
+          });
+        } catch (err) {
+          return jsonResponse({ success: false, error: err.message || 'Failed to save branch' }, 400);
+        }
+      }
+
+      // PUT /api/branches/:id (Update branch)
+      if (method === 'PUT' || method === 'PATCH') {
+        try {
+          const body = await request.json();
+          const { BranchHierarchyService } = await import('./services/BranchHierarchyService.js');
+          const hierarchyService = new BranchHierarchyService(db);
+
+          const normalizeBranchTier = (t) => {
+            if (t === 0 || t === '0' || t === 'CENTRAL' || t === 'CENTRAL_OFFICE') return 'CENTRAL_OFFICE';
+            if (t === 1 || t === '1' || t === 'PROVINCE' || t === 'PROVINCE_HUB') return 'PROVINCE_HUB';
+            if (t === 2 || t === '2' || t === 'DISTRICT' || t === 'DISTRICT_HUB') return 'DISTRICT_HUB';
+            if (t === 3 || t === '3' || t === 'MUNICIPALITY' || t === 'MUNICIPALITY_BRANCH') return 'MUNICIPALITY_BRANCH';
+            if (t === 4 || t === '4' || t === 'WARD' || t === 'WARD_BRANCH') return 'WARD_BRANCH';
+            return 'MUNICIPALITY_BRANCH';
+          };
+
+          const toNullableInt = (val) => {
+            if (val === undefined || val === null || val === '' || String(val).trim() === '') return null;
+            const n = Number(val);
+            return isNaN(n) ? null : n;
+          };
+
+          const branchId = Number(path.split('/')[1] || body.id);
+          const cid = Number(body.company_id || companyId);
+          const current = (await db.prepare('SELECT * FROM branches WHERE id = ?').bind(branchId).first()) || {};
+
+          if (!current.id) {
+            return jsonResponse({ success: false, error: `Branch not found with ID ${branchId}` }, 404);
+          }
+
+          const name = body.name !== undefined ? body.name.trim() : current.name;
+          const name_np = body.name_np !== undefined ? (body.name_np.trim() || null) : current.name_np;
+          const phone = body.phone !== undefined ? body.phone.trim() : current.phone;
+          const password = body.password !== undefined && body.password ? body.password : current.password;
+          const email = body.email !== undefined ? body.email.trim() : (current.email || '');
+          const contact_person = body.contact_person !== undefined ? body.contact_person.trim() : (current.contact_person || '');
+          const tier = body.tier !== undefined ? normalizeBranchTier(body.tier) : normalizeBranchTier(current.tier);
+          const model_type = body.model_type !== undefined ? (body.model_type === 'FRANCHISE' ? 'FRANCHISE' : 'OWNED') : (current.model_type || 'OWNED');
+          let parent_branch_id = body.parent_branch_id !== undefined ? toNullableInt(body.parent_branch_id) : toNullableInt(current.parent_branch_id);
+
+          if (!name) {
+            return jsonResponse({ success: false, error: 'Branch name cannot be empty.' }, 400);
+          }
+          if (!phone) {
+            return jsonResponse({ success: false, error: 'Branch phone number cannot be empty.' }, 400);
+          }
+
+          // Duplicate phone check
+          const dupPhone = await db
+            .prepare('SELECT id, name FROM branches WHERE phone = ? AND id != ?')
+            .bind(phone, branchId)
+            .first();
+          if (dupPhone) {
+            return jsonResponse(
+              { success: false, error: `A branch with phone "${phone}" already exists (${dupPhone.name} • ID: ${dupPhone.id}).` },
+              400
+            );
+          }
+
+          // Hierarchy validation
+          if (tier === 'CENTRAL_OFFICE') {
+            parent_branch_id = null;
+            const existingCentral = await db
+              .prepare("SELECT id, name FROM branches WHERE tier IN ('CENTRAL', 'CENTRAL_OFFICE', 0) AND id != ?")
+              .bind(branchId)
+              .first();
+            if (existingCentral) {
+              return jsonResponse(
+                { success: false, error: `A Central Office already exists ("${existingCentral.name}" • ID: ${existingCentral.id}). Only one root Central Office is allowed.` },
+                400
+              );
+            }
+          } else if (parent_branch_id) {
+            if (parent_branch_id === branchId) {
+              return jsonResponse({ success: false, error: 'A branch cannot select itself as its parent hub/branch.' }, 400);
+            }
+            const isLoop = await hierarchyService.isDescendantOrSelf(branchId, parent_branch_id);
+            if (isLoop) {
+              return jsonResponse(
+                { success: false, error: 'Circular hierarchy loop detected: A branch cannot select itself or any of its child/descendant branches as its parent.' },
+                400
+              );
+            }
+            const parentRow = await db.prepare('SELECT id, name, tier FROM branches WHERE id = ?').bind(parent_branch_id).first();
+            if (!parentRow) {
+              return jsonResponse({ success: false, error: `Selected parent branch (ID ${parent_branch_id}) does not exist.` }, 400);
+            }
+            const parentTier = normalizeBranchTier(parentRow.tier);
+            if (tier === 'PROVINCE_HUB' && parentTier !== 'CENTRAL_OFFICE') {
+              return jsonResponse({ success: false, error: 'Hierarchy Rule: A Province Hub must have the Central Office as its parent.' }, 400);
+            }
+            if (tier === 'DISTRICT_HUB' && !['CENTRAL_OFFICE', 'PROVINCE_HUB'].includes(parentTier)) {
+              return jsonResponse({ success: false, error: 'Hierarchy Rule: A District Hub parent must be either Central Office or a Province Hub.' }, 400);
+            }
+            if (tier === 'MUNICIPALITY_BRANCH' && !['CENTRAL_OFFICE', 'PROVINCE_HUB', 'DISTRICT_HUB'].includes(parentTier)) {
+              return jsonResponse({ success: false, error: 'Hierarchy Rule: A Municipality Branch parent must be Central Office, a Province Hub, or a District Hub.' }, 400);
+            }
+            if (tier === 'WARD_BRANCH' && parentTier === 'WARD_BRANCH') {
+              return jsonResponse({ success: false, error: 'Hierarchy Rule: A Ward Branch cannot have another Ward Branch as its parent.' }, 400);
+            }
+          }
+
+          // Location Foreign Keys & Tier-Based Reset
+          let province_id = body.province_id !== undefined ? toNullableInt(body.province_id) : toNullableInt(current.province_id);
+          let district_id = body.district_id !== undefined ? toNullableInt(body.district_id) : toNullableInt(current.district_id);
+          let local_level_id = body.local_level_id !== undefined ? toNullableInt(body.local_level_id) : toNullableInt(current.local_level_id);
+          let ward_number = body.ward_number !== undefined ? toNullableInt(body.ward_number) : toNullableInt(current.ward_number);
+
+          if (tier === 'CENTRAL_OFFICE') {
+            province_id = null;
+            district_id = null;
+            local_level_id = null;
+            ward_number = null;
+          } else if (tier === 'PROVINCE_HUB') {
+            district_id = null;
+            local_level_id = null;
+            ward_number = null;
+          } else if (tier === 'DISTRICT_HUB') {
+            local_level_id = null;
+            ward_number = null;
+          } else if (tier === 'MUNICIPALITY_BRANCH') {
+            ward_number = null;
+          }
+
+          const address = body.address || (current.address_json ? JSON.parse(current.address_json) : {});
+          const province = tier === 'CENTRAL_OFFICE' ? '' : (address.province || body.province || current.province || '');
+          const district = ['CENTRAL_OFFICE', 'PROVINCE_HUB'].includes(tier) ? '' : (address.district || body.district || current.district || '');
+          const municipality = ['CENTRAL_OFFICE', 'PROVINCE_HUB', 'DISTRICT_HUB'].includes(tier) ? '' : (address.municipality || body.municipality || current.municipality || '');
+          const ward = tier === 'WARD_BRANCH' ? String(ward_number || address.ward || body.ward || current.ward || '') : '';
+          const tole = address.tole || body.tole || current.tole || '';
+          const address_json = JSON.stringify({ ...address, province, district, municipality, ward, tole });
+          const staff_roles_json = body.staffRoles ? JSON.stringify(body.staffRoles) : (current.staff_roles_json || '[]');
+          const staff_users_json = body.staffUsers ? JSON.stringify(body.staffUsers) : (current.staff_users_json || '[]');
+
+          const verified = body.verified !== undefined ? (body.verified ? 1 : 0) : (current.verified ?? 1);
+          const verification_status = body.verification_status !== undefined ? body.verification_status : (current.verification_status || (verified ? 'verified' : 'pending'));
+          const status = body.status !== undefined ? body.status : (verified ? 'active' : (current.status || 'pending_verification'));
+          let branch_code = body.branch_code !== undefined ? body.branch_code.trim().toUpperCase() : (current.branch_code || `RTC-BR-${String(branchId).padStart(3, '0')}`);
+
           await db
             .prepare(`
               UPDATE branches SET
-                name = ?, phone = ?, password = ?, email = ?, contact_person = ?,
-                province = ?, district = ?, municipality = ?, ward = ?, tole = ?,
-                address_json = ?, staff_roles_json = ?, staff_users_json = ?,
-                status = ?, verified = ?, verification_status = ?,
+                branch_code = ?,
+                name = ?,
+                name_np = ?,
+                tier = ?,
+                model_type = ?,
+                parent_branch_id = ?,
+                phone = ?,
+                password = ?,
+                email = ?,
+                contact_person = ?,
+                province_id = ?,
+                district_id = ?,
+                local_level_id = ?,
+                ward_number = ?,
+                province = ?,
+                district = ?,
+                municipality = ?,
+                ward = ?,
+                tole = ?,
+                address_json = ?,
+                staff_roles_json = ?,
+                staff_users_json = ?,
+                status = ?,
+                verified = ?,
+                verification_status = ?,
                 updated_at = datetime('now')
               WHERE id = ? AND company_id = ?
             `)
             .bind(
-              name, phone, password, email, contact_person,
-              province, district, municipality, ward, tole,
-              address_json, staff_roles_json, staff_users_json,
-              status, verified, verification_status,
-              Number(body.id), cid
+              branch_code,
+              name,
+              name_np,
+              tier,
+              model_type,
+              parent_branch_id,
+              phone,
+              password,
+              email,
+              contact_person,
+              province_id,
+              district_id,
+              local_level_id,
+              ward_number,
+              province,
+              district,
+              municipality,
+              ward,
+              tole,
+              address_json,
+              staff_roles_json,
+              staff_users_json,
+              status,
+              verified,
+              verification_status,
+              branchId,
+              cid
             )
             .run();
 
           return jsonResponse({
             success: true,
-            id: Number(body.id),
+            id: branchId,
+            branch_code,
             message: 'Branch updated successfully in D1 database',
           });
+        } catch (err) {
+          return jsonResponse({ success: false, error: err.message || 'Failed to update branch' }, 400);
         }
-
-        const res = await db
-          .prepare(`
-            INSERT INTO branches (
-              company_id, name, phone, password, email, contact_person,
-              province, district, municipality, ward, tole,
-              address_json, staff_roles_json, staff_users_json,
-              status, verified, verification_status, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-          `)
-          .bind(
-            cid, name, phone, password, email, contact_person,
-            province, district, municipality, ward, tole,
-            address_json, staff_roles_json, staff_users_json,
-            status, verified, verification_status
-          )
-          .run();
-
-        return jsonResponse({
-          success: true,
-          id: res.meta.last_row_id,
-          message: 'Branch created successfully in D1 database',
-        });
-      }
-
-      // PUT /api/branches/:id (Update branch)
-      if (method === 'PUT' || method === 'PATCH') {
-        const body = await request.json();
-        const branchId = Number(path.split('/')[1] || body.id);
-        const cid = Number(body.company_id || companyId);
-        const current = (await db.prepare('SELECT * FROM branches WHERE id = ?').bind(branchId).first()) || {};
-
-        const name = body.name !== undefined ? body.name.trim() : (current.name || '');
-        const phone = body.phone !== undefined ? body.phone.trim() : (current.phone || '');
-        const password = body.password !== undefined ? body.password : (current.password || '');
-        const email = body.email !== undefined ? body.email.trim() : (current.email || '');
-        const contact_person = body.contact_person !== undefined ? body.contact_person.trim() : (current.contact_person || '');
-        const address = body.address || (current.address_json ? JSON.parse(current.address_json) : {});
-        const province = address.province || body.province || current.province || '';
-        const district = address.district || body.district || current.district || '';
-        const municipality = address.municipality || body.municipality || current.municipality || '';
-        const ward = address.ward || body.ward || current.ward || '';
-        const tole = address.tole || body.tole || current.tole || '';
-        const address_json = JSON.stringify(address);
-        const staff_roles_json = body.staffRoles ? JSON.stringify(body.staffRoles) : (current.staff_roles_json || '[]');
-        const staff_users_json = body.staffUsers ? JSON.stringify(body.staffUsers) : (current.staff_users_json || '[]');
-
-        const verified = body.verified !== undefined ? (body.verified ? 1 : 0) : (current.verified ?? 1);
-        const verification_status = body.verification_status !== undefined ? body.verification_status : (current.verification_status || (verified ? 'verified' : 'pending'));
-        const status = body.status !== undefined ? body.status : (verified ? 'active' : (current.status || 'pending_verification'));
-
-        await db
-          .prepare(`
-            UPDATE branches SET
-              name = ?, phone = ?, password = ?, email = ?, contact_person = ?,
-              province = ?, district = ?, municipality = ?, ward = ?, tole = ?,
-              address_json = ?, staff_roles_json = ?, staff_users_json = ?,
-              status = ?, verified = ?, verification_status = ?,
-              updated_at = datetime('now')
-            WHERE id = ? AND company_id = ?
-          `)
-          .bind(
-            name, phone, password, email, contact_person,
-            province, district, municipality, ward, tole,
-            address_json, staff_roles_json, staff_users_json,
-            status, verified, verification_status,
-            branchId, cid
-          )
-          .run();
-
-        return jsonResponse({
-          success: true,
-          id: branchId,
-          message: 'Branch updated successfully in D1 database',
-        });
       }
     }
 
@@ -5020,6 +5487,12 @@ export async function onRequest(context) {
             email: r.email || '',
             password: r.password,
             vehicle_type: r.vehicle_type || 'bike',
+            compensation_type: r.compensation_type || 'COMMISSION',
+            base_salary: r.base_salary != null ? Number(r.base_salary) : 0,
+            commission_rate: r.commission_rate != null ? Number(r.commission_rate) : 0,
+            duty_status: r.duty_status || (r.status === 'inactive' ? 'OFF_DUTY' : 'AVAILABLE'),
+            driving_license_number: r.driving_license_number || '',
+            vehicle_plate_number: r.vehicle_plate_number || '',
             status: r.status || 'available',
             active: r.active === 1 || r.active === true || r.active === 'true',
             verified: r.verified === 1 || r.verified === true || r.verified === 'true' || r.verification_status === 'verified',
@@ -5046,6 +5519,12 @@ export async function onRequest(context) {
         const vehicle_type = body.vehicle_type || 'bike';
         const branch_id = body.branch_id ? Number(body.branch_id) : null;
         const rider_code = body.rider_id || body.rider_code || '';
+        const compensation_type = body.compensation_type || 'COMMISSION';
+        const base_salary = body.base_salary !== undefined ? Number(body.base_salary) : 0;
+        const commission_rate = body.commission_rate !== undefined ? Number(body.commission_rate) : 0;
+        const duty_status = body.duty_status || 'AVAILABLE';
+        const driving_license_number = body.driving_license_number || '';
+        const vehicle_plate_number = body.vehicle_plate_number || '';
         const address = body.address || {};
         const province = address.province || body.province || '';
         const district = address.district || body.district || '';
@@ -5067,6 +5546,8 @@ export async function onRequest(context) {
               UPDATE riders SET
                 name = ?, phone = ?, password = ?, email = ?,
                 vehicle_type = ?, status = ?, active = ?, branch_id = ?, rider_code = ?,
+                compensation_type = ?, base_salary = ?, commission_rate = ?,
+                duty_status = ?, driving_license_number = ?, vehicle_plate_number = ?,
                 province = ?, district = ?, municipality = ?, ward = ?, tole = ?,
                 address_json = ?, photo = ?, license_photo = ?,
                 verified = ?, verification_status = ?,
@@ -5076,6 +5557,8 @@ export async function onRequest(context) {
             .bind(
               name, phone, password, email,
               vehicle_type, status, active, branch_id, rider_code,
+              compensation_type, base_salary, commission_rate,
+              duty_status, driving_license_number, vehicle_plate_number,
               province, district, municipality, ward, tole,
               address_json, photo, license_photo,
               verified, verification_status,
@@ -5095,15 +5578,19 @@ export async function onRequest(context) {
             INSERT INTO riders (
               company_id, branch_id, rider_code, name, phone, email, password,
               vehicle_type, status, active,
+              compensation_type, base_salary, commission_rate,
+              duty_status, driving_license_number, vehicle_plate_number,
               province, district, municipality, ward, tole,
               address_json, photo, license_photo,
               verified, verification_status,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
           `)
           .bind(
             cid, branch_id, rider_code, name, phone, email, password,
             vehicle_type, status, active,
+            compensation_type, base_salary, commission_rate,
+            duty_status, driving_license_number, vehicle_plate_number,
             province, district, municipality, ward, tole,
             address_json, photo, license_photo,
             verified, verification_status
@@ -5138,6 +5625,13 @@ export async function onRequest(context) {
         const vehicle_type = body.vehicle_type !== undefined ? body.vehicle_type : (current.vehicle_type || 'bike');
         const branch_id = body.branch_id !== undefined ? (body.branch_id ? Number(body.branch_id) : null) : current.branch_id;
         const rider_code = body.rider_id || body.rider_code || current.rider_code || '';
+        const compensation_type = body.compensation_type !== undefined ? body.compensation_type : (current.compensation_type || 'COMMISSION');
+        const base_salary = body.base_salary !== undefined ? Number(body.base_salary) : (current.base_salary || 0);
+        const commission_rate = body.commission_rate !== undefined ? Number(body.commission_rate) : (current.commission_rate || 0);
+        const duty_status = body.duty_status !== undefined ? body.duty_status : (current.duty_status || 'AVAILABLE');
+        const driving_license_number = body.driving_license_number !== undefined ? body.driving_license_number : (current.driving_license_number || '');
+        const vehicle_plate_number = body.vehicle_plate_number !== undefined ? body.vehicle_plate_number : (current.vehicle_plate_number || '');
+
         const address = body.address || (current.address_json ? JSON.parse(current.address_json) : {});
         const address_json = JSON.stringify(address);
         const photo = body.photo !== undefined ? body.photo : current.photo;
@@ -5148,6 +5642,8 @@ export async function onRequest(context) {
             UPDATE riders SET
               name = ?, phone = ?, password = ?, email = ?,
               vehicle_type = ?, status = ?, active = ?, branch_id = ?, rider_code = ?,
+              compensation_type = ?, base_salary = ?, commission_rate = ?,
+              duty_status = ?, driving_license_number = ?, vehicle_plate_number = ?,
               address_json = ?, photo = ?, license_photo = ?,
               verified = ?, verification_status = ?,
               updated_at = datetime('now')
@@ -5156,6 +5652,8 @@ export async function onRequest(context) {
           .bind(
             name, phone, password, email,
             vehicle_type, status, active, branch_id, rider_code,
+            compensation_type, base_salary, commission_rate,
+            duty_status, driving_license_number, vehicle_plate_number,
             address_json, photo, license_photo,
             verified, verification_status,
             riderId, cid
@@ -6101,15 +6599,21 @@ export async function onRequest(context) {
                 customer_id: vo.vendor_id,
                 branch_id: vo.branch_id,
                 destination_branch_id: vo.destination_branch_id,
+                sender_name: vo.sender_name || vo.vendor_name,
+                pickup_address: vo.pickup_address || vo.sender_address,
                 receiver_name: vo.receiver_name,
                 receiver_phone: vo.receiver_phone,
                 receiver_district: vo.receiver_district,
                 destination_city: vo.receiver_city || vo.delivery_area || vo.receiver_district,
-                receiver_address: vo.receiver_address || vo.delivery_area,
+                delivery_address: vo.delivery_address || vo.receiver_address || vo.delivery_area,
+                receiver_address: vo.delivery_address || vo.receiver_address || vo.delivery_area,
+                service_type: vo.service_type || vo.order_type || 'Door to Door Delivery',
+                order_type: vo.order_type || 'Delivery Order',
                 package_description: vo.package_description || vo.product_name || 'Parcel',
+                product_category: vo.product_category || '',
                 cod_amount: vo.cod_amount,
                 delivery_fee: vo.delivery_fee,
-                weight: vo.weight || 1,
+                weight: vo.weight || vo.weight_kg || 1,
                 status: vo.status,
                 tracking_events_json: vo.tracking_events_json,
                 created_at: vo.created_at,
@@ -6177,6 +6681,19 @@ export async function onRequest(context) {
           } catch (e) {}
         }
 
+        // Sender information lookup
+        let senderName = s.sender_name || null;
+        let senderAddress = s.pickup_address || s.sender_address || null;
+        if ((!senderName || !senderAddress) && s.customer_id) {
+          try {
+            const vRow = await db.prepare('SELECT name, business_name, address, city FROM vendors WHERE id = ?').bind(s.customer_id).first();
+            if (vRow) {
+              senderName = senderName || vRow.business_name || vRow.name;
+              senderAddress = senderAddress || vRow.address || vRow.city;
+            }
+          } catch (e) {}
+        }
+
         // Mask phone for customer privacy
         const mask = (p) => {
           if (!p || typeof p !== 'string') return '';
@@ -6184,6 +6701,8 @@ export async function onRequest(context) {
           if (cleaned.length < 8) return cleaned;
           return cleaned.slice(0, 4) + '****' + cleaned.slice(-2);
         };
+
+        const resolvedDeliveryAddress = s.delivery_address || s.receiver_address || s.destination_city || s.receiver_district || '';
 
         return jsonResponse({
           found: true,
@@ -6193,14 +6712,21 @@ export async function onRequest(context) {
             vendor_reference_id: s.vendor_reference_id || null,
             status: s.status || 'pending',
             package_description: s.package_description || 'Standard Parcel',
-            weight: s.weight || 1,
+            weight: s.weight || s.weight_kg || 1,
+            service_type: s.service_type || s.order_type || s.delivery_service_type || 'Door to Door Delivery',
+            order_type: s.order_type || 'Delivery Order',
+            product_category: s.product_category || '',
             cod_amount: Number(s.cod_amount || 0),
             delivery_fee: Number(s.delivery_fee || 0),
+            sender_name: senderName || s.sender_name || null,
+            sender_address: senderAddress || s.pickup_address || s.sender_address || null,
+            sender_phone_masked: s.sender_phone ? mask(s.sender_phone) : null,
             receiver_name: s.receiver_name,
             receiver_phone_masked: mask(s.receiver_phone),
             receiver_district: s.receiver_district,
             destination_city: s.destination_city || s.receiver_district,
-            receiver_address: s.receiver_address,
+            receiver_address: resolvedDeliveryAddress,
+            delivery_address: resolvedDeliveryAddress,
             origin_branch_name: originBranchName,
             destination_branch_name: destBranchName,
             rider_name: riderName,
@@ -8293,7 +8819,7 @@ export async function onRequest(context) {
               notify_delivered INTEGER NOT NULL DEFAULT 1,
               notify_cancelled INTEGER NOT NULL DEFAULT 1,
               notify_vendor_verified INTEGER NOT NULL DEFAULT 1,
-              template_order_created TEXT NOT NULL DEFAULT 'Dear {receiver_name}, your order #{tracking_number} has been booked via RTC Courier. COD: Rs. {cod_amount}. Track live: https://rtccourrier.pages.dev/tracking',
+              template_order_created TEXT NOT NULL DEFAULT 'Namaste {receiver_name}, your parcel #{tracking_number} (Order ID: #{order_id}) has been booked with {company_name}. COD Amount: {cod_amount}. Track live: {tracking_link}',
               template_out_for_delivery TEXT NOT NULL DEFAULT 'Dear {receiver_name}, your parcel #{tracking_number} is out for delivery with rider {rider_name} ({rider_phone}). COD: Rs. {cod_amount}. - RTC Courier',
               template_delivered TEXT NOT NULL DEFAULT 'Dear {receiver_name}, your parcel #{tracking_number} has been delivered successfully. Thank you for choosing RTC Courier!',
               template_cancelled TEXT NOT NULL DEFAULT 'Order #{tracking_number} has been cancelled/returned. For support, please contact RTC Courier.',
@@ -8337,12 +8863,20 @@ export async function onRequest(context) {
               notify_delivered: 1,
               notify_cancelled: 1,
               notify_vendor_verified: 1,
-              template_order_created: 'Namaste {receiver_name}, your parcel #{tracking_number} has been booked with {company_name}. COD Amount: {cod_amount}. Track at rtccourier.com.np',
+              template_order_created: 'Namaste {receiver_name}, your parcel #{tracking_number} (Order ID: #{order_id}) has been booked with {company_name}. COD Amount: {cod_amount}. Track live: {tracking_link}',
               template_out_for_delivery: 'Dear {receiver_name}, your order #{tracking_number} is OUT FOR DELIVERY by {rider_name} {rider_phone}. Please keep {cod_amount} ready. {company_name}',
               template_delivered: 'Dear {receiver_name}, your package #{tracking_number} has been successfully DELIVERED. Thank you for choosing {company_name}!',
               template_cancelled: 'Dear {receiver_name}, your order #{tracking_number} has been CANCELLED/RETURNED. Contact {company_name} for support.',
               template_vendor_verified: 'Congratulations {vendor_name}! Your merchant account has been VERIFIED by {company_name}. You can now book orders and process COD seamlessly.',
             };
+          }
+          // Auto-upgrade legacy template to modern tracking link & order id if still pointing to old static domain
+          if (row.template_order_created && (row.template_order_created.includes('rtccourier.com.np') || (!row.template_order_created.includes('{tracking_link}') && !row.template_order_created.includes('{order_id}')))) {
+            row.template_order_created = 'Namaste {receiver_name}, your parcel #{tracking_number} (Order ID: #{order_id}) has been booked with {company_name}. COD Amount: {cod_amount}. Track live: {tracking_link}';
+            db.prepare('UPDATE sms_settings SET template_order_created = ? WHERE company_id = ?')
+              .bind(row.template_order_created, cid)
+              .run()
+              .catch(() => {});
           }
           // Normalize alias keys for frontend convenience
           row.provider_name = row.provider_name || row.provider || 'SMSsarara';
@@ -8465,38 +8999,61 @@ export async function onRequest(context) {
             else if (eventType === 'delivered') template = settings.template_delivered || settings.tpl_delivered;
             else if (eventType === 'cancelled') template = settings.template_cancelled || settings.tpl_cancelled;
             else if (eventType === 'vendor_verified') template = settings.template_vendor_verified || settings.tpl_vendor_verified;
-
-            const companyBrand = (settings.sender_id && settings.sender_id.trim()) ? settings.sender_id.trim() : 'RTC Courier';
-            const vars = {
-              company_name: companyBrand,
-              ...(body.data || {}),
-              ...(body.variables || {}),
-            };
-
             message = template || 'Hello from RTC Courier.';
-            Object.entries(vars).forEach(([k, v]) => {
-              if (v !== undefined && v !== null) {
-                const safeVal = String(v);
-                message = message.split(`{${k}}`).join(safeVal);
-                message = message.replace(new RegExp(`\\{${k}\\}`, 'gi'), safeVal);
-              }
-            });
-
-            // Fallback safety for any remaining unreplaced placeholders
-            message = message.replace(/\{company_name\}/gi, companyBrand);
-            message = message.replace(/\{vendor_name\}/gi, vars.vendor_name || vars.business_name || vars.name || 'Merchant');
-            message = message.replace(/\{receiver_name\}/gi, vars.receiver_name || vars.customer_name || 'Customer');
-            message = message.replace(/\{tracking_number\}/gi, vars.tracking_number || '');
-            message = message.replace(/\{cod_amount\}/gi, vars.cod_amount || 'Rs. 0');
-            message = message.replace(/\{rider_name\}/gi, vars.rider_name || 'our delivery rider');
-            message = message.replace(/\{rider_phone\}/gi, vars.rider_phone || '');
           }
+
+          const companyBrand = (settings.sender_id && settings.sender_id.trim()) ? settings.sender_id.trim() : 'RTC Courier';
+          const trackingNum = (body.data?.tracking_number || body.variables?.tracking_number || body.tracking_number || '').trim();
+          const orderIdVal = (body.data?.order_id || body.variables?.order_id || body.order_id || body.data?.id || body.variables?.id || body.id || trackingNum || '').toString().trim();
+          const defaultTrackingLink = trackingNum ? `https://rtccourrier.pages.dev/track?track=${encodeURIComponent(trackingNum)}` : 'https://rtccourrier.pages.dev/track';
+
+          const vars = {
+            company_name: companyBrand,
+            tracking_number: trackingNum,
+            order_id: orderIdVal,
+            tracking_link: defaultTrackingLink,
+            ...(body.data || {}),
+            ...(body.variables || {}),
+          };
+
+          // If vars has custom tracking_link or override
+          if (!vars.tracking_link || vars.tracking_link === 'rtccourier.com.np' || !vars.tracking_link.startsWith('http')) {
+            vars.tracking_link = defaultTrackingLink;
+          }
+          if (!vars.order_id) {
+            vars.order_id = orderIdVal;
+          }
+
+          Object.entries(vars).forEach(([k, v]) => {
+            if (v !== undefined && v !== null) {
+              const safeVal = String(v);
+              message = message.split(`{${k}}`).join(safeVal);
+              message = message.replace(new RegExp(`\\{${k}\\}`, 'gi'), safeVal);
+            }
+          });
+
+          // Fallback safety for any remaining unreplaced placeholders
+          message = message.replace(/\{company_name\}/gi, companyBrand);
+          message = message.replace(/\{vendor_name\}/gi, vars.vendor_name || vars.business_name || vars.name || 'Merchant');
+          message = message.replace(/\{receiver_name\}/gi, vars.receiver_name || vars.customer_name || 'Customer');
+          message = message.replace(/\{tracking_number\}/gi, trackingNum);
+          message = message.replace(/\{order_id\}/gi, orderIdVal);
+          message = message.replace(/\{tracking_link\}/gi, vars.tracking_link || defaultTrackingLink);
+          message = message.replace(/\{cod_amount\}/gi, vars.cod_amount || 'Rs. 0');
+          message = message.replace(/\{rider_name\}/gi, vars.rider_name || 'our delivery rider');
+          message = message.replace(/\{rider_phone\}/gi, vars.rider_phone || '');
+
+          // Ensure proper clickable URL format without accidental duplicate protocols
+          const cleanMessage = String(message || '')
+            .replace(/https?:\/\/https?:\/\//gi, 'https://')
+            .replace(/http:\/\/http:\/\//gi, 'http://')
+            .trim();
 
           if (!settings.is_enabled) {
             await db.prepare(`
               INSERT INTO sms_logs (company_id, recipient, message, event_type, status, error_message, created_at)
               VALUES (?, ?, ?, ?, 'skipped', 'SMS gateway disabled in settings', datetime('now'))
-            `).bind(cid, cleanRecipient, message, eventType).run();
+            `).bind(cid, cleanRecipient, cleanMessage, eventType).run();
 
             return jsonResponse({ success: false, status: 'skipped', error: 'SMS Gateway is currently disabled in settings' });
           }
@@ -8506,14 +9063,14 @@ export async function onRequest(context) {
             await db.prepare(`
               INSERT INTO sms_logs (company_id, recipient, message, event_type, status, provider_response, error_message, created_at)
               VALUES (?, ?, ?, ?, 'mock_sent', '{"note": "Simulated. API token not configured yet."}', 'Token not configured', datetime('now'))
-            `).bind(cid, cleanRecipient, message, eventType).run();
+            `).bind(cid, cleanRecipient, cleanMessage, eventType).run();
 
             return jsonResponse({
               success: true,
               status: 'mock_sent',
               message: 'SMS logged in D1. Enter your SMSsarara Bearer Token in Admin Settings to deliver live to mobile networks.',
               recipient: cleanRecipient,
-              preview: message
+              preview: cleanMessage
             });
           }
 
@@ -8531,7 +9088,7 @@ export async function onRequest(context) {
                 'Content-Type': 'application/json'
               },
               body: JSON.stringify({
-                message: message,
+                message: cleanMessage,
                 smsTo: cleanRecipient
               })
             });
@@ -8539,6 +9096,36 @@ export async function onRequest(context) {
             providerResponse = await apiRes.text();
             if (apiRes.ok) {
               sendStatus = 'sent';
+
+              // Inspect VAS queue status from SMSsarara to ensure message is not held by telecom moderation filters
+              try {
+                await new Promise((resolve) => setTimeout(resolve, 600));
+                const listUrl = `${settings.api_endpoint || 'https://api.smssarara.app'}/api/v1/sms?perPage=1`;
+                const listRes = await fetch(listUrl, {
+                  headers: { 'Authorization': `Bearer ${settings.api_token}` }
+                });
+                if (listRes.ok) {
+                  const listData = await listRes.json();
+                  const latestQueue = listData?.data?.[0]?.queues?.[0];
+                  const vas = latestQueue?.vas;
+                  if (vas) {
+                    if (vas.action === 'spammed' || (vas.response_code && vas.response_code !== 200)) {
+                      sendStatus = 'failed';
+                      sendError = vas.message || 'ERR: Held by telecom spam filter';
+                      providerResponse = JSON.stringify({ error: sendError, vas });
+                    } else if (vas.action === 'now' && vas.response_code === 200) {
+                      sendStatus = 'sent';
+                      providerResponse = JSON.stringify({
+                        status: 'delivered_to_gateway',
+                        shoot_id: vas.sms_shootid || vas.message,
+                        message: 'Delivered to telecom carrier network'
+                      });
+                    }
+                  }
+                }
+              } catch (verifyErr) {
+                // Keep initial sent status if verification request timed out
+              }
             } else {
               sendStatus = 'failed';
               sendError = `HTTP ${apiRes.status}: ${providerResponse.slice(0, 200)}`;
@@ -8553,7 +9140,7 @@ export async function onRequest(context) {
           await db.prepare(`
             INSERT INTO sms_logs (company_id, recipient, message, event_type, status, provider_response, error_message, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-          `).bind(cid, cleanRecipient, message, eventType, sendStatus, providerResponse, sendError).run();
+          `).bind(cid, cleanRecipient, cleanMessage, eventType, sendStatus, providerResponse, sendError).run();
 
           return jsonResponse({
             success: sendStatus === 'sent',

@@ -32,7 +32,16 @@ export function BranchLayout() {
   const navigate = useNavigate();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+
+  const handleToggleSidebar = () => {
+    if (window.innerWidth < 900) {
+      setMobileMenuOpen((prev) => !prev);
+    } else {
+      setSidebarCollapsed((prev) => !prev);
+    }
+  };
 
   const currentBranch = (branches || []).find((b) => b.id === Number(session?.branchId));
   const staffUser = currentBranch && session?.staffUserId
@@ -92,7 +101,7 @@ export function BranchLayout() {
   };
 
   return (
-    <div className="admin-app-container">
+    <div className={`admin-app-container ${sidebarCollapsed ? 'sidebar-is-collapsed' : ''}`}>
       {/* Mobile Backdrop */}
       {mobileMenuOpen && (
         <div
@@ -108,7 +117,7 @@ export function BranchLayout() {
       )}
 
       {/* Left White Sidebar */}
-      <aside className={`admin-sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
+      <aside className={`admin-sidebar ${mobileMenuOpen ? 'mobile-open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div>
           <div className="admin-brand-card">
             <img
@@ -212,9 +221,10 @@ export function BranchLayout() {
           <div className="admin-topbar-left">
             <button
               type="button"
-              className="admin-mobile-menu-btn"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              aria-label="Toggle Navigation"
+              className={`admin-mobile-menu-btn ${sidebarCollapsed ? 'is-collapsed' : ''}`}
+              onClick={handleToggleSidebar}
+              aria-label="Toggle Navigation Sidebar"
+              title="Toggle Navigation Sidebar"
             >
               ☰
             </button>

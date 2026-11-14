@@ -4,6 +4,7 @@ import { useCompany } from '../../context/CompanyContext';
 import { StatStrip } from '../../components/common/StatStrip';
 import { StatusPill } from '../../components/common/StatusPill';
 import { fmtMoney, fmtDate } from '../../utils/helpers';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 
 export function BranchShipmentReportPage() {
   const { currentBranch } = useOutletContext();
@@ -49,37 +50,67 @@ export function BranchShipmentReportPage() {
     (c) => Number(c.branch_id) === Number(currentBranch.id)
   );
 
+  const typeFilterOptions = useMemo(() => [
+    { value: '', label: 'All Types' },
+    { value: 'walk_in', label: 'Walk-in Customers' },
+    { value: 'vendor', label: 'Vendors' },
+  ], []);
+
+  const statusFilterOptions = useMemo(() => [
+    { value: '', label: 'All statuses' },
+    { value: 'delivered', label: 'Delivered' },
+    { value: 'out_for_delivery', label: 'Out for Delivery' },
+    { value: 'in_transit', label: 'In Transit' },
+    { value: 'picked_up', label: 'Picked Up' },
+    { value: 'assigned', label: 'Assigned' },
+    { value: 'pending', label: 'Pending' },
+    { value: 'failed', label: 'Failed' },
+    { value: 'returned', label: 'Returned' },
+  ], []);
+
+  const riderFilterOptions = useMemo(() => [
+    { value: '', label: 'All riders' },
+    ...branchRiders.map((r) => ({
+      value: String(r.id),
+      label: r.name,
+      subtext: r.phone ? `(${r.phone})` : null,
+    })),
+  ], [branchRiders]);
+
   return (
     <div>
       <div className="view-head">
         <h1>{currentBranch.name} — Shipment Report</h1>
       </div>
 
-      <div className="filters">
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-          <option value="">All Types</option>
-          <option value="walk_in">Walk-in Customers</option>
-          <option value="vendor">Vendors</option>
-        </select>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="">All statuses</option>
-          <option value="delivered">Delivered</option>
-          <option value="out_for_delivery">Out for Delivery</option>
-          <option value="in_transit">In Transit</option>
-          <option value="picked_up">Picked Up</option>
-          <option value="assigned">Assigned</option>
-          <option value="pending">Pending</option>
-          <option value="failed">Failed</option>
-          <option value="returned">Returned</option>
-        </select>
-        <select value={riderFilter} onChange={(e) => setRiderFilter(e.target.value)}>
-          <option value="">All riders</option>
-          {branchRiders.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name}
-            </option>
-          ))}
-        </select>
+      <div className="filters" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <SearchableSelect
+          value={typeFilter}
+          onChange={(val) => setTypeFilter(val || '')}
+          options={typeFilterOptions}
+          placeholder="All Types"
+          searchPlaceholder="Search type..."
+          height="34px"
+          minDropdownWidth="160px"
+        />
+        <SearchableSelect
+          value={statusFilter}
+          onChange={(val) => setStatusFilter(val || '')}
+          options={statusFilterOptions}
+          placeholder="All statuses"
+          searchPlaceholder="Search status..."
+          height="34px"
+          minDropdownWidth="170px"
+        />
+        <SearchableSelect
+          value={riderFilter}
+          onChange={(val) => setRiderFilter(val || '')}
+          options={riderFilterOptions}
+          placeholder="All riders"
+          searchPlaceholder="Search rider..."
+          height="34px"
+          minDropdownWidth="180px"
+        />
       </div>
 
       <StatStrip stats={stats} />

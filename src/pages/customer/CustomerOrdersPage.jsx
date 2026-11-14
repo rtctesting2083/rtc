@@ -31,6 +31,7 @@ import { VendorPickupRequestModal } from '../../components/customer/VendorPickup
 import { printShipmentLabel } from '../../utils/print';
 import { fmtMoney, fmtDate, formatAddressWithDistrictProvince, getProvinceForDistrict } from '../../utils/helpers';
 import { d1Api } from '../../utils/d1Api';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 
 // Helper to normalize branch and district strings for robust matching
 const cleanBranchStr = (s) =>
@@ -689,6 +690,48 @@ export function CustomerOrdersPage() {
     if (endDate) return `Up to ${endDate}`;
     return '';
   }, [startDate, endDate, datePreset]);
+
+  const orderStatusOptions = useMemo(() => [
+    { value: 'all', label: 'All Statuses' },
+    { value: 'Pending', label: 'Pending' },
+    { value: 'Pickup Requested', label: 'Pickup Requested' },
+    { value: 'Pickup Assigned', label: 'Pickup Assigned' },
+    { value: 'Picked Up by Rider', label: 'Picked Up by Rider' },
+    { value: 'Received At Hub', label: 'Received At Hub' },
+    { value: 'Dispatched (In Transit)', label: 'Dispatched (In Transit)' },
+    { value: 'Out for Delivery', label: 'Out for Delivery' },
+    { value: 'Delivered', label: 'Delivered' },
+    { value: 'Follow Up for Return', label: 'Follow Up for Return' },
+    { value: 'Cancelled', label: 'Cancelled' },
+  ], []);
+
+  const orderTypeOptions = useMemo(() => {
+    const list = [
+      { value: 'all', label: 'All Order Types' },
+      { value: 'Delivery Order', label: 'Delivery Order' },
+      { value: 'Reverse Order', label: 'Reverse Order' },
+      { value: 'Exchange Order', label: 'Exchange Order' },
+    ];
+    (activeOrderTypes || [])
+      .filter((ot) => {
+        const n = (ot?.name || '').toLowerCase();
+        return n && !n.includes('delivery') && !n.includes('reverse') && !n.includes('exchange') && !n.includes('return');
+      })
+      .forEach((ot) => {
+        list.push({ value: ot.name, label: ot.name });
+      });
+    return list;
+  }, [activeOrderTypes]);
+
+  const datePresetOptions = useMemo(() => [
+    { value: '', label: 'All Time' },
+    { value: 'today', label: 'Today' },
+    { value: 'yesterday', label: 'Yesterday' },
+    { value: 'last_7_days', label: 'Last 7 Days' },
+    { value: 'this_week', label: 'This Week' },
+    { value: 'this_month', label: 'This Month' },
+    { value: 'last_30_days', label: 'Last 30 Days' },
+  ], []);
 
   const [selectedOrderIds, setSelectedOrderIds] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1957,34 +2000,16 @@ export function CustomerOrdersPage() {
               >
                 Order Status
               </label>
-              <select
+              <SearchableSelect
                 value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-                style={{
-                  width: '100%',
-                  height: '38px',
-                  padding: '0 10px',
-                  borderRadius: '6px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '12.5px',
-                  color: '#1e293b',
-                  background: '#ffffff',
-                  fontWeight: 500,
-                  outline: 'none',
-                }}
-              >
-                <option value="all">All Statuses</option>
-                <option value="Pending">Pending</option>
-                <option value="Pickup Requested">Pickup Requested</option>
-                <option value="Pickup Assigned">Pickup Assigned</option>
-                <option value="Picked Up by Rider">Picked Up by Rider</option>
-                <option value="Received At Hub">Received At Hub</option>
-                <option value="Dispatched (In Transit)">Dispatched (In Transit)</option>
-                <option value="Out for Delivery">Out for Delivery</option>
-                <option value="Delivered">Delivered</option>
-                <option value="Follow Up for Return">Follow Up for Return</option>
-                <option value="Cancelled">Cancelled</option>
-              </select>
+                onChange={(val) => setSelectedStatus(val || 'all')}
+                options={orderStatusOptions}
+                placeholder="All Statuses"
+                searchPlaceholder="Search status..."
+                minWidth="100%"
+                buttonHeight="38px"
+                fontSize="12.5px"
+              />
             </div>
 
             {/* 3. Order Type Dropdown */}
@@ -2002,37 +2027,16 @@ export function CustomerOrdersPage() {
               >
                 Order Type
               </label>
-              <select
+              <SearchableSelect
                 value={selectedOrderType}
-                onChange={(e) => setSelectedOrderType(e.target.value)}
-                style={{
-                  width: '100%',
-                  height: '38px',
-                  padding: '0 10px',
-                  borderRadius: '6px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '12.5px',
-                  color: '#1e293b',
-                  background: '#ffffff',
-                  fontWeight: 500,
-                  outline: 'none',
-                }}
-              >
-                <option value="all">All Order Types</option>
-                <option value="Delivery Order">Delivery Order</option>
-                <option value="Reverse Order">Reverse Order</option>
-                <option value="Exchange Order">Exchange Order</option>
-                {activeOrderTypes
-                  .filter((ot) => {
-                    const n = (ot?.name || '').toLowerCase();
-                    return n && !n.includes('delivery') && !n.includes('reverse') && !n.includes('exchange') && !n.includes('return');
-                  })
-                  .map((ot) => (
-                    <option key={ot.id || ot.name} value={ot.name}>
-                      {ot.name}
-                    </option>
-                  ))}
-              </select>
+                onChange={(val) => setSelectedOrderType(val || 'all')}
+                options={orderTypeOptions}
+                placeholder="All Order Types"
+                searchPlaceholder="Search order type..."
+                minWidth="100%"
+                buttonHeight="38px"
+                fontSize="12.5px"
+              />
             </div>
 
             {/* 4. Time Period / Date Preset */}
@@ -2050,11 +2054,10 @@ export function CustomerOrdersPage() {
               >
                 Time Period
               </label>
-              <select
+              <SearchableSelect
                 value={datePreset}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setDatePreset(val);
+                onChange={(val) => {
+                  setDatePreset(val || '');
                   if (val === 'all_time' || !val) {
                     setStartDate('');
                     setEndDate('');
@@ -2062,27 +2065,13 @@ export function CustomerOrdersPage() {
                     applyPreset(val, false);
                   }
                 }}
-                style={{
-                  width: '100%',
-                  height: '38px',
-                  padding: '0 10px',
-                  borderRadius: '6px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '12.5px',
-                  color: '#1e293b',
-                  background: '#ffffff',
-                  fontWeight: 500,
-                  outline: 'none',
-                }}
-              >
-                <option value="">All Time</option>
-                <option value="today">Today</option>
-                <option value="yesterday">Yesterday</option>
-                <option value="last_7_days">Last 7 Days</option>
-                <option value="this_week">This Week</option>
-                <option value="this_month">This Month</option>
-                <option value="last_30_days">Last 30 Days</option>
-              </select>
+                options={datePresetOptions}
+                placeholder="All Time"
+                searchPlaceholder="Search time period..."
+                minWidth="100%"
+                buttonHeight="38px"
+                fontSize="12.5px"
+              />
             </div>
 
             {/* 5. Search Keyword Input */}

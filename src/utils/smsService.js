@@ -12,13 +12,17 @@ export const smsService = {
       if (!recipient) return;
 
       const trackingNumber = order.trackingNumber || order.tracking_number || order.orderNumber || order.id || '';
+      const orderId = order.id || order.orderId || order.order_id || order.orderNumber || trackingNumber || '';
       const receiverName = order.receiverName || order.receiver_name || order.customerName || order.customer_name || 'Customer';
       const codAmount = order.codAmount !== undefined ? order.codAmount : (order.cod_amount !== undefined ? order.cod_amount : (order.amount || 0));
       const companyName = 'RTC Courier';
+      const trackingLink = `https://rtccourrier.pages.dev/track?track=${encodeURIComponent(trackingNumber || orderId)}`;
 
       const payloadData = {
         receiver_name: receiverName,
         tracking_number: trackingNumber,
+        order_id: orderId,
+        tracking_link: trackingLink,
         cod_amount: `Rs. ${codAmount}`,
         company_name: companyName,
       };
@@ -46,15 +50,19 @@ export const smsService = {
       if (!recipient) return;
 
       const trackingNumber = order.trackingNumber || order.tracking_number || order.orderNumber || order.id || '';
+      const orderId = order.id || order.orderId || order.order_id || order.orderNumber || trackingNumber || '';
       const receiverName = order.receiverName || order.receiver_name || order.customerName || order.customer_name || 'Customer';
       const codAmount = order.codAmount !== undefined ? order.codAmount : (order.cod_amount !== undefined ? order.cod_amount : (order.amount || 0));
       const riderName = riderInfo?.name || riderInfo?.riderName || riderInfo?.rider_name || 'our delivery rider';
       const riderPhone = riderInfo?.phone || riderInfo?.mobile || riderInfo?.riderPhone || riderInfo?.rider_phone || '';
       const companyName = 'RTC Courier';
+      const trackingLink = `https://rtccourrier.pages.dev/track?track=${encodeURIComponent(trackingNumber || orderId)}`;
 
       const payloadData = {
         receiver_name: receiverName,
         tracking_number: trackingNumber,
+        order_id: orderId,
+        tracking_link: trackingLink,
         cod_amount: `Rs. ${codAmount}`,
         rider_name: riderName,
         rider_phone: riderPhone ? `(${riderPhone})` : '',
@@ -84,12 +92,16 @@ export const smsService = {
       if (!recipient) return;
 
       const trackingNumber = order.trackingNumber || order.tracking_number || order.orderNumber || order.id || '';
+      const orderId = order.id || order.orderId || order.order_id || order.orderNumber || trackingNumber || '';
       const receiverName = order.receiverName || order.receiver_name || order.customerName || order.customer_name || 'Customer';
       const companyName = 'RTC Courier';
+      const trackingLink = `https://rtccourrier.pages.dev/track?track=${encodeURIComponent(trackingNumber || orderId)}`;
 
       const payloadData = {
         receiver_name: receiverName,
         tracking_number: trackingNumber,
+        order_id: orderId,
+        tracking_link: trackingLink,
         company_name: companyName,
       };
 
@@ -116,12 +128,16 @@ export const smsService = {
       if (!recipient) return;
 
       const trackingNumber = order.trackingNumber || order.tracking_number || order.orderNumber || order.id || '';
+      const orderId = order.id || order.orderId || order.order_id || order.orderNumber || trackingNumber || '';
       const receiverName = order.receiverName || order.receiver_name || order.customerName || order.customer_name || 'Customer';
       const companyName = 'RTC Courier';
+      const trackingLink = `https://rtccourrier.pages.dev/track?track=${encodeURIComponent(trackingNumber || orderId)}`;
 
       const payloadData = {
         receiver_name: receiverName,
         tracking_number: trackingNumber,
+        order_id: orderId,
+        tracking_link: trackingLink,
         company_name: companyName,
       };
 

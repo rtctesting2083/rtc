@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { BookOpen, RefreshCw, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { d1Api } from '../../utils/d1Api';
 
 export function CustomerAddressBookPage() {
@@ -157,6 +158,26 @@ export function CustomerAddressBookPage() {
     });
     return Array.from(set).sort();
   }, [data, selectedProvince, selectedDistrict]);
+
+  const provinceOptions = useMemo(() => [
+    { value: '', label: 'Select Province (All)' },
+    ...uniqueProvinces.map((p) => ({ value: p, label: p })),
+  ], [uniqueProvinces]);
+
+  const districtOptions = useMemo(() => [
+    { value: '', label: 'Select District (All)' },
+    ...uniqueDistricts.map((d) => ({ value: d, label: d })),
+  ], [uniqueDistricts]);
+
+  const locationOptions = useMemo(() => [
+    { value: '', label: 'Select Location (All)' },
+    ...uniqueLocations.map((loc) => ({ value: loc, label: loc })),
+  ], [uniqueLocations]);
+
+  const hubOptions = useMemo(() => [
+    { value: '', label: 'Select Hub (All)' },
+    ...uniqueHubs.map((h) => ({ value: h, label: h })),
+  ], [uniqueHubs]);
 
   // Filtered & Sorted Data
   const filteredData = useMemo(() => {
@@ -330,32 +351,17 @@ export function CustomerAddressBookPage() {
             >
               Districts
             </label>
-            <select
+            <SearchableSelect
               value={selectedDistrict}
-              onChange={(e) => {
-                setSelectedDistrict(e.target.value);
+              onChange={(val) => {
+                setSelectedDistrict(val || '');
                 setCurrentPage(1);
               }}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                borderRadius: '6px',
-                border: '1px solid var(--border-color, #cbd5e1)',
-                background: 'var(--card-bg, #ffffff)',
-                color: selectedDistrict ? 'var(--text-main, #1e293b)' : '#94a3b8',
-                fontSize: '13px',
-                outline: 'none',
-                boxSizing: 'border-box',
-                cursor: 'pointer',
-              }}
-            >
-              <option value="">Select District</option>
-              {uniqueDistricts.map((d) => (
-                <option key={d} value={d} style={{ color: '#1e293b' }}>
-                  {d}
-                </option>
-              ))}
-            </select>
+              options={districtOptions}
+              placeholder="Select District (All)"
+              searchPlaceholder="Search district..."
+              height="38px"
+            />
           </div>
 
           {/* 3. Province */}
@@ -371,32 +377,17 @@ export function CustomerAddressBookPage() {
             >
               Province
             </label>
-            <select
+            <SearchableSelect
               value={selectedProvince}
-              onChange={(e) => {
-                setSelectedProvince(e.target.value);
+              onChange={(val) => {
+                setSelectedProvince(val || '');
                 setCurrentPage(1);
               }}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                borderRadius: '6px',
-                border: '1px solid var(--border-color, #cbd5e1)',
-                background: 'var(--card-bg, #ffffff)',
-                color: selectedProvince ? 'var(--text-main, #1e293b)' : '#94a3b8',
-                fontSize: '13px',
-                outline: 'none',
-                boxSizing: 'border-box',
-                cursor: 'pointer',
-              }}
-            >
-              <option value="">Select Province</option>
-              {uniqueProvinces.map((p) => (
-                <option key={p} value={p} style={{ color: '#1e293b' }}>
-                  {p}
-                </option>
-              ))}
-            </select>
+              options={provinceOptions}
+              placeholder="Select Province (All)"
+              searchPlaceholder="Search province..."
+              height="38px"
+            />
           </div>
 
           {/* 4. Locations */}
@@ -412,32 +403,17 @@ export function CustomerAddressBookPage() {
             >
               Locations
             </label>
-            <select
+            <SearchableSelect
               value={selectedLocation}
-              onChange={(e) => {
-                setSelectedLocation(e.target.value);
+              onChange={(val) => {
+                setSelectedLocation(val || '');
                 setCurrentPage(1);
               }}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                borderRadius: '6px',
-                border: '1px solid var(--border-color, #cbd5e1)',
-                background: 'var(--card-bg, #ffffff)',
-                color: selectedLocation ? 'var(--text-main, #1e293b)' : '#94a3b8',
-                fontSize: '13px',
-                outline: 'none',
-                boxSizing: 'border-box',
-                cursor: 'pointer',
-              }}
-            >
-              <option value="">Select Location</option>
-              {uniqueLocations.map((loc) => (
-                <option key={loc} value={loc} style={{ color: '#1e293b' }}>
-                  {loc}
-                </option>
-              ))}
-            </select>
+              options={locationOptions}
+              placeholder="Select Location (All)"
+              searchPlaceholder="Search location..."
+              height="38px"
+            />
           </div>
 
           {/* 5. Hubs */}
@@ -453,32 +429,18 @@ export function CustomerAddressBookPage() {
             >
               Hubs
             </label>
-            <select
+            <SearchableSelect
               value={selectedHub}
-              onChange={(e) => {
-                setSelectedHub(e.target.value);
+              onChange={(val) => {
+                setSelectedHub(val || '');
                 setCurrentPage(1);
               }}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                borderRadius: '6px',
-                border: '1px solid var(--border-color, #cbd5e1)',
-                background: 'var(--card-bg, #ffffff)',
-                color: selectedHub ? 'var(--text-main, #1e293b)' : '#94a3b8',
-                fontSize: '13px',
-                outline: 'none',
-                boxSizing: 'border-box',
-                cursor: 'pointer',
-              }}
-            >
-              <option value="">Select Hub</option>
-              {uniqueHubs.map((h) => (
-                <option key={h} value={h} style={{ color: '#1e293b' }}>
-                  {h}
-                </option>
-              ))}
-            </select>
+              options={hubOptions}
+              placeholder="Select Hub (All)"
+              searchPlaceholder="Search hub..."
+              height="38px"
+              minDropdownWidth="260px"
+            />
           </div>
 
           {/* 6. Clear Button */}

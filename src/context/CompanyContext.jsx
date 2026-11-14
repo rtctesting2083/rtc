@@ -1363,65 +1363,77 @@ export function CompanyProvider({ children }) {
   };
 
   // Branches
-  const addBranch = (branchPayload) => {
-    // 1. Optimistic local state update
+  const addBranch = async (branchPayload) => {
     let tempId;
+    const cid = companyId ? Number(companyId) : 1;
+
+    const sanitizedPayload = {
+      company_id: cid,
+      name: branchPayload.name,
+      name_np: branchPayload.name_np || null,
+      branch_code: branchPayload.branch_code || '',
+      tier: branchPayload.tier || 'MUNICIPALITY_BRANCH',
+      model_type: branchPayload.model_type || 'OWNED',
+      parent_branch_id: branchPayload.parent_branch_id ? Number(branchPayload.parent_branch_id) : null,
+      phone: branchPayload.phone,
+      email: branchPayload.email || '',
+      contact_person: branchPayload.contact_person || '',
+      password: branchPayload.password,
+      province_id: branchPayload.province_id ? Number(branchPayload.province_id) : null,
+      district_id: branchPayload.district_id ? Number(branchPayload.district_id) : null,
+      local_level_id: branchPayload.local_level_id ? Number(branchPayload.local_level_id) : null,
+      ward_number: branchPayload.ward_number ? Number(branchPayload.ward_number) : null,
+      address: branchPayload.address || {},
+      province: branchPayload.address?.province || branchPayload.province || '',
+      district: branchPayload.address?.district || branchPayload.district || '',
+      municipality: branchPayload.address?.municipality || branchPayload.municipality || '',
+      staffRoles: branchPayload.staffRoles || [],
+      staffUsers: branchPayload.staffUsers || [],
+      verified: true,
+      verification_status: 'verified',
+      status: branchPayload.status || 'active',
+    };
+
+    // 1. Optimistic local state update
     updateData((prev) => {
       const id = prev.nextId.branch;
       tempId = id;
       const newBranch = {
+        ...sanitizedPayload,
         id,
-        name: branchPayload.name,
-        phone: branchPayload.phone,
-        email: branchPayload.email || '',
-        contact_person: branchPayload.contact_person || '',
-        password: branchPayload.password,
-        address: branchPayload.address || {},
-        staffRoles: branchPayload.staffRoles || [],
-        staffUsers: branchPayload.staffUsers || [],
+        branch_code: sanitizedPayload.branch_code || `RTC-BR-${String(id).padStart(3, '0')}`,
         staffNextId: { role: 1, user: 1 },
-        verified: false,
-        verification_status: 'pending',
-        status: 'pending_verification',
       };
       return {
         ...prev,
         nextId: { ...prev.nextId, branch: id + 1 },
         branches: [...(prev.branches || []), newBranch],
+        allBranches: [...(prev.allBranches || []), newBranch],
       };
     });
 
     // 2. Persist to Cloudflare D1 table 'branches'
-    if (companyId) {
-      d1Api.addBranch({
-        company_id: Number(companyId),
-        name: branchPayload.name,
-        phone: branchPayload.phone,
-        email: branchPayload.email || '',
-        contact_person: branchPayload.contact_person || '',
-        password: branchPayload.password,
-        address: branchPayload.address || {},
-        staffRoles: branchPayload.staffRoles || [],
-        staffUsers: branchPayload.staffUsers || [],
-        verified: false,
-        verification_status: 'pending',
-        status: 'pending_verification',
-      }).then((res) => {
-        if (res && res.id) {
-          updateData((prev) => ({
-            ...prev,
-            branches: (prev.branches || []).map((b) =>
-              b.id === tempId ? { ...b, id: res.id } : b
-            ),
-          }));
-        }
-      }).catch((err) => {
-        console.warn('Failed to save branch to D1:', err);
-      });
+    try {
+      const res = await d1Api.addBranch(sanitizedPayload);
+      if (res && res.id) {
+        updateData((prev) => ({
+          ...prev,
+          branches: (prev.branches || []).map((b) =>
+            b.id === tempId ? { ...b, id: res.id, branch_code: res.branch_code || b.branch_code } : b
+          ),
+          allBranches: (prev.allBranches || []).map((b) =>
+            b.id === tempId ? { ...b, id: res.id, branch_code: res.branch_code || b.branch_code } : b
+          ),
+        }));
+      }
+      return res;
+    } catch (err) {
+      console.warn('Failed to save branch to D1:', err);
+      throw err;
     }
   };
 
-  const updateBranch = (id, updates) => {
+  const updateBranch = async (id, updates) => {
     // If request originates from branch session, disallow editing core verified branch info
     if (session?.type === 'branch' && !session?.viewingBranchAsAdmin) {
       const existing = (data?.branches || []).find((b) => b.id === Number(id));
@@ -1429,26 +1441,35 @@ export function CompanyProvider({ children }) {
         const restricted = ['name', 'phone', 'email', 'contact_person', 'address', 'password', 'code'];
         const touchesRestricted = restricted.some((f) => updates[f] !== undefined);
         if (touchesRestricted) {
-          console.warn('Branch cannot modify verified branch profile info');
-          return;
+          throw new Error('Branch cannot modify verified branch profile info');
         }
       }
     }
 
+    const sanitizedUpdates = {
+      ...updates,
+      company_id: companyId ? Number(companyId) : 1,
+      parent_branch_id: updates.parent_branch_id !== undefined ? (updates.parent_branch_id ? Number(updates.parent_branch_id) : null) : undefined,
+      province_id: updates.province_id !== undefined ? (updates.province_id ? Number(updates.province_id) : null) : undefined,
+      district_id: updates.district_id !== undefined ? (updates.district_id ? Number(updates.district_id) : null) : undefined,
+      local_level_id: updates.local_level_id !== undefined ? (updates.local_level_id ? Number(updates.local_level_id) : null) : undefined,
+      ward_number: updates.ward_number !== undefined ? (updates.ward_number ? Number(updates.ward_number) : null) : undefined,
+    };
+
     // 1. Optimistic local state update
     updateData((prev) => ({
       ...prev,
-      branches: prev.branches.map((b) => (b.id === Number(id) ? { ...b, ...updates } : b)),
+      branches: (prev.branches || []).map((b) => (b.id === Number(id) ? { ...b, ...sanitizedUpdates } : b)),
+      allBranches: (prev.allBranches || []).map((b) => (b.id === Number(id) ? { ...b, ...sanitizedUpdates } : b)),
     }));
 
     // 2. Persist to Cloudflare D1 table 'branches'
-    if (companyId) {
-      d1Api.updateBranch(id, {
-        company_id: Number(companyId),
-        ...updates,
-      }).catch((err) => {
-        console.warn('Failed to update branch in D1:', err);
-      });
+    try {
+      const res = await d1Api.updateBranch(id, sanitizedUpdates);
+      return res;
+    } catch (err) {
+      console.warn('Failed to update branch in D1:', err);
+      throw err;
     }
   };
 

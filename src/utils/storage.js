@@ -281,6 +281,20 @@ export function loadCompanyState(companyId) {
           needsSave = true;
         }
       }
+      // Ensure all registered branches are verified
+      if (parsed.branches && parsed.branches.length > 0) {
+        let branchFix = false;
+        parsed.branches = parsed.branches.map((b) => {
+          if (b.verified === false || b.verification_status === 'pending' || b.verified === 0) {
+            branchFix = true;
+            return { ...b, verified: true, verification_status: 'verified' };
+          }
+          return b;
+        });
+        if (branchFix) {
+          needsSave = true;
+        }
+      }
       if (needsSave) {
         localStorage.setItem(key, JSON.stringify(parsed));
       }

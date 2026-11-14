@@ -4,6 +4,7 @@ import { useCompany } from '../../context/CompanyContext';
 import { StatStrip } from '../../components/common/StatStrip';
 import { StatusPill } from '../../components/common/StatusPill';
 import { fmtMoney, fmtDate } from '../../utils/helpers';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { FileText, TrendingUp, Map, BarChart3 } from 'lucide-react';
 
 export function CompanyShipmentReportPage({ view }) {
@@ -25,6 +26,43 @@ export function CompanyShipmentReportPage({ view }) {
   const [branchFilter, setBranchFilter] = useState('');
   const [riderFilter, setRiderFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+
+  const typeFilterOptions = useMemo(() => [
+    { value: '', label: 'All types' },
+    { value: 'walk_in', label: 'Walk-in Customers' },
+    { value: 'vendor', label: 'Vendors' },
+  ], []);
+
+  const branchFilterOptions = useMemo(() => [
+    { value: '', label: 'All branches' },
+    ...branches.map((b) => ({
+      value: String(b.id),
+      label: b.name,
+      subtext: b.branch_code ? `(${b.branch_code})` : (b.district ? `(${b.district})` : null),
+    })),
+  ], [branches]);
+
+  const riderFilterOptions = useMemo(() => [
+    { value: '', label: 'All riders' },
+    ...couriers.map((c) => ({
+      value: String(c.id),
+      label: c.name,
+      subtext: c.phone ? `(${c.phone})` : null,
+    })),
+  ], [couriers]);
+
+  const statusFilterOptions = useMemo(() => [
+    { value: '', label: 'All statuses' },
+    { value: 'delivered', label: 'Delivered' },
+    { value: 'out_for_delivery', label: 'Out for Delivery' },
+    { value: 'in_transit', label: 'In Transit' },
+    { value: 'picked_up', label: 'Picked Up' },
+    { value: 'assigned', label: 'Assigned' },
+    { value: 'pending', label: 'Pending' },
+    { value: 'failed', label: 'Failed' },
+    { value: 'returned', label: 'Returned' },
+    { value: 'cancelled', label: 'Cancelled' },
+  ], []);
 
   const filtered = useMemo(() => {
     return shipments.filter((s) => {
@@ -157,59 +195,60 @@ export function CompanyShipmentReportPage({ view }) {
 
       <div className="panel" style={{ padding: '16px', marginBottom: '20px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
-          <label>
-            Type
-            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-              <option value="">All types</option>
-              <option value="walk_in">Walk-in Customers</option>
-              <option value="vendor">Vendors</option>
-            </select>
-          </label>
-          <label>
-            Start Date
-            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-          </label>
-          <label>
-            End Date
-            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-          </label>
-          <label>
-            Branch
-            <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}>
-              <option value="">All branches</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Rider
-            <select value={riderFilter} onChange={(e) => setRiderFilter(e.target.value)}>
-              <option value="">All riders</option>
-              {couriers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Status
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              <option value="">All statuses</option>
-              <option value="delivered">Delivered</option>
-              <option value="out_for_delivery">Out for Delivery</option>
-              <option value="in_transit">In Transit</option>
-              <option value="picked_up">Picked Up</option>
-              <option value="assigned">Assigned</option>
-              <option value="pending">Pending</option>
-              <option value="failed">Failed</option>
-              <option value="returned">Returned</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-          </label>
+          <div>
+            <span style={{ fontSize: '11px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>Type</span>
+            <SearchableSelect
+              value={typeFilter}
+              onChange={(val) => setTypeFilter(val || '')}
+              options={typeFilterOptions}
+              placeholder="All types"
+              searchPlaceholder="Search type..."
+              height="36px"
+            />
+          </div>
+          <div>
+            <span style={{ fontSize: '11px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>Start Date</span>
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={{ width: '100%', height: '36px', padding: '6px 10px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
+          </div>
+          <div>
+            <span style={{ fontSize: '11px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>End Date</span>
+            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={{ width: '100%', height: '36px', padding: '6px 10px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
+          </div>
+          <div>
+            <span style={{ fontSize: '11px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>Branch</span>
+            <SearchableSelect
+              value={branchFilter}
+              onChange={(val) => setBranchFilter(val || '')}
+              options={branchFilterOptions}
+              placeholder="All branches"
+              searchPlaceholder="Search branch..."
+              height="36px"
+              minDropdownWidth="240px"
+            />
+          </div>
+          <div>
+            <span style={{ fontSize: '11px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>Rider</span>
+            <SearchableSelect
+              value={riderFilter}
+              onChange={(val) => setRiderFilter(val || '')}
+              options={riderFilterOptions}
+              placeholder="All riders"
+              searchPlaceholder="Search rider..."
+              height="36px"
+              minDropdownWidth="200px"
+            />
+          </div>
+          <div>
+            <span style={{ fontSize: '11px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>Status</span>
+            <SearchableSelect
+              value={statusFilter}
+              onChange={(val) => setStatusFilter(val || '')}
+              options={statusFilterOptions}
+              placeholder="All statuses"
+              searchPlaceholder="Search status..."
+              height="36px"
+            />
+          </div>
         </div>
       </div>
 

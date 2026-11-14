@@ -9,6 +9,7 @@ import { OrderCommentsModal } from '../../components/common/OrderCommentsSection
 import { NewShipmentModal } from '../../components/company/NewShipmentModal';
 import { AssignRiderModal } from '../../components/company/AssignRiderModal';
 import { ForwardShipmentModal } from '../../components/company/ForwardShipmentModal';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { printShipmentLabel } from '../../utils/print';
 import {
   fmtMoney,
@@ -42,6 +43,58 @@ export function BranchShipmentsPage() {
   const [search, setSearch] = useState('');
   const [clientTypeFilter, setClientTypeFilter] = useState('all'); // 'all' | 'walk_in' | 'vendor'
   const [statusFilter, setStatusFilter] = useState('all');
+  const [destBranchFilter, setDestBranchFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [datePreset, setDatePreset] = useState('');
+
+  // Draft filter states for the filter bar
+  const [draftSearch, setDraftSearch] = useState('');
+  const [draftClientType, setDraftClientType] = useState('all');
+  const [draftStatus, setDraftStatus] = useState('all');
+  const [draftDestBranch, setDraftDestBranch] = useState('all');
+
+  const destBranchOptions = useMemo(() => {
+    return [
+      { value: 'all', label: 'All Destination Branches' },
+      ...(branches || [])
+        .filter((b) => b && b.status !== 'inactive' && b.status !== 'disabled')
+        .map((b) => ({
+          value: String(b.id),
+          label: b.name,
+          subtext: b.branch_code ? `(${b.branch_code})` : (b.district ? `(${b.district})` : null),
+        })),
+    ];
+  }, [branches]);
+
+  const shipmentStatusOptions = useMemo(() => [
+    { value: 'all', label: 'All Statuses' },
+    { value: 'pending', label: 'Pending' },
+    { value: 'pickup_requested', label: 'Pickup Requested' },
+    { value: 'assigned', label: 'Pickup Assigned' },
+    { value: 'picked_up', label: 'Picked Up (Inbound)' },
+    { value: 'received_at_branch', label: 'Received at Hub' },
+    { value: 'in_transit', label: 'In Transit (Dispatched)' },
+    { value: 'out_for_delivery', label: 'Out for Delivery' },
+    { value: 'delivered', label: 'Delivered' },
+    { value: 'cancelled', label: 'Cancelled' },
+  ], []);
+
+  const clientTypeOptions = useMemo(() => [
+    { value: 'all', label: 'All Types' },
+    { value: 'walk_in', label: '🚶 Walk-in' },
+    { value: 'vendor', label: '🏢 Registered Vendor' },
+  ], []);
+
+  const timePeriodOptions = useMemo(() => [
+    { value: 'all_time', label: 'All Time' },
+    { value: 'today', label: 'Today' },
+    { value: 'yesterday', label: 'Yesterday' },
+    { value: 'this_week', label: 'This Week' },
+    { value: 'last_7_days', label: 'Last 7 Days' },
+    { value: 'this_month', label: 'This Month' },
+    { value: 'last_30_days', label: 'Last 30 Days' },
+  ], []);
 
   // Pickup Requests state from D1
   const [pickupRequests, setPickupRequests] = useState([]);
@@ -65,6 +118,7 @@ export function BranchShipmentsPage() {
   }, [currentBranch?.id]);
 
   const branchShipments = useMemo(() => {
+    if (!currentBranch?.id) return [];
     return (shipments || []).filter((s) => {
       // Physically at branch or originated by branch
       const isHere = s.current_branch_id === currentBranch.id || s.branch_id === currentBranch.id;
@@ -96,7 +150,7 @@ export function BranchShipmentsPage() {
       }
       return true;
     });
-  }, [shipments, currentBranch.id, search, clientTypeFilter, statusFilter, destBranchFilter, startDate, endDate, findCustomer]);
+  }, [shipments, currentBranch?.id, search, clientTypeFilter, statusFilter, destBranchFilter, startDate, endDate, findCustomer]);
 
   const allSelected = branchShipments.length > 0 && branchShipments.every((s) => selectedIds.includes(s.id));
 
@@ -275,16 +329,6 @@ export function BranchShipmentsPage() {
       chargeSettings: chargeSettings ? chargeSettings() : null,
     });
   };
-
-    // Filter states
-  const [draftSearch, setDraftSearch] = useState('');
-  const [draftClientType, setDraftClientType] = useState('all');
-  const [draftStatus, setDraftStatus] = useState('all');
-  const [draftDestBranch, setDraftDestBranch] = useState('all');
-  const [destBranchFilter, setDestBranchFilter] = useState('all');
-  const [datePreset, setDatePreset] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
 
   // ── Compute 4 Metric Summary Cards matching Riders Page ──
   const branchOrderMetrics = useMemo(() => {
@@ -983,31 +1027,15 @@ export function BranchShipmentsPage() {
                   >
                     Destination Branch
                   </label>
-                  <select
+                  <SearchableSelect
                     value={draftDestBranch}
-                    onChange={(e) => setDraftDestBranch(e.target.value)}
-                    style={{
-                      width: '100%',
-                      height: '38px',
-                      padding: '0 10px',
-                      borderRadius: '6px',
-                      border: '1px solid #cbd5e1',
-                      fontSize: '12.5px',
-                      color: '#1e293b',
-                      background: '#ffffff',
-                      fontWeight: 500,
-                      outline: 'none',
-                    }}
-                  >
-                    <option value="all">All Branches</option>
-                    {(branches || [])
-                      .filter((b) => b && b.status !== 'inactive' && b.status !== 'disabled')
-                      .map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.name}
-                        </option>
-                      ))}
-                  </select>
+                    onChange={(val) => setDraftDestBranch(val)}
+                    options={destBranchOptions}
+                    placeholder="All Destination Branches"
+                    searchPlaceholder="Search destination branch..."
+                    height="38px"
+                    minDropdownWidth="260px"
+                  />
                 </div>
 
                 {/* 2. Shipment Status Dropdown */}
@@ -1025,33 +1053,14 @@ export function BranchShipmentsPage() {
                   >
                     Status
                   </label>
-                  <select
+                  <SearchableSelect
                     value={draftStatus}
-                    onChange={(e) => setDraftStatus(e.target.value)}
-                    style={{
-                      width: '100%',
-                      height: '38px',
-                      padding: '0 10px',
-                      borderRadius: '6px',
-                      border: '1px solid #cbd5e1',
-                      fontSize: '12.5px',
-                      color: '#1e293b',
-                      background: '#ffffff',
-                      fontWeight: 500,
-                      outline: 'none',
-                    }}
-                  >
-                    <option value="all">All Statuses</option>
-                    <option value="pending">Pending</option>
-                    <option value="pickup_requested">Pickup Requested</option>
-                    <option value="assigned">Pickup Assigned</option>
-                    <option value="picked_up">Picked Up (Inbound)</option>
-                    <option value="received_at_branch">Received at Hub</option>
-                    <option value="in_transit">In Transit (Dispatched)</option>
-                    <option value="out_for_delivery">Out for Delivery</option>
-                    <option value="delivered">Delivered</option>
-                    <option value="cancelled">Cancelled</option>
-                  </select>
+                    onChange={(val) => setDraftStatus(val)}
+                    options={shipmentStatusOptions}
+                    placeholder="All Statuses"
+                    searchPlaceholder="Search status..."
+                    height="38px"
+                  />
                 </div>
 
                 {/* 3. Customer Type Dropdown */}
@@ -1069,26 +1078,14 @@ export function BranchShipmentsPage() {
                   >
                     Client Type
                   </label>
-                  <select
+                  <SearchableSelect
                     value={draftClientType}
-                    onChange={(e) => setDraftClientType(e.target.value)}
-                    style={{
-                      width: '100%',
-                      height: '38px',
-                      padding: '0 10px',
-                      borderRadius: '6px',
-                      border: '1px solid #cbd5e1',
-                      fontSize: '12.5px',
-                      color: '#1e293b',
-                      background: '#ffffff',
-                      fontWeight: 500,
-                      outline: 'none',
-                    }}
-                  >
-                    <option value="all">All Types</option>
-                    <option value="walk_in">🚶 Walk-in</option>
-                    <option value="vendor">🏢 Registered Vendor</option>
-                  </select>
+                    onChange={(val) => setDraftClientType(val)}
+                    options={clientTypeOptions}
+                    placeholder="All Types"
+                    searchPlaceholder="Search type..."
+                    height="38px"
+                  />
                 </div>
 
                 {/* 4. Time Period Dropdown */}
@@ -1106,10 +1103,9 @@ export function BranchShipmentsPage() {
                   >
                     Time Period
                   </label>
-                  <select
-                    value={datePreset}
-                    onChange={(e) => {
-                      const val = e.target.value;
+                  <SearchableSelect
+                    value={datePreset || 'all_time'}
+                    onChange={(val) => {
                       setDatePreset(val);
                       if (val === 'all_time' || !val) {
                         setStartDate('');
@@ -1118,27 +1114,11 @@ export function BranchShipmentsPage() {
                         applyPreset(val);
                       }
                     }}
-                    style={{
-                      width: '100%',
-                      height: '38px',
-                      padding: '0 10px',
-                      borderRadius: '6px',
-                      border: '1px solid #cbd5e1',
-                      fontSize: '12.5px',
-                      color: '#1e293b',
-                      background: '#ffffff',
-                      fontWeight: 500,
-                      outline: 'none',
-                    }}
-                  >
-                    <option value="">All Time</option>
-                    <option value="today">Today</option>
-                    <option value="yesterday">Yesterday</option>
-                    <option value="last_7_days">Last 7 Days</option>
-                    <option value="this_week">This Week</option>
-                    <option value="this_month">This Month</option>
-                    <option value="last_30_days">Last 30 Days</option>
-                  </select>
+                    options={timePeriodOptions}
+                    placeholder="All Time"
+                    searchPlaceholder="Search period..."
+                    height="38px"
+                  />
                 </div>
 
                 {/* 5. Search Keyword Input */}

@@ -24,6 +24,12 @@ export function RiderFormModal({ initialRider = null, onDone = null, defaultBran
   const [address, setAddress] = useState(initialRider?.address || emptyAddress());
   const [photo, setPhoto] = useState(initialRider?.photo || null);
   const [licensePhoto, setLicensePhoto] = useState(initialRider?.license_photo || null);
+  const [compensationType, setCompensationType] = useState(initialRider?.compensation_type || 'COMMISSION');
+  const [baseSalary, setBaseSalary] = useState(initialRider?.base_salary ?? '');
+  const [commissionRate, setCommissionRate] = useState(initialRider?.commission_rate ?? '15');
+  const [dutyStatus, setDutyStatus] = useState(initialRider?.duty_status || 'AVAILABLE');
+  const [drivingLicenseNumber, setDrivingLicenseNumber] = useState(initialRider?.driving_license_number || '');
+  const [vehiclePlateNumber, setVehiclePlateNumber] = useState(initialRider?.vehicle_plate_number || '');
   const [error, setError] = useState('');
 
   const handleSubmit = (e) => {
@@ -50,6 +56,12 @@ export function RiderFormModal({ initialRider = null, onDone = null, defaultBran
       password,
       vehicle_type: vehicleType,
       branch_id: branchId ? Number(branchId) : null,
+      compensation_type: compensationType,
+      base_salary: compensationType === 'SALARY' ? Number(baseSalary || 0) : 0,
+      commission_rate: compensationType === 'COMMISSION' ? Number(commissionRate || 0) : 0,
+      duty_status: dutyStatus,
+      driving_license_number: drivingLicenseNumber.trim(),
+      vehicle_plate_number: vehiclePlateNumber.trim(),
       address,
       photo,
       license_photo: licensePhoto,
@@ -194,6 +206,75 @@ export function RiderFormModal({ initialRider = null, onDone = null, defaultBran
           </select>
         </label>
       )}
+
+      <div className="form-section-divider">💰 Compensation & Fleet Information</div>
+      <div className="form-row">
+        <label>
+          Compensation Model *
+          <select value={compensationType} onChange={(e) => setCompensationType(e.target.value)}>
+            <option value="COMMISSION">Commission-Based (% per delivery)</option>
+            <option value="SALARY">Fixed Monthly Salary (NPR)</option>
+          </select>
+        </label>
+        {compensationType === 'SALARY' ? (
+          <label>
+            Base Monthly Salary (NPR) *
+            <input
+              type="number"
+              min="0"
+              step="500"
+              placeholder="e.g. 25000"
+              value={baseSalary}
+              onChange={(e) => setBaseSalary(e.target.value)}
+              required
+            />
+          </label>
+        ) : (
+          <label>
+            Commission Rate (%) *
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.5"
+              placeholder="e.g. 15"
+              value={commissionRate}
+              onChange={(e) => setCommissionRate(e.target.value)}
+              required
+            />
+          </label>
+        )}
+      </div>
+
+      <div className="form-row">
+        <label>
+          Operational Duty Status
+          <select value={dutyStatus} onChange={(e) => setDutyStatus(e.target.value)}>
+            <option value="AVAILABLE">Available for Deliveries</option>
+            <option value="ON_TRIP">On Delivery Trip</option>
+            <option value="OFF_DUTY">Off Duty / Break</option>
+            <option value="ON_LEAVE">On Leave</option>
+          </select>
+        </label>
+        <label>
+          Driving License No.
+          <input
+            type="text"
+            placeholder="01-06-XXXXXXXX"
+            value={drivingLicenseNumber}
+            onChange={(e) => setDrivingLicenseNumber(e.target.value)}
+          />
+        </label>
+        <label>
+          Vehicle Plate / Number
+          <input
+            type="text"
+            placeholder="Ba 92 Pa XXXX"
+            value={vehiclePlateNumber}
+            onChange={(e) => setVehiclePlateNumber(e.target.value)}
+          />
+        </label>
+      </div>
 
       <div className="form-section-divider">📍 Residential Address</div>
       <AddressFields value={address} onChange={setAddress} />
