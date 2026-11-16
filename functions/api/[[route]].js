@@ -9781,11 +9781,14 @@ export async function onRequest(context) {
             retention_days_applied: retentionDays,
           });
         }
+      }
 
-        // =====================================================================
-        // SECTION 13-B: NCM (NEPAL CAN MOVE) 3PL WEBHOOK & INTEGRATION MODULE
-        // Isolated, non-disruptive, guaranteed < 10s response, full audit trail
-        // =====================================================================
+      // =====================================================================
+      // SECTION 13-B: NCM (NEPAL CAN MOVE) 3PL WEBHOOK & INTEGRATION MODULE
+      // Isolated, non-disruptive, guaranteed < 10s response, full audit trail
+      // =====================================================================
+      if (path.startsWith('webhooks/ncm/') || path.startsWith('admin/settings/ncm') || path.startsWith('admin/ncm/')) {
+        const companyId = Number(url.searchParams.get('company_id') || 1);
 
         // Helper: Validate Webhook Secret Token
         async function verifyNcmToken(req, reqUrl, dbInst) {
