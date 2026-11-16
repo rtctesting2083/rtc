@@ -9318,23 +9318,27 @@ export async function onRequest(context) {
 
         // 2. GET /api/admin/gps/live (Fleet overview with branch, rider & order data)
         if (path === 'admin/gps/live' && method === 'GET') {
-          const branchId = url.searchParams.get('branch_id');
-          const dutyStatus = url.searchParams.get('duty_status');
-          const riderId = url.searchParams.get('rider_id');
+          const rawBranchId = url.searchParams.get('branch_id');
+          const rawDutyStatus = url.searchParams.get('duty_status');
+          const rawRiderId = url.searchParams.get('rider_id');
+
+          const branchId = rawBranchId && rawBranchId !== 'all' && rawBranchId !== 'undefined' && !isNaN(Number(rawBranchId)) ? Number(rawBranchId) : null;
+          const dutyStatus = rawDutyStatus && rawDutyStatus !== 'all' && rawDutyStatus !== 'undefined' ? rawDutyStatus : null;
+          const riderId = rawRiderId && rawRiderId !== 'all' && rawRiderId !== 'undefined' && !isNaN(Number(rawRiderId)) ? Number(rawRiderId) : null;
 
           let query = `
             SELECT 
-              l.rider_id,
-              l.company_id,
-              l.branch_id,
+              r.id as rider_id,
+              r.company_id,
+              COALESCE(l.branch_id, r.branch_id) as branch_id,
               l.active_shipment_id,
               l.latitude,
               l.longitude,
-              l.speed_kmh,
+              COALESCE(l.speed_kmh, 0) as speed_kmh,
               l.heading,
               l.accuracy_meters,
               l.battery_level,
-              l.duty_status,
+              COALESCE(l.duty_status, r.duty_status, 'OFFLINE') as duty_status,
               l.last_ping_at,
               r.name as rider_name,
               r.phone as rider_phone,
@@ -9348,28 +9352,36 @@ export async function onRequest(context) {
               s.receiver_name as active_recipient_name,
               s.status as active_shipment_status,
               ROUND((JULIANDAY('now') - JULIANDAY(l.last_ping_at)) * 1440, 1) as minutes_since_ping
-            FROM rider_live_locations l
-            LEFT JOIN riders r ON l.rider_id = r.id
-            LEFT JOIN branches b ON l.branch_id = b.id
+            FROM riders r
+            LEFT JOIN rider_live_locations l ON r.id = l.rider_id
+            LEFT JOIN branches b ON COALESCE(l.branch_id, r.branch_id) = b.id
             LEFT JOIN shipments s ON l.active_shipment_id = s.id
-            WHERE l.company_id = ?
+            WHERE r.company_id = ? AND r.active = 1
           `;
           const params = [companyId];
 
-          if (branchId && branchId !== 'all') {
-            query += ' AND l.branch_id = ?';
-            params.push(Number(branchId));
+          if (branchId) {
+            query += ' AND COALESCE(l.branch_id, r.branch_id) = ?';
+            params.push(branchId);
           }
-          if (dutyStatus && dutyStatus !== 'all') {
-            query += ' AND l.duty_status = ?';
-            params.push(dutyStatus);
+          if (dutyStatus) {
+            const upper = dutyStatus.toUpperCase();
+            if (upper === 'ON_DELIVERY') {
+              query += " AND l.duty_status = 'ON_DELIVERY'";
+            } else if (upper === 'ONLINE' || upper === 'AVAILABLE') {
+              query += " AND (l.duty_status IN ('ONLINE', 'AVAILABLE') OR (l.duty_status IS NULL AND r.duty_status = 'AVAILABLE'))";
+            } else if (upper === 'IDLE' || upper === 'BUSY') {
+              query += " AND (l.duty_status IN ('IDLE', 'BUSY') OR (l.duty_status IS NULL AND r.duty_status = 'BUSY'))";
+            } else if (upper === 'OFFLINE') {
+              query += " AND (l.duty_status = 'OFFLINE' OR l.latitude IS NULL)";
+            }
           }
           if (riderId) {
-            query += ' AND l.rider_id = ?';
-            params.push(Number(riderId));
+            query += ' AND r.id = ?';
+            params.push(riderId);
           }
 
-          query += ' ORDER BY l.last_ping_at DESC';
+          query += ' ORDER BY CASE WHEN l.latitude IS NOT NULL THEN 0 ELSE 1 END, l.last_ping_at DESC, r.name ASC';
 
           const { results = [], error: queryError } = await db.prepare(query).bind(...params).all().catch((err) => ({ error: err.message, results: [] }));
           return jsonResponse({ success: !queryError, live_riders: results, error: queryError });

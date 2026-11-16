@@ -2577,8 +2577,14 @@ export const d1Api = {
 
   getLiveGpsFleet: async (params = {}) => {
     try {
-      const query = new URLSearchParams(params).toString();
-      const res = await fetch(`/api/admin/gps/live?${query}`);
+      const cleanParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, val]) => {
+        if (val !== undefined && val !== null && val !== '' && val !== 'all' && val !== 'undefined') {
+          cleanParams.append(key, val);
+        }
+      });
+      const query = cleanParams.toString();
+      const res = await fetch(`/api/admin/gps/live${query ? `?${query}` : ''}`);
       return await res.json();
     } catch (e) {
       console.error('Error fetching live fleet GPS:', e);
@@ -2598,8 +2604,14 @@ export const d1Api = {
 
   getRiderGpsHistory: async (params = {}) => {
     try {
-      const query = new URLSearchParams(params).toString();
-      const res = await fetch(`/api/admin/gps/rider-history?${query}`);
+      const cleanParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, val]) => {
+        if (val !== undefined && val !== null && val !== '' && val !== 'all' && val !== 'undefined') {
+          cleanParams.append(key, val);
+        }
+      });
+      const query = cleanParams.toString();
+      const res = await fetch(`/api/admin/gps/rider-history${query ? `?${query}` : ''}`);
       return await res.json();
     } catch (e) {
       console.error('Error fetching rider GPS history:', e);

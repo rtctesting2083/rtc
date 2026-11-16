@@ -48,6 +48,14 @@ const STATUS_COLORS = {
     badgeBg: '#dbeafe',
     badgeText: '#1d4ed8',
   },
+  AVAILABLE: {
+    bg: '#2563eb',
+    border: '#1d4ed8',
+    text: '#ffffff',
+    label: 'Online / Available',
+    badgeBg: '#dbeafe',
+    badgeText: '#1d4ed8',
+  },
   IDLE: {
     bg: '#f59e0b',
     border: '#d97706',
@@ -56,11 +64,19 @@ const STATUS_COLORS = {
     badgeBg: '#fef3c7',
     badgeText: '#b45309',
   },
+  BUSY: {
+    bg: '#f59e0b',
+    border: '#d97706',
+    text: '#ffffff',
+    label: 'Busy',
+    badgeBg: '#fef3c7',
+    badgeText: '#b45309',
+  },
   OFFLINE: {
     bg: '#64748b',
     border: '#475569',
     text: '#ffffff',
-    label: 'Offline',
+    label: 'Offline / Standby',
     badgeBg: '#f1f5f9',
     badgeText: '#475569',
   },
@@ -306,18 +322,19 @@ export function CompanyGpsLiveMapPage() {
   const statusOptions = useMemo(() => [
     { value: 'all', label: 'All Duty Statuses' },
     { value: 'ON_DELIVERY', label: '🟢 On Delivery' },
-    { value: 'ONLINE', label: '🔵 Online / Ready' },
-    { value: 'IDLE', label: '🟡 Idle' },
-    { value: 'OFFLINE', label: '⚪ Offline' },
+    { value: 'ONLINE', label: '🔵 Online / Available' },
+    { value: 'IDLE', label: '🟡 Idle / Busy' },
+    { value: 'OFFLINE', label: '⚪ Offline / Standby' },
   ], []);
 
   // Compute fleet counts
   const counts = useMemo(() => {
     const res = { total: liveRiders.length, onDelivery: 0, online: 0, idle: 0, offline: 0 };
     liveRiders.forEach((r) => {
-      if (r.duty_status === 'ON_DELIVERY') res.onDelivery++;
-      else if (r.duty_status === 'ONLINE') res.online++;
-      else if (r.duty_status === 'IDLE') res.idle++;
+      const st = String(r.duty_status || '').toUpperCase();
+      if (st === 'ON_DELIVERY') res.onDelivery++;
+      else if (st === 'ONLINE' || st === 'AVAILABLE') res.online++;
+      else if (st === 'IDLE' || st === 'BUSY') res.idle++;
       else res.offline++;
     });
     return res;
@@ -662,15 +679,21 @@ export function CompanyGpsLiveMapPage() {
                         </div>
                       )}
 
-                      <div style={{ marginTop: '4px', fontSize: '10px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between' }}>
+                      <div style={{ marginTop: '5px', fontSize: '10px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span>Phone: {rider.rider_phone || 'N/A'}</span>
-                        <span>
-                          {rider.minutes_since_ping !== null
-                            ? rider.minutes_since_ping <= 1
-                              ? 'Live now'
-                              : `${Math.round(rider.minutes_since_ping)}m ago`
-                            : ''}
-                        </span>
+                        {rider.latitude && rider.longitude ? (
+                          <span style={{ color: '#16a34a', fontWeight: 600 }}>
+                            {rider.minutes_since_ping !== null
+                              ? rider.minutes_since_ping <= 1
+                                ? '● Live now'
+                                : `${Math.round(rider.minutes_since_ping)}m ago`
+                              : '● Live'}
+                          </span>
+                        ) : (
+                          <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>
+                            Awaiting Signal
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
