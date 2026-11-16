@@ -36,6 +36,9 @@ import { CompanyBranchesPage } from './pages/company/CompanyBranchesPage';
 import { CompanyBranchReportsPage } from './pages/company/CompanyBranchReportsPage';
 import { CompanyNoticesPage } from './pages/company/CompanyNoticesPage';
 import { AdminProfilePage } from './pages/company/AdminProfilePage';
+import { CompanyGpsLiveMapPage } from './pages/company/CompanyGpsLiveMapPage';
+import { CompanyGpsReportsPage } from './pages/company/CompanyGpsReportsPage';
+import { GpsSettingsPage } from './pages/company/settings/GpsSettingsPage';
 
 // Company Settings
 import { CompanyThemeSettingsPage } from './pages/company/settings/CompanyThemeSettingsPage';
@@ -172,9 +175,12 @@ export function App() {
                   <Route path="branches" element={<CompanyBranchesPage />} />
                   <Route path="branch-reports" element={<CompanyBranchReportsPage />} />
                   <Route path="notices" element={<CompanyNoticesPage />} />
+                  <Route path="gps/live" element={<CompanyGpsLiveMapPage />} />
+                  <Route path="gps/reports" element={<CompanyGpsReportsPage />} />
 
                   {/* Settings sub-routes */}
                   <Route path="settings/company" element={<CompanyThemeSettingsPage />} />
+                  <Route path="settings/gps" element={<GpsSettingsPage />} />
                   <Route path="settings/theme" element={<CompanyThemeSettingsPage />} />
                   <Route path="settings/order-types" element={<OrderTypesSettingsPage />} />
                   <Route path="settings/exchange-reasons" element={<ExchangeReasonsSettingsPage />} />
@@ -220,6 +226,8 @@ export function App() {
                   <Route path="cod-settlement" element={<BranchCodSettlementPage />} />
                   <Route path="riders" element={<BranchRidersPage />} />
                   <Route path="vendors" element={<BranchVendorsPage />} />
+                  <Route path="gps/live" element={<CompanyGpsLiveMapPage />} />
+                  <Route path="gps/reports" element={<CompanyGpsReportsPage />} />
                   <Route path="profile" element={<BranchProfilePage />} />
                   <Route path="users" element={<BranchUserManagementPage />} />
                   <Route path="notices" element={<BranchNoticesPage />} />

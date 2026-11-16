@@ -44,6 +44,7 @@ import {
   Wallet,
   PlusCircle,
   MessageSquare,
+  Navigation,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCompany } from '../../context/CompanyContext';
@@ -212,6 +213,7 @@ export function CompanyLayout() {
         { key: 'exchange-orders', label: 'Exchange Orders', Icon: Repeat, path: '/company/exchange-orders' },
         { key: 'returns', label: 'Returns (RTV)', Icon: RotateCcw, path: '/company/returns' },
         { key: 'track', label: 'Track a package', Icon: Search, path: '/company/track' },
+        { key: 'gps-live', label: 'Live GPS Fleet Map', Icon: Navigation, path: '/company/gps/live' },
       ],
     },
     {
@@ -251,6 +253,7 @@ export function CompanyLayout() {
         { key: 'sales-report', label: 'Sales Report', Icon: TrendingUp, path: '/company/sales-report' },
         { key: 'revenue-report', label: 'Revenue Report', Icon: CircleDollarSign, path: '/company/revenue-report' },
         { key: 'location-report', label: 'Location-Order Analysis', Icon: Map, path: '/company/location-report' },
+        { key: 'gps-reports', label: 'GPS Reports & Route Playback', Icon: Navigation, path: '/company/gps/reports' },
       ],
     },
   ];
@@ -259,6 +262,7 @@ export function CompanyLayout() {
     { key: 'admin-profile', label: 'Admin Profile', Icon: UserCheck, path: '/company/settings/profile' },
     { key: 'change-password', label: 'Change Password (D1)', Icon: Key, path: '/company/settings/profile?tab=password' },
     { key: 'company-theme', label: 'Company & Theme', Icon: Palette, path: '/company/settings/company' },
+    { key: 'gps-settings', label: 'GPS Fleet Tracking Config', Icon: Navigation, path: '/company/settings/gps' },
     { key: 'order-types', label: 'Order Type', Icon: Tag, path: '/company/settings/order-types' },
     { key: 'exchange-reasons', label: 'Exchange Reasons', Icon: RefreshCw, path: '/company/settings/exchange-reasons' },
     { key: 'return-reasons', label: 'Return Reasons (Reverse)', Icon: RotateCcw, path: '/company/settings/return-reasons' },

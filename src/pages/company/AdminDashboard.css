@@ -50,17 +50,24 @@
 }
 
 .admin-mobile-menu-btn {
-  display: none;
+  display: inline-flex;
   background: rgba(255, 255, 255, 0.15);
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   color: #ffffff;
   font-size: 18px;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
   border-radius: 8px;
   cursor: pointer;
   align-items: center;
   justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.admin-mobile-menu-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
 }
 
 .admin-topbar-title {

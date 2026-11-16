@@ -231,7 +231,7 @@ export function BranchHierarchyQuickModal({ branch, onDone }) {
         <label style={{ display: 'block', fontWeight: 600, fontSize: '12.5px', marginBottom: '6px' }}>
           2. Ownership Model (`model_type`) <span style={{ color: '#dc2626' }}>*</span>
         </label>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
           <label
             style={{
               display: 'flex',

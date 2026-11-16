@@ -115,7 +115,8 @@ export function BranchShipmentReportPage() {
 
       <StatStrip stats={stats} />
 
-      <table>
+      <div className="table-responsive">
+        <table>
         <thead>
           <tr>
             <th>Tracking #</th>
@@ -193,6 +194,7 @@ export function BranchShipmentReportPage() {
           )}
         </tbody>
       </table>
+    </div>
     </div>
   );
 }

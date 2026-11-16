@@ -318,7 +318,7 @@ export function BranchFormModal({ initialBranch = null, onDone = null }) {
       )}
 
       {/* ── Section 1: Names & Branch Code ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '12px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
         <label style={{ display: 'block' }}>
           <span style={{ fontWeight: 600, fontSize: '12px', display: 'block', marginBottom: '4px' }}>
             Branch Name (English) <span style={{ color: '#dc2626' }}>*</span>
@@ -359,7 +359,7 @@ export function BranchFormModal({ initialBranch = null, onDone = null }) {
           <span>NEPAL 4-TIER HIERARCHY & OWNERSHIP SPECIFICATION</span>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '10px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
           {/* Administrative Tier */}
           <label style={{ display: 'block' }}>
             <span style={{ fontWeight: 600, fontSize: '12px', display: 'block', marginBottom: '4px' }}>
@@ -581,7 +581,7 @@ export function BranchFormModal({ initialBranch = null, onDone = null }) {
       </div>
 
       {/* ── Section 4: Login Credentials & Manager Contact ── */}
-      <div style={{ marginTop: '12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+      <div style={{ marginTop: '12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
         <label style={{ display: 'block' }}>
           <span style={{ fontWeight: 600, fontSize: '12px', display: 'block', marginBottom: '4px' }}>
             Login Mobile Phone (10 digits) <span style={{ color: '#dc2626' }}>*</span>
@@ -608,7 +608,7 @@ export function BranchFormModal({ initialBranch = null, onDone = null }) {
         </label>
       </div>
 
-      <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+      <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
         <label style={{ display: 'block' }}>
           <span style={{ fontWeight: 600, fontSize: '12px', display: 'block', marginBottom: '4px' }}>
             Branch Official Email

@@ -2556,6 +2556,92 @@ export const d1Api = {
       return { success: false, error: e.message };
     }
   },
+
+  // ==========================================
+  // GPS TRACKING SYSTEM METHODS
+  // ==========================================
+
+  sendRiderGpsPing: async (pingData) => {
+    try {
+      const res = await fetch('/api/rider/gps/ping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pingData),
+      });
+      return await res.json();
+    } catch (e) {
+      console.error('Error sending GPS ping:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  getLiveGpsFleet: async (params = {}) => {
+    try {
+      const query = new URLSearchParams(params).toString();
+      const res = await fetch(`/api/admin/gps/live?${query}`);
+      return await res.json();
+    } catch (e) {
+      console.error('Error fetching live fleet GPS:', e);
+      return { success: false, live_riders: [], error: e.message };
+    }
+  },
+
+  getShipmentGpsRoute: async (shipmentId) => {
+    try {
+      const res = await fetch(`/api/admin/gps/shipment-route?shipment_id=${encodeURIComponent(shipmentId)}`);
+      return await res.json();
+    } catch (e) {
+      console.error('Error fetching shipment GPS route:', e);
+      return { success: false, waypoints: [], error: e.message };
+    }
+  },
+
+  getRiderGpsHistory: async (params = {}) => {
+    try {
+      const query = new URLSearchParams(params).toString();
+      const res = await fetch(`/api/admin/gps/rider-history?${query}`);
+      return await res.json();
+    } catch (e) {
+      console.error('Error fetching rider GPS history:', e);
+      return { success: false, breadcrumbs: [], error: e.message };
+    }
+  },
+
+  getGpsSettings: async (companyId = 1) => {
+    try {
+      const res = await fetch(`/api/admin/gps/settings?company_id=${companyId}`);
+      return await res.json();
+    } catch (e) {
+      console.error('Error fetching GPS settings:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  saveGpsSettings: async (settings) => {
+    try {
+      const res = await fetch('/api/admin/gps/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+      });
+      return await res.json();
+    } catch (e) {
+      console.error('Error saving GPS settings:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  runGpsCleanup: async (companyId = 1) => {
+    try {
+      const res = await fetch(`/api/admin/gps/cleanup?company_id=${companyId}`, {
+        method: 'POST',
+      });
+      return await res.json();
+    } catch (e) {
+      console.error('Error running GPS cleanup:', e);
+      return { success: false, error: e.message };
+    }
+  },
 };
 
 export default d1Api;

@@ -46,13 +46,8 @@ const normalizeTierString = (rawTier) => {
 };
 
 const formatTierName = (tier, branchType) => {
-  if (typeof tier === 'string') {
-    if (tier === 'CENTRAL_OFFICE' || tier === 'CENTRAL') return 'Central Office';
-    if (tier === 'PROVINCE_HUB' || tier === 'PROVINCE') return 'Province Hub';
-    if (tier === 'DISTRICT_HUB' || tier === 'DISTRICT') return 'District Hub';
-    if (tier === 'MUNICIPALITY_BRANCH' || tier === 'MUNICIPALITY') return 'Municipality Branch';
-    if (tier === 'WARD_BRANCH' || tier === 'WARD') return 'Ward Branch';
-    return tier.replace(/_/g, ' ');
+  if (tier === null || tier === undefined || tier === '') {
+    return branchType === 'head_office' ? 'Head Office' : 'Local Hub / Branch';
   }
   if (typeof tier === 'number') {
     if (tier === 0) return 'Central Office';
@@ -62,7 +57,13 @@ const formatTierName = (tier, branchType) => {
     if (tier === 4) return 'Ward Branch';
     return `Tier ${tier}`;
   }
-  return branchType === 'head_office' ? 'Head Office' : 'Local Hub / Branch';
+  const strTier = typeof tier === 'string' ? tier : String(tier || '');
+  if (strTier === 'CENTRAL_OFFICE' || strTier === 'CENTRAL') return 'Central Office';
+  if (strTier === 'PROVINCE_HUB' || strTier === 'PROVINCE') return 'Province Hub';
+  if (strTier === 'DISTRICT_HUB' || strTier === 'DISTRICT') return 'District Hub';
+  if (strTier === 'MUNICIPALITY_BRANCH' || strTier === 'MUNICIPALITY') return 'Municipality Branch';
+  if (strTier === 'WARD_BRANCH' || strTier === 'WARD') return 'Ward Branch';
+  return typeof strTier.replace === 'function' ? strTier.replace(/_/g, ' ') : strTier;
 };
 
 export function CompanyBranchesPage() {
@@ -908,8 +909,8 @@ export function CompanyBranchesPage() {
           boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
         }}
       >
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+        <div className="rtc-table-responsive" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <table style={{ width: '100%', minWidth: '950px', borderCollapse: 'collapse', textAlign: 'left' }}>
             <thead>
               <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                 <th style={{ width: '40px', padding: '10px 12px', textAlign: 'center' }}>
@@ -939,7 +940,7 @@ export function CompanyBranchesPage() {
                 <th style={{ padding: '10px 12px', fontSize: '12px', fontWeight: 600, color: '#475569', textAlign: 'center' }}>
                   Staff Users
                 </th>
-                <th style={{ padding: '10px 12px', fontSize: '12px', fontWeight: 600, color: '#475569', textAlign: 'right' }}>
+                <th className="th-sticky-action" style={{ padding: '10px 12px', fontSize: '12px', fontWeight: 600, color: '#475569', textAlign: 'right' }}>
                   Actions
                 </th>
               </tr>
@@ -1187,7 +1188,7 @@ export function CompanyBranchesPage() {
                     </td>
 
                     {/* Actions */}
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                    <td className="td-sticky-action" style={{ padding: '10px 12px', textAlign: 'right', background: isSelected ? '#f0fdf4' : !isActive ? '#fafafa' : '#ffffff' }}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'nowrap' }}>
                         {/* Single Enable/Disable Button */}
                         <button

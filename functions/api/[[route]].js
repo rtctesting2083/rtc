@@ -9224,6 +9224,331 @@ export async function onRequest(context) {
           const data = await apiRes.json().catch(() => ({ status: apiRes.status }));
           return jsonResponse(data, apiRes.status);
         }
+
+        // ==========================================
+        // GPS TRACKING SYSTEM ENDPOINTS
+        // ==========================================
+
+        // Helper for Haversine distance in km
+        function calculateHaversineDistanceKm(lat1, lon1, lat2, lon2) {
+          const R = 6371;
+          const dLat = (lat2 - lat1) * Math.PI / 180;
+          const dLon = (lon2 - lon1) * Math.PI / 180;
+          const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          return R * c;
+        }
+
+        // 1. POST /api/rider/gps/ping (Single ping or offline batch array)
+        if (path === 'rider/gps/ping' && method === 'POST') {
+          const body = await request.json().catch(() => ({}));
+          const pings = Array.isArray(body.pings) ? body.pings : [body];
+          let processed = 0;
+
+          for (const p of pings) {
+            const riderId = Number(p.rider_id);
+            if (!riderId) continue;
+
+            const lat = Number(p.latitude);
+            const lng = Number(p.longitude);
+            if (isNaN(lat) || isNaN(lng)) continue;
+
+            const cid = Number(p.company_id || companyId || 1);
+            const branchId = p.branch_id ? Number(p.branch_id) : null;
+            const shipmentId = p.shipment_id || p.active_shipment_id ? Number(p.shipment_id || p.active_shipment_id) : null;
+            const speed = p.speed_kmh !== undefined && p.speed_kmh !== null ? Number(p.speed_kmh) : null;
+            const heading = p.heading !== undefined && p.heading !== null ? Number(p.heading) : null;
+            const accuracy = p.accuracy_meters !== undefined && p.accuracy_meters !== null ? Number(p.accuracy_meters) : null;
+            const battery = p.battery_level !== undefined && p.battery_level !== null ? Math.round(Number(p.battery_level)) : null;
+            const duty = p.duty_status || 'ONLINE';
+            const eventType = p.event_type || 'PING';
+            const recordedAt = p.recorded_at || new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+            // Upsert latest rider live location
+            await db.prepare(`
+              INSERT INTO rider_live_locations (
+                rider_id, company_id, branch_id, active_shipment_id,
+                latitude, longitude, speed_kmh, heading,
+                accuracy_meters, battery_level, duty_status,
+                last_ping_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(rider_id) DO UPDATE SET
+                company_id = excluded.company_id,
+                branch_id = COALESCE(excluded.branch_id, rider_live_locations.branch_id),
+                active_shipment_id = excluded.active_shipment_id,
+                latitude = excluded.latitude,
+                longitude = excluded.longitude,
+                speed_kmh = excluded.speed_kmh,
+                heading = excluded.heading,
+                accuracy_meters = excluded.accuracy_meters,
+                battery_level = excluded.battery_level,
+                duty_status = excluded.duty_status,
+                last_ping_at = excluded.last_ping_at,
+                updated_at = CURRENT_TIMESTAMP
+            `).bind(
+              riderId, cid, branchId, shipmentId,
+              lat, lng, speed, heading,
+              accuracy, battery, duty,
+              recordedAt
+            ).run().catch((e) => console.error('Error upserting live location:', e));
+
+            // Insert into history log
+            await db.prepare(`
+              INSERT INTO rider_location_logs (
+                rider_id, shipment_id, company_id, branch_id,
+                latitude, longitude, speed_kmh, heading,
+                accuracy_meters, battery_level, event_type, recorded_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).bind(
+              riderId, shipmentId, cid, branchId,
+              lat, lng, speed, heading,
+              accuracy, battery, eventType, recordedAt
+            ).run().catch((e) => console.error('Error inserting location log:', e));
+
+            processed++;
+          }
+
+          return jsonResponse({ success: true, processed });
+        }
+
+        // 2. GET /api/admin/gps/live (Fleet overview with branch, rider & order data)
+        if (path === 'admin/gps/live' && method === 'GET') {
+          const branchId = url.searchParams.get('branch_id');
+          const dutyStatus = url.searchParams.get('duty_status');
+          const riderId = url.searchParams.get('rider_id');
+
+          let query = `
+            SELECT 
+              l.rider_id,
+              l.company_id,
+              l.branch_id,
+              l.active_shipment_id,
+              l.latitude,
+              l.longitude,
+              l.speed_kmh,
+              l.heading,
+              l.accuracy_meters,
+              l.battery_level,
+              l.duty_status,
+              l.last_ping_at,
+              r.name as rider_name,
+              r.phone as rider_phone,
+              r.vehicle_type,
+              r.vehicle_number,
+              b.name as branch_name,
+              b.tier as branch_tier,
+              b.district as branch_district,
+              b.province as branch_province,
+              s.tracking_number as active_tracking_number,
+              s.recipient_name as active_recipient_name,
+              s.status as active_shipment_status,
+              ROUND((JULIANDAY('now') - JULIANDAY(l.last_ping_at)) * 1440, 1) as minutes_since_ping
+            FROM rider_live_locations l
+            LEFT JOIN riders r ON l.rider_id = r.id
+            LEFT JOIN branches b ON l.branch_id = b.id
+            LEFT JOIN shipments s ON l.active_shipment_id = s.id
+            WHERE l.company_id = ?
+          `;
+          const params = [companyId];
+
+          if (branchId && branchId !== 'all') {
+            query += ' AND l.branch_id = ?';
+            params.push(Number(branchId));
+          }
+          if (dutyStatus && dutyStatus !== 'all') {
+            query += ' AND l.duty_status = ?';
+            params.push(dutyStatus);
+          }
+          if (riderId) {
+            query += ' AND l.rider_id = ?';
+            params.push(Number(riderId));
+          }
+
+          query += ' ORDER BY l.last_ping_at DESC';
+
+          const { results = [] } = await db.prepare(query).bind(...params).all().catch(() => ({ results: [] }));
+          return jsonResponse({ success: true, live_riders: results });
+        }
+
+        // 3. GET /api/admin/gps/shipment-route (Trail for a single shipment/waybill)
+        if ((path === 'admin/gps/shipment-route' || path.startsWith('admin/gps/shipment-route/')) && method === 'GET') {
+          let sId = url.searchParams.get('shipment_id');
+          if (!sId && path.startsWith('admin/gps/shipment-route/')) {
+            sId = path.split('/')[3];
+          }
+
+          if (!sId) {
+            return jsonResponse({ success: false, error: 'shipment_id is required' }, 400);
+          }
+
+          const shipmentRes = await db.prepare(`
+            SELECT id, tracking_number, status, recipient_name, recipient_phone, recipient_address, 
+                   sender_name, sender_address, rider_id, origin_branch_id, destination_branch_id
+            FROM shipments
+            WHERE id = ? OR tracking_number = ?
+          `).bind(sId, sId).first().catch(() => null);
+
+          const shipNumId = shipmentRes ? shipmentRes.id : Number(sId);
+
+          const { results: waypoints = [] } = await db.prepare(`
+            SELECT 
+              w.id,
+              w.rider_id,
+              w.latitude,
+              w.longitude,
+              w.speed_kmh,
+              w.heading,
+              w.accuracy_meters,
+              w.event_type,
+              w.recorded_at,
+              r.name as rider_name,
+              r.phone as rider_phone
+            FROM rider_location_logs w
+            LEFT JOIN riders r ON w.rider_id = r.id
+            WHERE w.shipment_id = ?
+            ORDER BY w.recorded_at ASC
+          `).bind(shipNumId).all().catch(() => ({ results: [] }));
+
+          return jsonResponse({
+            success: true,
+            shipment: shipmentRes,
+            waypoints,
+            total_points: waypoints.length,
+          });
+        }
+
+        // 4. GET /api/admin/gps/rider-history (Trip breadcrumbs & distance for rider)
+        if (path === 'admin/gps/rider-history' && method === 'GET') {
+          const rId = url.searchParams.get('rider_id');
+          const date = url.searchParams.get('date');
+          const limit = Math.min(Number(url.searchParams.get('limit') || 1000), 5000);
+
+          if (!rId) {
+            return jsonResponse({ success: false, error: 'rider_id is required' }, 400);
+          }
+
+          let query = `
+            SELECT 
+              id, rider_id, shipment_id, latitude, longitude,
+              speed_kmh, heading, accuracy_meters, battery_level,
+              event_type, recorded_at
+            FROM rider_location_logs
+            WHERE rider_id = ?
+          `;
+          const params = [Number(rId)];
+
+          if (date) {
+            query += ' AND date(recorded_at) = date(?)';
+            params.push(date);
+          }
+
+          query += ` ORDER BY recorded_at ASC LIMIT ${limit}`;
+
+          const { results = [] } = await db.prepare(query).bind(...params).all().catch(() => ({ results: [] }));
+
+          // Calculate trip metrics: Total distance (km) using Haversine formula, max speed
+          let totalDistanceKm = 0;
+          let maxSpeedKmh = 0;
+
+          for (let i = 1; i < results.length; i++) {
+            const p1 = results[i - 1];
+            const p2 = results[i];
+            const d = calculateHaversineDistanceKm(p1.latitude, p1.longitude, p2.latitude, p2.longitude);
+            if (d < 50) {
+              totalDistanceKm += d;
+            }
+            if (p2.speed_kmh && p2.speed_kmh > maxSpeedKmh) {
+              maxSpeedKmh = p2.speed_kmh;
+            }
+          }
+
+          const riderInfo = await db.prepare(`SELECT id, name, phone, branch_id, vehicle_type, vehicle_number FROM riders WHERE id = ?`).bind(Number(rId)).first().catch(() => null);
+
+          return jsonResponse({
+            success: true,
+            rider: riderInfo,
+            date: date || 'all',
+            total_points: results.length,
+            total_distance_km: Math.round(totalDistanceKm * 100) / 100,
+            max_speed_kmh: Math.round(maxSpeedKmh * 10) / 10,
+            breadcrumbs: results,
+          });
+        }
+
+        // 5. GET /api/admin/gps/settings & PUT /api/admin/gps/settings
+        if (path === 'admin/gps/settings' && method === 'GET') {
+          const row = await db.prepare(`SELECT * FROM gps_settings WHERE company_id = ? LIMIT 1`).bind(companyId).first().catch(() => null);
+          const settings = row || {
+            company_id: companyId,
+            is_tracking_enabled: 1,
+            ping_interval_seconds: 30,
+            min_distance_meters: 15,
+            track_only_on_active_duty: 1,
+            data_retention_days: 30,
+          };
+          return jsonResponse({ success: true, settings });
+        }
+
+        if (path === 'admin/gps/settings' && (method === 'POST' || method === 'PUT')) {
+          const body = await request.json().catch(() => ({}));
+          const isEnabled = body.is_tracking_enabled !== undefined ? (body.is_tracking_enabled ? 1 : 0) : 1;
+          const pingInterval = Math.max(5, Math.min(Number(body.ping_interval_seconds || 30), 300));
+          const minDistance = Math.max(0, Math.min(Number(body.min_distance_meters || 15), 500));
+          const trackDutyOnly = body.track_only_on_active_duty !== undefined ? (body.track_only_on_active_duty ? 1 : 0) : 1;
+          const retentionDays = Math.max(1, Math.min(Number(body.data_retention_days || 30), 365));
+
+          await db.prepare(`
+            INSERT INTO gps_settings (
+              company_id, is_tracking_enabled, ping_interval_seconds,
+              min_distance_meters, track_only_on_active_duty, data_retention_days,
+              updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(company_id) DO UPDATE SET
+              is_tracking_enabled = excluded.is_tracking_enabled,
+              ping_interval_seconds = excluded.ping_interval_seconds,
+              min_distance_meters = excluded.min_distance_meters,
+              track_only_on_active_duty = excluded.track_only_on_active_duty,
+              data_retention_days = excluded.data_retention_days,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            companyId, isEnabled, pingInterval,
+            minDistance, trackDutyOnly, retentionDays
+          ).run();
+
+          return jsonResponse({
+            success: true,
+            message: 'GPS tracking settings updated successfully',
+            settings: {
+              company_id: companyId,
+              is_tracking_enabled: isEnabled,
+              ping_interval_seconds: pingInterval,
+              min_distance_meters: minDistance,
+              track_only_on_active_duty: trackDutyOnly,
+              data_retention_days: retentionDays,
+            }
+          });
+        }
+
+        // 6. POST /api/admin/gps/cleanup (Purge old GPS breadcrumb logs)
+        if (path === 'admin/gps/cleanup' && method === 'POST') {
+          const settings = await db.prepare(`SELECT data_retention_days FROM gps_settings WHERE company_id = ? LIMIT 1`).bind(companyId).first().catch(() => null);
+          const retentionDays = Number(settings?.data_retention_days || 30);
+
+          const result = await db.prepare(`
+            DELETE FROM rider_location_logs
+            WHERE company_id = ?
+              AND recorded_at < datetime('now', '-' || ? || ' days')
+          `).bind(companyId, retentionDays).run();
+
+          return jsonResponse({
+            success: true,
+            purged_records: result?.meta?.changes || 0,
+            retention_days_applied: retentionDays,
+          });
+        }
       }
 
       // 14. Fallback for unrecognized API routes

@@ -18,6 +18,7 @@ import {
   Key,
   ChevronDown,
   PlusCircle,
+  Navigation,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCompany } from '../../context/CompanyContext';
@@ -87,6 +88,8 @@ export function BranchLayout() {
     { key: 'location-report', menuKey: 'location_report', label: 'Location Report', Icon: MapPin, path: '/branch/location-report' },
     { key: 'cod-settlement', menuKey: 'cod_settlement', label: 'COD Settlement', Icon: Banknote, path: '/branch/cod-settlement' },
     { key: 'riders', menuKey: 'riders', label: 'Branch Riders', Icon: Bike, path: '/branch/riders' },
+    { key: 'gps-live', menuKey: 'riders', label: 'Live GPS Tracking', Icon: Navigation, path: '/branch/gps/live' },
+    { key: 'gps-reports', menuKey: 'riders', label: 'GPS Route Reports', Icon: Navigation, path: '/branch/gps/reports' },
     { key: 'customers', menuKey: 'vendors', label: 'Vendors', Icon: Users, path: '/branch/vendors' },
     { key: 'profile', menuKey: 'profile', label: 'Branch Profile', Icon: Building2, path: '/branch/profile' },
     { key: 'user-management', menuKey: 'user_management', label: 'User Management', Icon: UserCheck, path: '/branch/users' },

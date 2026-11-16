@@ -254,7 +254,8 @@ export function CompanyShipmentReportPage({ view }) {
 
       <StatStrip stats={stats} />
 
-      <table>
+      <div className="table-responsive">
+        <table>
         <thead>
           <tr>
             <th>Tracking #</th>
@@ -332,6 +333,7 @@ export function CompanyShipmentReportPage({ view }) {
           )}
         </tbody>
       </table>
+    </div>
     </div>
   );
 }

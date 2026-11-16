@@ -28,6 +28,7 @@ import { initialsFor } from '../../utils/helpers';
 import { RiderProfileModal } from '../rider/RiderProfileModal';
 import { RiderScanReceiveModal } from '../rider/RiderScanReceiveModal';
 import { ConfirmDutyStatusModal } from '../rider/ConfirmDutyStatusModal';
+import { RiderGpsTracker } from '../rider/RiderGpsTracker';
 import { ThemeToggleBtn } from '../common/ThemeToggleBtn';
 import { NoticeBoardView } from '../common/NoticeBoardView';
 import { d1Api } from '../../utils/d1Api';
@@ -637,6 +638,17 @@ export function RiderLayout() {
         >
           <Outlet context={{ currentRider }} />
         </main>
+
+        {/* Continuous Background GPS Tracker for Active Deliveries */}
+        <RiderGpsTracker
+          rider={currentRider}
+          companyId={company?.id || 1}
+          activeShipmentId={
+            (shipments || []).find(
+              (s) => Number(s.rider_id) === Number(currentRider?.id) && s.status === 'out_for_delivery'
+            )?.id || null
+          }
+        />
       </div>
     </div>
   );

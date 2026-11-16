@@ -179,17 +179,66 @@
   .modal.modal-xxwide { width: 1260px; max-width: 96vw; }
   .modal-body.no-head { padding-top: 14px; }
 
-  @media (max-width: 640px) {
+  @media (max-width: 768px) {
     .modal-backdrop {
       padding: 0;
       align-items: flex-end;
     }
-    .modal, .modal.modal-wide, .modal.modal-xwide {
+    .modal, .modal.modal-wide, .modal.modal-xwide, .modal.modal-xxwide {
       width: 100% !important;
-      max-width: 100% !important;
+      max-width: 100vw !important;
       max-height: 94vh !important;
       border-radius: 20px 20px 0 0 !important;
       margin: 0 !important;
+      border-bottom: none !important;
+    }
+    .modal-head {
+      padding: 14px 18px;
+    }
+    .modal-body {
+      padding: 16px 14px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+  }
+
+  /* Universal Responsive Table Wrapper & Sticky Actions */
+  .rtc-table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    background: var(--surface, #ffffff);
+    border-radius: 10px;
+    border: 1px solid var(--border, #e2e8f0);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    margin-bottom: 16px;
+    position: relative;
+  }
+
+  .rtc-table-responsive table {
+    width: 100%;
+    min-width: 880px;
+    border-collapse: collapse;
+  }
+
+  .th-sticky-action,
+  .td-sticky-action {
+    position: sticky;
+    right: 0;
+    background: #ffffff;
+    z-index: 2;
+    box-shadow: -4px 0 8px rgba(0, 0, 0, 0.05);
+  }
+
+  /* Mobile Touch Targets (< 768px) */
+  @media (max-width: 768px) {
+    button, .btn, .btn-primary, .btn-secondary, a.btn {
+      min-height: 40px;
+    }
+    input[type="checkbox"], input[type="radio"] {
+      min-width: 18px;
+      min-height: 18px;
+      cursor: pointer;
     }
   }
 

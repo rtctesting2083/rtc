@@ -1538,17 +1538,21 @@
   border-color: #4ade80;
 }
 
-/* 3. Order Table Card */
+/* 3. Order Table Card (Responsive with Sticky Action Column) */
 .order-table-card {
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  overflow: hidden;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  width: 100%;
+  max-width: 100%;
 }
 
 .order-table {
   width: 100%;
+  min-width: 960px;
   border-collapse: collapse;
   font-size: 12.5px;
   text-align: left;
@@ -1571,11 +1575,32 @@
   color: #1e293b;
 }
 
+.order-table th:last-child,
+.order-table td:last-child {
+  position: sticky;
+  right: 0;
+  background: #ffffff;
+  z-index: 2;
+  box-shadow: -4px 0 8px rgba(0, 0, 0, 0.04);
+}
+
+.order-table th:last-child {
+  background: #f8fafc;
+}
+
 .order-table tbody tr:hover {
   background: #fafafa;
 }
 
+.order-table tbody tr:hover td:last-child {
+  background: #fafafa;
+}
+
 .order-table tbody tr.selected-row {
+  background: #fef2f2;
+}
+
+.order-table tbody tr.selected-row td:last-child {
   background: #fef2f2;
 }
 

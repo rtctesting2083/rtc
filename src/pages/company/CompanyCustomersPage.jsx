@@ -1044,10 +1044,11 @@ export function CompanyCustomersPage() {
           boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
         }}
       >
-        <div style={{ overflowX: 'auto' }}>
+        <div className="rtc-table-responsive" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table
             style={{
               width: '100%',
+              minWidth: '920px',
               borderCollapse: 'collapse',
               textAlign: 'left',
               fontSize: '13px',
@@ -1070,7 +1071,7 @@ export function CompanyCustomersPage() {
                 <th style={{ padding: '12px 16px', fontWeight: 700 }}>Type & Category</th>
                 <th style={{ padding: '12px 16px', fontWeight: 700 }}>Branch / Hub</th>
                 <th style={{ padding: '12px 16px', fontWeight: 700 }}>Status</th>
-                <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'center', width: '150px' }}>Actions</th>
+                <th className="th-sticky-action" style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'center', width: '150px' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1330,7 +1331,7 @@ export function CompanyCustomersPage() {
                       </td>
 
                       {/* Actions */}
-                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                      <td className="td-sticky-action" style={{ padding: '12px 16px', textAlign: 'center', background: '#ffffff' }}>
                         <div style={{ display: 'inline-flex', gap: '6px', justifyContent: 'center' }}>
                           <button
                             type="button"
