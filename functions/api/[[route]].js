@@ -9384,7 +9384,91 @@ export async function onRequest(context) {
           query += ' ORDER BY CASE WHEN l.latitude IS NOT NULL THEN 0 ELSE 1 END, l.last_ping_at DESC, r.name ASC';
 
           const { results = [], error: queryError } = await db.prepare(query).bind(...params).all().catch((err) => ({ error: err.message, results: [] }));
-          return jsonResponse({ success: !queryError, live_riders: results, error: queryError });
+
+          const NEPAL_LANDMARK_POINTS = [
+            { name: 'Milanchowk / Traffic Chowk, Butwal', lat: 27.6885, lng: 83.4429, radius: 2.2 },
+            { name: 'Golpark / Deepnagar, Butwal', lat: 27.7010, lng: 83.4610, radius: 2.0 },
+            { name: 'Amarpath / Kalikanagar, Butwal', lat: 27.6810, lng: 83.4510, radius: 2.0 },
+            { name: 'Manigram / Tilottama', lat: 27.6320, lng: 83.4540, radius: 3.5 },
+            { name: 'Bhairahawa (Siddharthanagar)', lat: 27.5050, lng: 83.4500, radius: 4.0 },
+            { name: 'New Road / Asan, Kathmandu', lat: 27.7033, lng: 85.3117, radius: 2.0 },
+            { name: 'Thamel / Lazimpat, Kathmandu', lat: 27.7154, lng: 85.3123, radius: 2.0 },
+            { name: 'Koteshwor / Tinkune, Kathmandu', lat: 27.6820, lng: 85.3490, radius: 2.5 },
+            { name: 'Kalanki / Sitapaila, Kathmandu', lat: 27.6930, lng: 85.2810, radius: 2.5 },
+            { name: 'Pulchowk / Jawalakhel, Lalitpur', lat: 27.6680, lng: 85.3160, radius: 2.5 },
+            { name: 'Suryabinayak / Sallaghari, Bhaktapur', lat: 27.6710, lng: 85.4298, radius: 3.0 },
+            { name: 'Lakeside / Baidam, Pokhara', lat: 28.2096, lng: 83.9580, radius: 2.5 },
+            { name: 'Mahendrapool / Chipledhunga, Pokhara', lat: 28.2250, lng: 83.9880, radius: 2.5 },
+            { name: 'Narayangarh / Pulchowk, Chitwan', lat: 27.6933, lng: 84.4233, radius: 2.5 },
+            { name: 'Bharatpur Chowk, Chitwan', lat: 27.6833, lng: 84.4333, radius: 3.0 },
+            { name: 'Main Road / Traffic Chowk, Biratnagar', lat: 26.4525, lng: 87.2718, radius: 3.0 },
+            { name: 'Bhanuchowk, Dharan', lat: 26.8124, lng: 87.2834, radius: 3.0 },
+            { name: 'Tribhuvan Chowk / BP Chowk, Nepalgunj', lat: 28.0500, lng: 81.6167, radius: 3.5 },
+            { name: 'Ghantaghar / Adarshanagar, Birgunj', lat: 27.0135, lng: 84.8773, radius: 3.5 },
+            { name: 'Main Market, Dhangadhi', lat: 28.6852, lng: 80.6078, radius: 3.5 },
+            { name: 'Seemachowk, Hetauda', lat: 27.4285, lng: 85.0328, radius: 3.0 },
+            { name: 'Mukti Chowk, Birtamod', lat: 26.6341, lng: 87.9942, radius: 3.0 },
+            { name: 'Bhanu Chowk, Janakpur', lat: 26.7333, lng: 85.9333, radius: 3.0 },
+            { name: 'Tansen, Palpa', lat: 27.8667, lng: 83.5500, radius: 3.0 },
+            { name: 'Taulihawa, Kapilvastu', lat: 27.5500, lng: 83.0500, radius: 4.0 },
+            { name: 'Parasi (Ramgram), Nawalparasi', lat: 27.5333, lng: 83.6667, radius: 4.0 },
+            { name: 'Kawasoti, Nawalpur', lat: 27.6333, lng: 84.1167, radius: 4.0 },
+            { name: 'Ghorahi / Tulsipur, Dang', lat: 28.0333, lng: 82.3000, radius: 4.0 },
+            { name: 'Birendranagar, Surkhet', lat: 28.5833, lng: 81.6333, radius: 4.0 },
+          ];
+
+          function getDistanceKm(lat1, lon1, lat2, lon2) {
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          }
+
+          function resolveLocationName(lat, lng, branchName, district) {
+            if (!lat || !lng) {
+              return branchName ? `${branchName} (Standby)` : 'Stationed at Central Hub';
+            }
+            const nLat = Number(lat);
+            const nLng = Number(lng);
+            if (isNaN(nLat) || isNaN(nLng)) {
+              return branchName || 'Nepal';
+            }
+
+            let bestMatch = null;
+            let minDistance = Infinity;
+
+            for (const pt of NEPAL_LANDMARK_POINTS) {
+              const d = getDistanceKm(nLat, nLng, pt.lat, pt.lng);
+              if (d <= pt.radius && d < minDistance) {
+                minDistance = d;
+                bestMatch = pt.name;
+              }
+            }
+
+            if (bestMatch) {
+              return `${bestMatch} (${minDistance < 0.2 ? 'Current' : `~${minDistance.toFixed(1)} km`})`;
+            }
+
+            if (district || branchName) {
+              return `${district || branchName} (${nLat.toFixed(4)}°N, ${nLng.toFixed(4)}°E)`;
+            }
+
+            return `Nepal (${nLat.toFixed(4)}°N, ${nLng.toFixed(4)}°E)`;
+          }
+
+          const resolvedRiders = results.map((rider) => ({
+            ...rider,
+            last_known_location: resolveLocationName(
+              rider.latitude,
+              rider.longitude,
+              rider.branch_name,
+              rider.branch_district
+            ),
+          }));
+
+          return jsonResponse({ success: !queryError, live_riders: resolvedRiders, error: queryError });
         }
 
         // 3. GET /api/admin/gps/shipment-route (Trail for a single shipment/waybill or order ID)
