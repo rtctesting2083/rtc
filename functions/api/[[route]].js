@@ -9503,23 +9503,32 @@ export async function onRequest(context) {
           const trackDutyOnly = body.track_only_on_active_duty !== undefined ? (body.track_only_on_active_duty ? 1 : 0) : 1;
           const retentionDays = Math.max(1, Math.min(Number(body.data_retention_days || 30), 365));
 
-          await db.prepare(`
-            INSERT INTO gps_settings (
-              company_id, is_tracking_enabled, ping_interval_seconds,
-              min_distance_meters, track_only_on_active_duty, data_retention_days,
-              updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(company_id) DO UPDATE SET
-              is_tracking_enabled = excluded.is_tracking_enabled,
-              ping_interval_seconds = excluded.ping_interval_seconds,
-              min_distance_meters = excluded.min_distance_meters,
-              track_only_on_active_duty = excluded.track_only_on_active_duty,
-              data_retention_days = excluded.data_retention_days,
-              updated_at = CURRENT_TIMESTAMP
-          `).bind(
-            companyId, isEnabled, pingInterval,
-            minDistance, trackDutyOnly, retentionDays
-          ).run();
+          const existing = await db.prepare(`SELECT id FROM gps_settings WHERE company_id = ? LIMIT 1`).bind(companyId).first().catch(() => null);
+
+          if (existing) {
+            await db.prepare(`
+              UPDATE gps_settings SET
+                is_tracking_enabled = ?,
+                ping_interval_seconds = ?,
+                min_distance_meters = ?,
+                track_only_on_active_duty = ?,
+                data_retention_days = ?,
+                updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?
+            `).bind(
+              isEnabled, pingInterval, minDistance, trackDutyOnly, retentionDays, existing.id
+            ).run();
+          } else {
+            await db.prepare(`
+              INSERT INTO gps_settings (
+                company_id, is_tracking_enabled, ping_interval_seconds,
+                min_distance_meters, track_only_on_active_duty, data_retention_days,
+                updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(
+              companyId, isEnabled, pingInterval, minDistance, trackDutyOnly, retentionDays
+            ).run();
+          }
 
           return jsonResponse({
             success: true,

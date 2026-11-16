@@ -6,7 +6,7 @@
 -- 1. System & Branch-level GPS Tracking Configuration
 CREATE TABLE IF NOT EXISTS gps_settings (
   id INTEGER PRIMARY KEY DEFAULT 1,
-  company_id INTEGER NOT NULL DEFAULT 1,
+  company_id INTEGER NOT NULL DEFAULT 1 UNIQUE,
   is_tracking_enabled INTEGER NOT NULL DEFAULT 1,
   ping_interval_seconds INTEGER NOT NULL DEFAULT 30,
   min_distance_meters INTEGER NOT NULL DEFAULT 15,
@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS gps_settings (
   data_retention_days INTEGER NOT NULL DEFAULT 30,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gps_settings_company ON gps_settings(company_id);
 
 -- Seed default settings row if not present
 INSERT OR IGNORE INTO gps_settings (id, company_id, is_tracking_enabled, ping_interval_seconds, min_distance_meters, track_only_on_active_duty, data_retention_days, updated_at)
