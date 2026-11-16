@@ -2654,6 +2654,95 @@ export const d1Api = {
       return { success: false, error: e.message };
     }
   },
+
+  // ─── NCM (Nepal Can Move) 3PL Webhook Integration ────────────────────────
+  getNcmSettings: async (companyId = 1) => {
+    try {
+      const res = await fetch(`/api/admin/settings/ncm?company_id=${companyId}`);
+      return await res.json();
+    } catch (e) {
+      console.error('Error fetching NCM settings:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  saveNcmSettings: async (settings) => {
+    try {
+      const res = await fetch('/api/admin/settings/ncm', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+      });
+      return await res.json();
+    } catch (e) {
+      console.error('Error saving NCM settings:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  regenerateNcmToken: async (companyId = 1) => {
+    try {
+      const res = await fetch('/api/admin/settings/ncm/regenerate-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: companyId }),
+      });
+      return await res.json();
+    } catch (e) {
+      console.error('Error regenerating NCM token:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  getNcmLogs: async (params = {}) => {
+    try {
+      const query = new URLSearchParams(params).toString();
+      const res = await fetch(`/api/admin/ncm/logs${query ? `?${query}` : ''}`);
+      return await res.json();
+    } catch (e) {
+      console.error('Error fetching NCM logs:', e);
+      return { success: false, logs: [], error: e.message };
+    }
+  },
+
+  getNcmComments: async (params = {}) => {
+    try {
+      const query = new URLSearchParams(params).toString();
+      const res = await fetch(`/api/admin/ncm/comments${query ? `?${query}` : ''}`);
+      return await res.json();
+    } catch (e) {
+      console.error('Error fetching NCM comments:', e);
+      return { success: false, comments: [], error: e.message };
+    }
+  },
+
+  updateNcmCommentStatus: async (id, followupStatus) => {
+    try {
+      const res = await fetch('/api/admin/ncm/comments/status', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, followup_status: followupStatus }),
+      });
+      return await res.json();
+    } catch (e) {
+      console.error('Error updating NCM comment status:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  registerNcmWebhookRemote: async (companyId = 1) => {
+    try {
+      const res = await fetch('/api/admin/ncm/register-webhook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: companyId }),
+      });
+      return await res.json();
+    } catch (e) {
+      console.error('Error registering NCM remote webhook:', e);
+      return { success: false, error: e.message };
+    }
+  },
 };
 
 export default d1Api;

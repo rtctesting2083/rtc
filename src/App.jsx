@@ -56,6 +56,7 @@ import { PortalMenuSettingsPage } from './pages/company/settings/PortalMenuSetti
 import { VendorTypesCategoriesSettingsPage } from './pages/company/settings/VendorTypesCategoriesSettingsPage';
 import { UserManagementSettingsPage } from './pages/company/settings/UserManagementSettingsPage';
 import { SmsSettingsPage } from './pages/company/settings/SmsSettingsPage';
+import { NcmSettingsPage } from './pages/company/settings/NcmSettingsPage';
 
 // Branch
 import { BranchOverviewPage } from './pages/branch/BranchOverviewPage';
@@ -181,6 +182,7 @@ export function App() {
                   {/* Settings sub-routes */}
                   <Route path="settings/company" element={<CompanyThemeSettingsPage />} />
                   <Route path="settings/gps" element={<GpsSettingsPage />} />
+                  <Route path="settings/ncm" element={<NcmSettingsPage />} />
                   <Route path="settings/theme" element={<CompanyThemeSettingsPage />} />
                   <Route path="settings/order-types" element={<OrderTypesSettingsPage />} />
                   <Route path="settings/exchange-reasons" element={<ExchangeReasonsSettingsPage />} />

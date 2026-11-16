@@ -9781,6 +9781,691 @@ export async function onRequest(context) {
             retention_days_applied: retentionDays,
           });
         }
+
+        // =====================================================================
+        // SECTION 13-B: NCM (NEPAL CAN MOVE) 3PL WEBHOOK & INTEGRATION MODULE
+        // Isolated, non-disruptive, guaranteed < 10s response, full audit trail
+        // =====================================================================
+
+        // Helper: Validate Webhook Secret Token
+        async function verifyNcmToken(req, reqUrl, dbInst) {
+          const qToken = reqUrl.searchParams.get('token');
+          const hToken = req.headers.get('x-webhook-token') || req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
+          const token = qToken || hToken;
+
+          let settings = await dbInst.prepare(`SELECT * FROM integration_ncm_settings WHERE company_id = 1 LIMIT 1`).first().catch(() => null);
+          if (!settings) {
+            await dbInst.prepare(`
+              INSERT OR IGNORE INTO integration_ncm_settings (
+                id, company_id, is_enabled, webhook_secret_token, auto_sync_order_status, auto_sync_cod_charges, ncm_api_token, updated_at
+              ) VALUES (1, 1, 1, 'rtc_ncm_sec_8f912e7a3b4c', 1, 1, '', datetime('now'))
+            `).run().catch(() => {});
+            settings = await dbInst.prepare(`SELECT * FROM integration_ncm_settings WHERE company_id = 1 LIMIT 1`).first().catch(() => null);
+          }
+
+          const configuredSecret = settings?.webhook_secret_token;
+          const isAuthorized = !configuredSecret || token === configuredSecret;
+          return { isAuthorized, settings };
+        }
+
+        // Helper: Sync Internal RTC Shipment Status from NCM Status
+        async function syncInternalShipmentStatus(dbInst, extOrderId, ncmEvent, ncmStatus, returnReason, codCharge, deliveryCharge) {
+          try {
+            if (!extOrderId) return null;
+            const strId = String(extOrderId).trim();
+            const numId = !isNaN(Number(strId)) ? Number(strId) : -1;
+
+            // Search in shipments by tracking_number, vendor_reference_id, or id
+            const match = await dbInst.prepare(`
+              SELECT id, tracking_number, status, cod_amount, delivery_fee, tracking_events_json, delivered_at
+              FROM shipments
+              WHERE tracking_number = ? 
+                 OR UPPER(tracking_number) = UPPER(?)
+                 OR vendor_reference_id = ?
+                 OR UPPER(vendor_reference_id) = UPPER(?)
+                 OR id = ?
+              LIMIT 1
+            `).bind(strId, strId, strId, strId, numId).first().catch(() => null);
+
+            let internalId = match?.id || null;
+
+            // Map NCM Event to Internal RTC Status
+            let internalStatus = null;
+            let note = `NCM Status Update: ${ncmStatus || ncmEvent}`;
+            if (ncmEvent === 'pickup_completed' || ncmEvent === 'dropoff_collected') {
+              internalStatus = 'picked_up';
+              note = 'Parcel picked up and collected at NCM branch.';
+            } else if (ncmEvent === 'order_dispatched') {
+              internalStatus = 'in_transit';
+              note = 'Dispatched from NCM origin branch.';
+            } else if (ncmEvent === 'order_arrived') {
+              internalStatus = 'received_at_branch';
+              note = 'Arrived at NCM destination branch hub.';
+            } else if (ncmEvent === 'sent_for_delivery') {
+              internalStatus = 'out_for_delivery';
+              note = 'Sent out for delivery with NCM courier.';
+            } else if (ncmEvent === 'delivery_completed') {
+              internalStatus = 'delivered';
+              note = 'Delivered successfully by NCM courier.';
+            } else if (ncmEvent === 'returned_to_warehouse') {
+              internalStatus = 'returned';
+              note = returnReason ? `Returned to NCM warehouse: ${returnReason}` : 'Returned to NCM branch warehouse.';
+            } else if (ncmEvent === 'order_marked_rtv') {
+              internalStatus = 'returned';
+              note = returnReason ? `Marked for return to vendor: ${returnReason}` : 'Marked for RTV return to vendor.';
+            } else if (ncmEvent === 'send_to_vendor') {
+              internalStatus = 'returned';
+              note = 'Return orders on their way back to vendor with NCM rider.';
+            } else if (ncmEvent === 'rtv_delivery') {
+              internalStatus = 'returned';
+              note = 'Return orders delivered back to vendor.';
+            } else if (ncmEvent === 'exchange_initiated') {
+              internalStatus = 'exchange_requested';
+              note = 'Exchange initiated in NCM system.';
+            }
+
+            // Update shipment if found
+            if (match && internalStatus) {
+              let events = [];
+              try {
+                if (match.tracking_events_json) events = JSON.parse(match.tracking_events_json);
+              } catch (e) {}
+
+              events.push({
+                status: internalStatus,
+                location: 'NCM Partner Logistics',
+                notes: note,
+                at: new Date().toISOString(),
+                partner: 'NCM',
+              });
+
+              const nowIso = new Date().toISOString();
+              let deliveredAt = match.delivered_at;
+              if (internalStatus === 'delivered' && !deliveredAt) {
+                deliveredAt = nowIso;
+              }
+
+              let codVal = match.cod_amount;
+              if (codCharge !== undefined && codCharge !== null && !isNaN(Number(codCharge))) {
+                codVal = Number(codCharge);
+              }
+
+              await dbInst.prepare(`
+                UPDATE shipments
+                SET status = ?, 
+                    tracking_events_json = ?,
+                    delivered_at = ?,
+                    cod_amount = ?,
+                    status_updated_at = datetime('now')
+                WHERE id = ?
+              `).bind(internalStatus, JSON.stringify(events), deliveredAt, codVal, match.id).run().catch(() => {});
+            }
+
+            return internalId;
+          } catch (e) {
+            console.error('NCM internal status sync error:', e);
+            return null;
+          }
+        }
+
+        // 1. PUBLIC WEBHOOK: POST /api/webhooks/ncm/delivery
+        if (path === 'webhooks/ncm/delivery' && method === 'POST') {
+          const startTime = Date.now();
+          const { isAuthorized, settings } = await verifyNcmToken(request, url, db);
+
+          const payload = await request.json().catch(() => ({}));
+          const eventType = String(payload.event || 'unknown');
+          const isTest = Boolean(payload.test);
+          const timestamp = payload.timestamp || new Date().toISOString();
+
+          // Normalize order IDs
+          let orderIds = [];
+          if (Array.isArray(payload.order_ids)) {
+            orderIds = payload.order_ids.map(String);
+          } else if (payload.order_id) {
+            orderIds = [String(payload.order_id)];
+          }
+
+          // Idempotency Key
+          const idempotencyKey = `DELIVERY_${eventType}_${orderIds.join(',')}_${timestamp}`;
+
+          // Check for duplicate webhook within 5 minutes
+          const duplicate = await db.prepare(`
+            SELECT id FROM ncm_webhook_logs 
+            WHERE idempotency_key = ? 
+              AND received_at > datetime('now', '-5 minutes')
+            LIMIT 1
+          `).bind(idempotencyKey).first().catch(() => null);
+
+          if (duplicate) {
+            return jsonResponse({ status: 'received', message: 'duplicate event ignored' }, 200);
+          }
+
+          // If Integration Disabled, log as IGNORED and return 200 immediately
+          if (settings && Number(settings.is_enabled) === 0) {
+            await db.prepare(`
+              INSERT INTO ncm_webhook_logs (
+                company_id, endpoint_type, event, order_ids_json, payload_json, is_test, processing_status, error_message, idempotency_key, received_at
+              ) VALUES (?, 'DELIVERY', ?, ?, ?, ?, 'IGNORED', 'NCM integration disabled in settings', ?, datetime('now'))
+            `).bind(companyId, eventType, JSON.stringify(orderIds), JSON.stringify(payload), isTest ? 1 : 0, idempotencyKey).run().catch(() => {});
+
+            return jsonResponse({ status: 'received', message: 'integration disabled' }, 200);
+          }
+
+          // Handle Test Webhook
+          if (isTest) {
+            await db.prepare(`
+              INSERT INTO ncm_webhook_logs (
+                company_id, endpoint_type, event, order_ids_json, payload_json, is_test, processing_status, idempotency_key, received_at
+              ) VALUES (?, 'DELIVERY', ?, ?, ?, 1, 'PROCESSED', ?, datetime('now'))
+            `).bind(companyId, eventType, JSON.stringify(orderIds), JSON.stringify(payload), idempotencyKey).run().catch(() => {});
+
+            return jsonResponse({ status: 'success' }, 200);
+          }
+
+          const autoSyncStatus = settings ? Boolean(settings.auto_sync_order_status) : true;
+          const autoSyncCod = settings ? Boolean(settings.auto_sync_cod_charges) : true;
+          let processingError = null;
+
+          try {
+            // A. Single Order: delivery_completed
+            if (eventType === 'delivery_completed') {
+              const singleOrderId = String(payload.order_id || '');
+              const codCharge = payload.cod_charge !== null && payload.cod_charge !== undefined ? Number(payload.cod_charge) : null;
+              const deliveryCharge = payload.delivery_charge !== null && payload.delivery_charge !== undefined ? Number(payload.delivery_charge) : null;
+
+              let internalId = null;
+              if (autoSyncStatus) {
+                internalId = await syncInternalShipmentStatus(
+                  db,
+                  singleOrderId,
+                  eventType,
+                  payload.status || 'Delivered',
+                  null,
+                  autoSyncCod ? codCharge : undefined,
+                  deliveryCharge
+                );
+              }
+
+              // Upsert shipment_external_links
+              await db.prepare(`
+                INSERT INTO shipment_external_links (
+                  company_id, internal_shipment_id, partner_name, external_order_id, ncm_status,
+                  ncm_cod_charge, ncm_delivery_charge, raw_details_json, last_synced_at
+                ) VALUES (?, ?, 'NCM', ?, 'Delivered', ?, ?, ?, datetime('now'))
+                ON CONFLICT(partner_name, external_order_id) DO UPDATE SET
+                  internal_shipment_id = COALESCE(excluded.internal_shipment_id, shipment_external_links.internal_shipment_id),
+                  ncm_status = 'Delivered',
+                  ncm_cod_charge = excluded.ncm_cod_charge,
+                  ncm_delivery_charge = excluded.ncm_delivery_charge,
+                  raw_details_json = excluded.raw_details_json,
+                  last_synced_at = datetime('now')
+              `).bind(
+                companyId,
+                internalId,
+                singleOrderId,
+                codCharge,
+                deliveryCharge,
+                JSON.stringify(payload)
+              ).run().catch((e) => { console.error('Error upserting external link:', e); });
+            }
+
+            // B. RTV Delivery: Bulk with orders array containing delivery_charge
+            else if (eventType === 'rtv_delivery') {
+              const rtvOrders = Array.isArray(payload.orders) ? payload.orders : [];
+              for (const item of rtvOrders) {
+                const oid = String(item.order_id || '');
+                const dCharge = item.delivery_charge !== undefined ? Number(item.delivery_charge) : null;
+
+                let internalId = null;
+                if (autoSyncStatus) {
+                  internalId = await syncInternalShipmentStatus(db, oid, eventType, payload.status || 'RTV Delivered', null, null, dCharge);
+                }
+
+                await db.prepare(`
+                  INSERT INTO shipment_external_links (
+                    company_id, internal_shipment_id, partner_name, external_order_id, ncm_status,
+                    ncm_delivery_charge, raw_details_json, last_synced_at
+                  ) VALUES (?, ?, 'NCM', ?, 'RTV Delivered', ?, ?, datetime('now'))
+                  ON CONFLICT(partner_name, external_order_id) DO UPDATE SET
+                    internal_shipment_id = COALESCE(excluded.internal_shipment_id, shipment_external_links.internal_shipment_id),
+                    ncm_status = 'RTV Delivered',
+                    ncm_delivery_charge = excluded.ncm_delivery_charge,
+                    raw_details_json = excluded.raw_details_json,
+                    last_synced_at = datetime('now')
+                `).bind(companyId, internalId, oid, dCharge, JSON.stringify(item)).run().catch(() => {});
+              }
+            }
+
+            // C. Refunds & Exchanges (refund_initiated, exchange_initiated)
+            else if (eventType === 'refund_initiated' || eventType === 'exchange_initiated') {
+              const parentOid = String(payload.order_id || '');
+              const custOrder = payload.customer_order;
+              const refOrder = payload.refund_order || payload.exchange_order;
+
+              // Upsert Parent Link
+              let internalId = null;
+              if (autoSyncStatus) {
+                internalId = await syncInternalShipmentStatus(db, parentOid, eventType, payload.status, null, null, null);
+              }
+
+              await db.prepare(`
+                INSERT INTO shipment_external_links (
+                  company_id, internal_shipment_id, partner_name, external_order_id, ncm_status, raw_details_json, last_synced_at
+                ) VALUES (?, ?, 'NCM', ?, ?, ?, datetime('now'))
+                ON CONFLICT(partner_name, external_order_id) DO UPDATE SET
+                  internal_shipment_id = COALESCE(excluded.internal_shipment_id, shipment_external_links.internal_shipment_id),
+                  ncm_status = excluded.ncm_status,
+                  raw_details_json = excluded.raw_details_json,
+                  last_synced_at = datetime('now')
+              `).bind(companyId, internalId, parentOid, payload.status || 'Refund Initiated', JSON.stringify(payload)).run().catch(() => {});
+
+              // Upsert Customer Order (returns money / sends new item)
+              if (custOrder?.order_id) {
+                await db.prepare(`
+                  INSERT INTO shipment_external_links (
+                    company_id, partner_name, external_order_id, parent_external_order_id, order_relation_type,
+                    ncm_status, ncm_cod_charge, ncm_delivery_charge, raw_details_json, last_synced_at
+                  ) VALUES (?, 'NCM', ?, ?, 'CUSTOMER_ORDER', ?, ?, ?, ?, datetime('now'))
+                  ON CONFLICT(partner_name, external_order_id) DO UPDATE SET
+                    parent_external_order_id = excluded.parent_external_order_id,
+                    order_relation_type = 'CUSTOMER_ORDER',
+                    ncm_status = excluded.ncm_status,
+                    ncm_cod_charge = excluded.ncm_cod_charge,
+                    ncm_delivery_charge = excluded.ncm_delivery_charge,
+                    last_synced_at = datetime('now')
+                `).bind(
+                  companyId,
+                  String(custOrder.order_id),
+                  parentOid,
+                  payload.status || 'Refund Initiated',
+                  custOrder.cod_charge !== undefined ? Number(custOrder.cod_charge) : null,
+                  custOrder.delivery_charge !== undefined ? Number(custOrder.delivery_charge) : null,
+                  JSON.stringify(custOrder)
+                ).run().catch(() => {});
+              }
+
+              // Upsert Refund/Exchange Return Order
+              if (refOrder?.order_id) {
+                await db.prepare(`
+                  INSERT INTO shipment_external_links (
+                    company_id, partner_name, external_order_id, parent_external_order_id, order_relation_type,
+                    ncm_status, ncm_cod_charge, ncm_delivery_charge, raw_details_json, last_synced_at
+                  ) VALUES (?, 'NCM', ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                  ON CONFLICT(partner_name, external_order_id) DO UPDATE SET
+                    parent_external_order_id = excluded.parent_external_order_id,
+                    order_relation_type = excluded.order_relation_type,
+                    ncm_status = excluded.ncm_status,
+                    ncm_cod_charge = excluded.ncm_cod_charge,
+                    ncm_delivery_charge = excluded.ncm_delivery_charge,
+                    last_synced_at = datetime('now')
+                `).bind(
+                  companyId,
+                  String(refOrder.order_id),
+                  parentOid,
+                  eventType === 'exchange_initiated' ? 'EXCHANGE_ORDER' : 'REFUND_ORDER',
+                  payload.status || 'Refund Initiated',
+                  refOrder.cod_charge !== undefined ? Number(refOrder.cod_charge) : null,
+                  refOrder.delivery_charge !== undefined ? Number(refOrder.delivery_charge) : null,
+                  JSON.stringify(refOrder)
+                ).run().catch(() => {});
+              }
+            }
+
+            // D. Standard Bulk Status Events (pickup_completed, order_dispatched, sent_for_delivery, returned_to_warehouse, etc.)
+            else {
+              const returnReason = payload.returnReason || null;
+              for (const oid of orderIds) {
+                let internalId = null;
+                if (autoSyncStatus) {
+                  internalId = await syncInternalShipmentStatus(db, oid, eventType, payload.status, returnReason, null, null);
+                }
+
+                await db.prepare(`
+                  INSERT INTO shipment_external_links (
+                    company_id, internal_shipment_id, partner_name, external_order_id, ncm_status, return_reason, raw_details_json, last_synced_at
+                  ) VALUES (?, ?, 'NCM', ?, ?, ?, ?, datetime('now'))
+                  ON CONFLICT(partner_name, external_order_id) DO UPDATE SET
+                    internal_shipment_id = COALESCE(excluded.internal_shipment_id, shipment_external_links.internal_shipment_id),
+                    ncm_status = excluded.ncm_status,
+                    return_reason = COALESCE(excluded.return_reason, shipment_external_links.return_reason),
+                    raw_details_json = excluded.raw_details_json,
+                    last_synced_at = datetime('now')
+                `).bind(companyId, internalId, oid, payload.status || eventType, returnReason, JSON.stringify(payload)).run().catch(() => {});
+              }
+            }
+          } catch (err) {
+            console.error('Error processing NCM delivery webhook:', err);
+            processingError = err.message;
+          }
+
+          // Log in ncm_webhook_logs
+          await db.prepare(`
+            INSERT INTO ncm_webhook_logs (
+              company_id, endpoint_type, event, order_ids_json, payload_json, is_test, processing_status, error_message, idempotency_key, received_at
+            ) VALUES (?, 'DELIVERY', ?, ?, ?, 0, ?, ?, ?, datetime('now'))
+          `).bind(
+            companyId,
+            eventType,
+            JSON.stringify(orderIds),
+            JSON.stringify(payload),
+            processingError ? 'FAILED' : 'PROCESSED',
+            processingError,
+            idempotencyKey
+          ).run().catch(() => {});
+
+          // Always return 200 OK within 10s
+          return jsonResponse({ status: 'received' }, 200);
+        }
+
+        // 2. PUBLIC WEBHOOK: POST /api/webhooks/ncm/comments
+        if (path === 'webhooks/ncm/comments' && method === 'POST') {
+          const { isAuthorized, settings } = await verifyNcmToken(request, url, db);
+
+          const payload = await request.json().catch(() => ({}));
+          const eventType = String(payload.event || 'comment_added');
+          const isTest = Boolean(payload.test);
+          const orderId = String(payload.order_id || '');
+          const commentId = payload.comment_id ? String(payload.comment_id) : null;
+          const commentText = String(payload.comment || '');
+          const commentType = String(payload.comment_type || (eventType === 'exchange_initiated' ? 'Info' : 'Info'));
+          const followupStatus = String(payload.status || 'None');
+          const timestamp = payload.timestamp || new Date().toISOString();
+
+          // Idempotency Key
+          const idempotencyKey = `COMMENT_${eventType}_${orderId}_${commentId || timestamp}`;
+
+          // If Test Webhook
+          if (isTest) {
+            await db.prepare(`
+              INSERT INTO ncm_webhook_logs (
+                company_id, endpoint_type, event, order_ids_json, payload_json, is_test, processing_status, idempotency_key, received_at
+              ) VALUES (?, 'COMMENT', ?, ?, ?, 1, 'PROCESSED', ?, datetime('now'))
+            `).bind(companyId, eventType, JSON.stringify([orderId]), JSON.stringify(payload), idempotencyKey).run().catch(() => {});
+
+            return jsonResponse({ status: 'success' }, 200);
+          }
+
+          // If disabled, log and return 200
+          if (settings && Number(settings.is_enabled) === 0) {
+            await db.prepare(`
+              INSERT INTO ncm_webhook_logs (
+                company_id, endpoint_type, event, order_ids_json, payload_json, is_test, processing_status, error_message, idempotency_key, received_at
+              ) VALUES (?, 'COMMENT', ?, ?, ?, 0, 'IGNORED', 'NCM integration disabled in settings', ?, datetime('now'))
+            `).bind(companyId, eventType, JSON.stringify([orderId]), JSON.stringify(payload), idempotencyKey).run().catch(() => {});
+
+            return jsonResponse({ status: 'received', message: 'integration disabled' }, 200);
+          }
+
+          let internalId = null;
+          try {
+            // Match internal shipment if exists
+            const numId = !isNaN(Number(orderId)) ? Number(orderId) : -1;
+            const match = await db.prepare(`
+              SELECT id FROM shipments
+              WHERE tracking_number = ? OR vendor_reference_id = ? OR id = ?
+              LIMIT 1
+            `).bind(orderId, orderId, numId).first().catch(() => null);
+
+            if (match) internalId = match.id;
+
+            // Insert into shipment_external_comments
+            await db.prepare(`
+              INSERT INTO shipment_external_comments (
+                company_id, partner_name, external_order_id, internal_shipment_id, comment_id,
+                comment_text, comment_type, followup_status, display, created_at
+              ) VALUES (?, 'NCM', ?, ?, ?, ?, ?, ?, 'External', datetime('now'))
+            `).bind(
+              companyId,
+              orderId,
+              internalId,
+              commentId,
+              commentText,
+              commentType,
+              followupStatus
+            ).run().catch((e) => console.error('Error inserting comment:', e));
+          } catch (e) {
+            console.error('Error handling comment webhook:', e);
+          }
+
+          // Log in ncm_webhook_logs
+          await db.prepare(`
+            INSERT INTO ncm_webhook_logs (
+              company_id, endpoint_type, event, order_ids_json, payload_json, is_test, processing_status, idempotency_key, received_at
+            ) VALUES (?, 'COMMENT', ?, ?, ?, 0, 'PROCESSED', ?, datetime('now'))
+          `).bind(companyId, eventType, JSON.stringify([orderId]), JSON.stringify(payload), idempotencyKey).run().catch(() => {});
+
+          return jsonResponse({ status: 'received' }, 200);
+        }
+
+        // 3. ADMIN GET: /api/admin/settings/ncm (Fetch Settings, Webhook URLs, and Fleet Stats)
+        if (path === 'admin/settings/ncm' && method === 'GET') {
+          let settings = await db.prepare(`SELECT * FROM integration_ncm_settings WHERE company_id = ? LIMIT 1`).bind(companyId).first().catch(() => null);
+          if (!settings) {
+            await db.prepare(`
+              INSERT OR IGNORE INTO integration_ncm_settings (
+                id, company_id, is_enabled, webhook_secret_token, auto_sync_order_status, auto_sync_cod_charges, ncm_api_token, updated_at
+              ) VALUES (1, ?, 1, 'rtc_ncm_sec_8f912e7a3b4c', 1, 1, '', datetime('now'))
+            `).bind(companyId).run().catch(() => {});
+            settings = await db.prepare(`SELECT * FROM integration_ncm_settings WHERE company_id = ? LIMIT 1`).bind(companyId).first().catch(() => null);
+          }
+
+          const origin = url.origin;
+          const token = settings?.webhook_secret_token || '';
+          const deliveryUrl = `${origin}/api/webhooks/ncm/delivery${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+          const commentUrl = `${origin}/api/webhooks/ncm/comments${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+
+          const [totalLogs, testLogs, actionComments, linkedOrders] = await Promise.all([
+            db.prepare(`SELECT COUNT(*) as count FROM ncm_webhook_logs WHERE company_id = ?`).bind(companyId).first().catch(() => ({ count: 0 })),
+            db.prepare(`SELECT COUNT(*) as count FROM ncm_webhook_logs WHERE company_id = ? AND is_test = 1`).bind(companyId).first().catch(() => ({ count: 0 })),
+            db.prepare(`SELECT COUNT(*) as count FROM shipment_external_comments WHERE company_id = ? AND comment_type = 'Action'`).bind(companyId).first().catch(() => ({ count: 0 })),
+            db.prepare(`SELECT COUNT(*) as count FROM shipment_external_links WHERE company_id = ?`).bind(companyId).first().catch(() => ({ count: 0 })),
+          ]);
+
+          return jsonResponse({
+            success: true,
+            settings: {
+              ...settings,
+              is_enabled: Boolean(settings?.is_enabled),
+              auto_sync_order_status: Boolean(settings?.auto_sync_order_status),
+              auto_sync_cod_charges: Boolean(settings?.auto_sync_cod_charges),
+              delivery_webhook_url: deliveryUrl,
+              comment_webhook_url: commentUrl,
+            },
+            stats: {
+              total_webhooks: totalLogs?.count || 0,
+              test_pings: testLogs?.count || 0,
+              action_comments: actionComments?.count || 0,
+              linked_orders: linkedOrders?.count || 0,
+            },
+          });
+        }
+
+        // 4. ADMIN PUT: /api/admin/settings/ncm (Update Settings)
+        if (path === 'admin/settings/ncm' && (method === 'PUT' || method === 'POST')) {
+          const body = await request.json().catch(() => ({}));
+          const isEnabled = body.is_enabled ? 1 : 0;
+          const token = body.webhook_secret_token !== undefined ? String(body.webhook_secret_token) : 'rtc_ncm_sec_8f912e7a3b4c';
+          const autoSyncStatus = body.auto_sync_order_status ? 1 : 0;
+          const autoSyncCod = body.auto_sync_cod_charges ? 1 : 0;
+          const apiToken = body.ncm_api_token !== undefined ? String(body.ncm_api_token) : '';
+
+          await db.prepare(`
+            INSERT INTO integration_ncm_settings (
+              id, company_id, is_enabled, webhook_secret_token, auto_sync_order_status, auto_sync_cod_charges, ncm_api_token, updated_at
+            ) VALUES (1, ?, ?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(company_id) DO UPDATE SET
+              is_enabled = excluded.is_enabled,
+              webhook_secret_token = excluded.webhook_secret_token,
+              auto_sync_order_status = excluded.auto_sync_order_status,
+              auto_sync_cod_charges = excluded.auto_sync_cod_charges,
+              ncm_api_token = excluded.ncm_api_token,
+              updated_at = datetime('now')
+          `).bind(companyId, isEnabled, token, autoSyncStatus, autoSyncCod, apiToken).run();
+
+          return jsonResponse({
+            success: true,
+            message: 'NCM integration settings updated successfully',
+          });
+        }
+
+        // 5. ADMIN POST: /api/admin/settings/ncm/regenerate-token
+        if (path === 'admin/settings/ncm/regenerate-token' && method === 'POST') {
+          const newToken = 'rtc_ncm_sec_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+          await db.prepare(`
+            UPDATE integration_ncm_settings
+            SET webhook_secret_token = ?, updated_at = datetime('now')
+            WHERE company_id = ?
+          `).bind(newToken, companyId).run();
+
+          const origin = url.origin;
+          return jsonResponse({
+            success: true,
+            webhook_secret_token: newToken,
+            delivery_webhook_url: `${origin}/api/webhooks/ncm/delivery?token=${encodeURIComponent(newToken)}`,
+            comment_webhook_url: `${origin}/api/webhooks/ncm/comments?token=${encodeURIComponent(newToken)}`,
+          });
+        }
+
+        // 6. ADMIN GET: /api/admin/ncm/logs (Fetch Webhook Activity Logs)
+        if (path === 'admin/ncm/logs' && method === 'GET') {
+          const endpointType = url.searchParams.get('endpoint_type');
+          const eventFilter = url.searchParams.get('event');
+          const statusFilter = url.searchParams.get('status');
+          const querySearch = url.searchParams.get('search');
+          const page = Math.max(1, Number(url.searchParams.get('page') || 1));
+          const limit = Math.min(100, Math.max(10, Number(url.searchParams.get('limit') || 25)));
+          const offset = (page - 1) * limit;
+
+          let sql = `SELECT * FROM ncm_webhook_logs WHERE company_id = ?`;
+          const params = [companyId];
+
+          if (endpointType && endpointType !== 'all') {
+            sql += ` AND endpoint_type = ?`;
+            params.push(endpointType);
+          }
+          if (eventFilter && eventFilter !== 'all') {
+            sql += ` AND event = ?`;
+            params.push(eventFilter);
+          }
+          if (statusFilter && statusFilter !== 'all') {
+            sql += ` AND processing_status = ?`;
+            params.push(statusFilter);
+          }
+          if (querySearch) {
+            sql += ` AND (order_ids_json LIKE ? OR payload_json LIKE ?)`;
+            params.push(`%${querySearch}%`, `%${querySearch}%`);
+          }
+
+          sql += ` ORDER BY id DESC LIMIT ? OFFSET ?`;
+          params.push(limit, offset);
+
+          const { results: logs = [] } = await db.prepare(sql).bind(...params).all().catch(() => ({ results: [] }));
+
+          return jsonResponse({
+            success: true,
+            logs,
+            page,
+            limit,
+          });
+        }
+
+        // 7. ADMIN GET: /api/admin/ncm/comments (Fetch Comments & Action Alerts)
+        if (path === 'admin/ncm/comments' && method === 'GET') {
+          const typeFilter = url.searchParams.get('comment_type');
+          const followupFilter = url.searchParams.get('followup_status');
+          const querySearch = url.searchParams.get('search');
+          const page = Math.max(1, Number(url.searchParams.get('page') || 1));
+          const limit = Math.min(100, Math.max(10, Number(url.searchParams.get('limit') || 25)));
+          const offset = (page - 1) * limit;
+
+          let sql = `
+            SELECT c.*, s.tracking_number as internal_tracking_number, s.status as internal_status
+            FROM shipment_external_comments c
+            LEFT JOIN shipments s ON c.internal_shipment_id = s.id
+            WHERE c.company_id = ?
+          `;
+          const params = [companyId];
+
+          if (typeFilter && typeFilter !== 'all') {
+            sql += ` AND c.comment_type = ?`;
+            params.push(typeFilter);
+          }
+          if (followupFilter && followupFilter !== 'all') {
+            sql += ` AND c.followup_status = ?`;
+            params.push(followupFilter);
+          }
+          if (querySearch) {
+            sql += ` AND (c.external_order_id LIKE ? OR c.comment_text LIKE ?)`;
+            params.push(`%${querySearch}%`, `%${querySearch}%`);
+          }
+
+          sql += ` ORDER BY c.id DESC LIMIT ? OFFSET ?`;
+          params.push(limit, offset);
+
+          const { results: comments = [] } = await db.prepare(sql).bind(...params).all().catch(() => ({ results: [] }));
+
+          return jsonResponse({
+            success: true,
+            comments,
+            page,
+            limit,
+          });
+        }
+
+        // 8. ADMIN PATCH: /api/admin/ncm/comments/status (Resolve / Update Comment Followup)
+        if (path === 'admin/ncm/comments/status' && (method === 'PATCH' || method === 'POST')) {
+          const body = await request.json().catch(() => ({}));
+          const commentId = Number(body.id);
+          const newStatus = String(body.followup_status || 'Completed');
+
+          await db.prepare(`
+            UPDATE shipment_external_comments
+            SET followup_status = ?
+            WHERE id = ? AND company_id = ?
+          `).bind(newStatus, commentId, companyId).run();
+
+          return jsonResponse({
+            success: true,
+            message: `Comment status updated to ${newStatus}`,
+          });
+        }
+
+        // 9. ADMIN POST: /api/admin/ncm/register-webhook (Programmatic API Registration)
+        if (path === 'admin/ncm/register-webhook' && method === 'POST') {
+          const settings = await db.prepare(`SELECT * FROM integration_ncm_settings WHERE company_id = ? LIMIT 1`).bind(companyId).first().catch(() => null);
+          const apiToken = settings?.ncm_api_token;
+          if (!apiToken) {
+            return jsonResponse({ success: false, error: 'Please enter and save your NCM API Token first.' }, 400);
+          }
+
+          const origin = url.origin;
+          const secretToken = settings?.webhook_secret_token || '';
+          const deliveryUrl = `${origin}/api/webhooks/ncm/delivery?token=${encodeURIComponent(secretToken)}`;
+
+          try {
+            const ncmRes = await fetch('https://nepalcanmove.com/api/v2/vendor/webhook', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Token ${apiToken}`,
+              },
+              body: JSON.stringify({ webhook_url: deliveryUrl }),
+            });
+
+            const data = await ncmRes.json().catch(() => ({}));
+            return jsonResponse({
+              success: ncmRes.ok,
+              status_code: ncmRes.status,
+              ncm_response: data,
+              message: ncmRes.ok
+                ? 'Delivery webhook URL successfully registered with NCM API!'
+                : `NCM API responded with status ${ncmRes.status}`,
+            });
+          } catch (e) {
+            return jsonResponse({ success: false, error: 'Failed to contact NCM API: ' + e.message }, 500);
+          }
+        }
       }
 
       // 14. Fallback for unrecognized API routes

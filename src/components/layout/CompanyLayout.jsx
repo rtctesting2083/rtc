@@ -45,6 +45,7 @@ import {
   PlusCircle,
   MessageSquare,
   Navigation,
+  Globe,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCompany } from '../../context/CompanyContext';
@@ -263,6 +264,7 @@ export function CompanyLayout() {
     { key: 'change-password', label: 'Change Password (D1)', Icon: Key, path: '/company/settings/profile?tab=password' },
     { key: 'company-theme', label: 'Company & Theme', Icon: Palette, path: '/company/settings/company' },
     { key: 'gps-settings', label: 'GPS Fleet Tracking Config', Icon: Navigation, path: '/company/settings/gps' },
+    { key: 'ncm-settings', label: 'NCM (Nepal Can Move) 3PL', Icon: Globe, path: '/company/settings/ncm' },
     { key: 'order-types', label: 'Order Type', Icon: Tag, path: '/company/settings/order-types' },
     { key: 'exchange-reasons', label: 'Exchange Reasons', Icon: RefreshCw, path: '/company/settings/exchange-reasons' },
     { key: 'return-reasons', label: 'Return Reasons (Reverse)', Icon: RotateCcw, path: '/company/settings/return-reasons' },
