@@ -645,7 +645,8 @@ export function RiderLayout() {
           companyId={company?.id || 1}
           activeShipmentId={
             (shipments || []).find(
-              (s) => Number(s.rider_id) === Number(currentRider?.id) && s.status === 'out_for_delivery'
+              (s) => (Number(s.courier_id || s.rider_id) === Number(currentRider?.id)) &&
+                     (s.status === 'out_for_delivery' || s.status === 'picked_up' || s.status === 'in_transit' || s.status === 'assigned')
             )?.id || null
           }
         />

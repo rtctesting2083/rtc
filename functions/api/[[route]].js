@@ -9387,7 +9387,7 @@ export async function onRequest(context) {
           return jsonResponse({ success: !queryError, live_riders: results, error: queryError });
         }
 
-        // 3. GET /api/admin/gps/shipment-route (Trail for a single shipment/waybill)
+        // 3. GET /api/admin/gps/shipment-route (Trail for a single shipment/waybill or order ID)
         if ((path === 'admin/gps/shipment-route' || path.startsWith('admin/gps/shipment-route/')) && method === 'GET') {
           let sId = url.searchParams.get('shipment_id');
           if (!sId && path.startsWith('admin/gps/shipment-route/')) {
@@ -9398,25 +9398,97 @@ export async function onRequest(context) {
             return jsonResponse({ success: false, error: 'shipment_id is required' }, 400);
           }
 
+          const rawQ = String(sId || '').trim();
+          const cleanQ = rawQ.replace(/^#/, '');
+          const numQ = !isNaN(Number(cleanQ)) ? Number(cleanQ) : -1;
+
           const shipmentRes = await db.prepare(`
-            SELECT id, tracking_number, status, receiver_name as recipient_name, receiver_phone as recipient_phone, 
-                   delivery_address as recipient_address, sender_name, pickup_address as sender_address, 
-                   courier_id as rider_id, branch_id as origin_branch_id, destination_branch_id
-            FROM shipments
-            WHERE id = ? OR tracking_number = ?
-          `).bind(sId, sId).first().catch(() => null);
+            SELECT 
+              s.id,
+              s.company_id,
+              s.tracking_number,
+              s.vendor_reference_id,
+              s.status,
+              s.receiver_name as recipient_name,
+              s.receiver_phone as recipient_phone,
+              s.alt_phone as recipient_alt_phone,
+              s.delivery_address as recipient_address,
+              s.sender_name,
+              s.sender_phone,
+              s.pickup_address as sender_address,
+              s.courier_id as rider_id,
+              s.branch_id as origin_branch_id,
+              s.current_branch_id,
+              s.destination_branch_id,
+              s.weight_kg,
+              s.cod_amount,
+              s.delivery_fee,
+              s.order_type,
+              s.service_type,
+              s.package_description,
+              s.tracking_events_json,
+              s.created_at,
+              s.delivered_at,
+              s.status_updated_at,
+              ob.name as origin_branch_name,
+              ob.district as origin_district,
+              ob.province as origin_province,
+              db.name as destination_branch_name,
+              db.district as destination_district,
+              db.province as destination_province,
+              cb.name as current_branch_name,
+              r.name as rider_name,
+              r.phone as rider_phone,
+              r.vehicle_type as rider_vehicle_type,
+              r.vehicle_plate_number as rider_vehicle_number,
+              rl.latitude as rider_live_lat,
+              rl.longitude as rider_live_lng,
+              rl.battery_level as rider_battery,
+              rl.duty_status as rider_duty_status,
+              rl.last_ping_at as rider_last_ping_at
+            FROM shipments s
+            LEFT JOIN branches ob ON s.branch_id = ob.id
+            LEFT JOIN branches db ON s.destination_branch_id = db.id
+            LEFT JOIN branches cb ON s.current_branch_id = cb.id
+            LEFT JOIN riders r ON s.courier_id = r.id
+            LEFT JOIN rider_live_locations rl ON r.id = rl.rider_id
+            WHERE s.company_id = ?
+              AND (
+                s.tracking_number = ?
+                OR UPPER(s.tracking_number) = UPPER(?)
+                OR s.vendor_reference_id = ?
+                OR UPPER(s.vendor_reference_id) = UPPER(?)
+                OR s.id = ?
+              )
+            LIMIT 1
+          `).bind(companyId, rawQ, rawQ, rawQ, rawQ, numQ).first().catch((err) => {
+            console.error('Shipment GPS query error:', err);
+            return null;
+          });
 
-          const shipNumId = shipmentRes ? shipmentRes.id : Number(sId);
+          if (!shipmentRes) {
+            return jsonResponse({
+              success: false,
+              error: `No shipment found matching tracking number or order ID "${rawQ}"`,
+              shipment: null,
+              waypoints: [],
+              total_points: 0,
+            }, 404);
+          }
 
-          const { results: waypoints = [] } = await db.prepare(`
+          const shipNumId = shipmentRes.id;
+
+          let { results: waypoints = [] } = await db.prepare(`
             SELECT 
               w.id,
               w.rider_id,
+              w.shipment_id,
               w.latitude,
               w.longitude,
               w.speed_kmh,
               w.heading,
               w.accuracy_meters,
+              w.battery_level,
               w.event_type,
               w.recorded_at,
               r.name as rider_name,
@@ -9427,10 +9499,62 @@ export async function onRequest(context) {
             ORDER BY w.recorded_at ASC
           `).bind(shipNumId).all().catch(() => ({ results: [] }));
 
+          // If no shipment-specific waypoints yet, but rider is assigned, fetch rider's recent journey logs
+          if ((!waypoints || waypoints.length === 0) && shipmentRes.rider_id) {
+            const riderLogs = await db.prepare(`
+              SELECT 
+                w.id,
+                w.rider_id,
+                w.shipment_id,
+                w.latitude,
+                w.longitude,
+                w.speed_kmh,
+                w.heading,
+                w.accuracy_meters,
+                w.battery_level,
+                w.event_type,
+                w.recorded_at,
+                r.name as rider_name,
+                r.phone as rider_phone
+              FROM rider_location_logs w
+              LEFT JOIN riders r ON w.rider_id = r.id
+              WHERE w.rider_id = ?
+              ORDER BY w.recorded_at DESC
+              LIMIT 50
+            `).bind(shipmentRes.rider_id).all().catch(() => ({ results: [] }));
+
+            if (riderLogs?.results?.length > 0) {
+              waypoints = riderLogs.results.reverse();
+            }
+          }
+
+          let milestones = [];
+          try {
+            if (shipmentRes.tracking_events_json) {
+              milestones = JSON.parse(shipmentRes.tracking_events_json);
+            }
+          } catch (e) {}
+
+          let liveRiderLocation = null;
+          if (shipmentRes.rider_live_lat && shipmentRes.rider_live_lng) {
+            liveRiderLocation = {
+              rider_id: shipmentRes.rider_id,
+              rider_name: shipmentRes.rider_name,
+              rider_phone: shipmentRes.rider_phone,
+              latitude: shipmentRes.rider_live_lat,
+              longitude: shipmentRes.rider_live_lng,
+              battery_level: shipmentRes.rider_battery,
+              duty_status: shipmentRes.rider_duty_status,
+              last_ping_at: shipmentRes.rider_last_ping_at,
+            };
+          }
+
           return jsonResponse({
             success: true,
             shipment: shipmentRes,
             waypoints,
+            milestones,
+            live_rider_location: liveRiderLocation,
             total_points: waypoints.length,
           });
         }

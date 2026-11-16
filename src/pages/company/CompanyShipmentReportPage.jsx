@@ -20,6 +20,7 @@ export function CompanyShipmentReportPage({ view }) {
   }, [view, location.pathname, searchParams]);
   const { shipments, branches, couriers, findCustomer, findCourier, findBranch } = useCompany();
 
+  const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -66,6 +67,17 @@ export function CompanyShipmentReportPage({ view }) {
 
   const filtered = useMemo(() => {
     return shipments.filter((s) => {
+      if (searchQuery && searchQuery.trim()) {
+        const q = searchQuery.trim().toLowerCase();
+        const trk = String(s.tracking_number || '').toLowerCase();
+        const sId = String(s.id || '').toLowerCase();
+        const refId = String(s.vendor_reference_id || '').toLowerCase();
+        const recName = String(s.receiver_name || '').toLowerCase();
+        const recPhone = String(s.receiver_phone || '').toLowerCase();
+        if (!trk.includes(q) && !sId.includes(q) && !refId.includes(q) && !recName.includes(q) && !recPhone.includes(q)) {
+          return false;
+        }
+      }
       if (typeFilter) {
         const isVendor = s.client_type === 'vendor' || !!s.customer_id;
         if (typeFilter === 'vendor' && !isVendor) return false;
@@ -92,7 +104,7 @@ export function CompanyShipmentReportPage({ view }) {
       }
       return true;
     });
-  }, [shipments, typeFilter, startDate, endDate, branchFilter, riderFilter, statusFilter]);
+  }, [shipments, searchQuery, typeFilter, startDate, endDate, branchFilter, riderFilter, statusFilter]);
 
   const totalDelivered = filtered.filter((s) => s.status === 'delivered').length;
   const totalFailed = filtered.filter((s) => s.status === 'failed').length;
@@ -194,7 +206,27 @@ export function CompanyShipmentReportPage({ view }) {
       </div>
 
       <div className="panel" style={{ padding: '16px', marginBottom: '20px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+          <div>
+            <span style={{ fontSize: '11px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
+              🔍 Search Waybill / Tracking # / Order ID
+            </span>
+            <input
+              type="text"
+              placeholder="e.g. RTC-20261114-21 or #48"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                height: '36px',
+                padding: '6px 12px',
+                fontSize: '12.5px',
+                border: '1px solid #cbd5e1',
+                borderRadius: '6px',
+                outline: 'none',
+              }}
+            />
+          </div>
           <div>
             <span style={{ fontSize: '11px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>Type</span>
             <SearchableSelect

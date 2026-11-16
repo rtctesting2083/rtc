@@ -16,6 +16,12 @@ import {
   Sliders,
   ChevronRight,
   Radio,
+  AlertCircle,
+  Copy,
+  Check,
+  Truck,
+  Building2,
+  ExternalLink,
 } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -23,6 +29,73 @@ import { useLocation, useSearchParams } from 'react-router-dom';
 import { useCompany } from '../../context/CompanyContext';
 import { d1Api } from '../../utils/d1Api';
 import { SearchableSelect } from '../../components/common/SearchableSelect';
+import { StatusPill } from '../../components/common/StatusPill';
+import { fmtMoney, fmtDate } from '../../utils/helpers';
+
+// Geolocation coordinates for Nepal districts & key branch hubs
+const NEPAL_HUB_COORDS = {
+  kathmandu: [27.7172, 85.3240],
+  lalitpur: [27.6644, 85.3188],
+  bhaktapur: [27.6710, 85.4298],
+  butwal: [27.6884, 83.4429],
+  rupandehi: [27.6884, 83.4429],
+  pokhara: [28.2096, 83.9856],
+  kaski: [28.2096, 83.9856],
+  chitwan: [27.5291, 84.3542],
+  bharatpur: [27.6833, 84.4333],
+  biratnagar: [26.4525, 87.2718],
+  morang: [26.4525, 87.2718],
+  birgunj: [27.0135, 84.8773],
+  parsa: [27.0135, 84.8773],
+  dharan: [26.8124, 87.2834],
+  sunsari: [26.8124, 87.2834],
+  nepalgunj: [28.0500, 81.6167],
+  banke: [28.0500, 81.6167],
+  dhangadhi: [28.6852, 80.6078],
+  kailali: [28.6852, 80.6078],
+  hetauda: [27.4285, 85.0328],
+  makwanpur: [27.4285, 85.0328],
+  jhapa: [26.6341, 87.9942],
+  birtamod: [26.6341, 87.9942],
+  damak: [26.6667, 87.7000],
+  surkhet: [28.5833, 81.6333],
+  birendranagar: [28.5833, 81.6333],
+  dang: [28.0333, 82.3000],
+  ghorahi: [28.0500, 82.5000],
+  palpa: [27.8667, 83.5500],
+  tansen: [27.8667, 83.5500],
+  kapilvastu: [27.5500, 83.0500],
+  nawalparasi: [27.5333, 83.6667],
+  nawalpur: [27.6333, 84.1167],
+  baglung: [28.2667, 83.6000],
+  syangja: [28.0833, 83.8667],
+  tanahun: [27.9167, 84.2500],
+  gorkha: [28.0000, 84.6333],
+  lamjung: [28.2333, 84.3833],
+  dhading: [27.8667, 84.9000],
+  kavre: [27.5333, 85.5500],
+  sindhupalchok: [27.9500, 85.6833],
+  nuwakot: [27.9167, 85.1667],
+  ilam: [26.9167, 87.9167],
+  sarlahi: [26.9667, 85.5500],
+  dhanusha: [26.7333, 85.9333],
+  janakpur: [26.7333, 85.9333],
+  rautahat: [26.9333, 85.3333],
+  bara: [27.0333, 85.0000],
+  bardiya: [28.3000, 81.3333],
+  kanchanpur: [28.8333, 80.3333],
+};
+
+function resolveCoordinates(text, fallback = [27.6884, 83.4429]) {
+  if (!text) return fallback;
+  const lower = String(text).toLowerCase();
+  for (const [key, coords] of Object.entries(NEPAL_HUB_COORDS)) {
+    if (lower.includes(key)) {
+      return coords;
+    }
+  }
+  return fallback;
+}
 
 export function CompanyGpsReportsPage() {
   const { couriers = [], shipments = [] } = useCompany();
@@ -38,11 +111,14 @@ export function CompanyGpsReportsPage() {
   const [riderReport, setRiderReport] = useState(null);
   const [isLoadingRider, setIsLoadingRider] = useState(false);
 
-  // Tab 2: Shipment State
-  const initialShipmentId = searchParams.get('shipment_id') || '';
+  // Tab 2: Shipment / Waybill State
+  const initialShipmentId = searchParams.get('shipment_id') || searchParams.get('track') || '';
   const [shipmentSearchQuery, setShipmentSearchQuery] = useState(initialShipmentId);
+  const [selectedShipmentDropdown, setSelectedShipmentDropdown] = useState(initialShipmentId);
   const [shipmentReport, setShipmentReport] = useState(null);
+  const [shipmentError, setShipmentError] = useState(null);
   const [isLoadingShipment, setIsLoadingShipment] = useState(false);
+  const [copiedId, setCopiedId] = useState(null);
 
   // Map Refs
   const mapContainerRef = useRef(null);
@@ -57,6 +133,23 @@ export function CompanyGpsReportsPage() {
       subtext: c.phone ? `(${c.phone})` : null,
     }));
   }, [couriers]);
+
+  // Shipment Options for SearchableSelect
+  const shipmentOptions = useMemo(() => {
+    return (shipments || []).map((s) => ({
+      value: s.tracking_number,
+      label: `${s.tracking_number} — ${s.receiver_name || 'Recipient'}`,
+      subtext: `Order #${s.id} • ${s.status?.replace(/_/g, ' ')} • ${s.delivery_address?.split(',')[0] || ''}`,
+    }));
+  }, [shipments]);
+
+  // Copy tracking ID
+  const handleCopy = (id) => {
+    if (!id) return;
+    navigator.clipboard?.writeText(id);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   // Initialize Map
   useEffect(() => {
@@ -110,26 +203,36 @@ export function CompanyGpsReportsPage() {
 
   // Fetch Shipment Trail
   const fetchShipmentTrail = async (sId) => {
-    const idToSearch = sId || shipmentSearchQuery;
+    const idToSearch = (sId !== undefined ? sId : shipmentSearchQuery || selectedShipmentDropdown || '').trim();
     if (!idToSearch) return;
 
     setIsLoadingShipment(true);
+    setShipmentError(null);
     try {
       const res = await d1Api.getShipmentGpsRoute(idToSearch);
-      if (res && res.success) {
+      if (res && res.success && res.shipment) {
         setShipmentReport(res);
-        renderShipmentRoute(res.waypoints || []);
+        setShipmentSearchQuery(res.shipment.tracking_number);
+        setSelectedShipmentDropdown(res.shipment.tracking_number);
+        renderShipmentRoute(res.waypoints || [], res.shipment, res.milestones || [], res.live_rider_location);
+      } else {
+        setShipmentReport(null);
+        setShipmentError(res?.error || `No shipment or order found matching "${idToSearch}". Please check the waybill number or Order ID.`);
+        if (routeLayerGroupRef.current) {
+          routeLayerGroupRef.current.clearLayers();
+        }
       }
     } catch (err) {
       console.error('Error fetching shipment trail:', err);
+      setShipmentError(err.message || 'Network error fetching shipment GPS route.');
     } finally {
       setIsLoadingShipment(false);
     }
   };
 
   useEffect(() => {
-    if (activeTab === 'shipment' && shipmentSearchQuery) {
-      fetchShipmentTrail(shipmentSearchQuery);
+    if (activeTab === 'shipment' && (shipmentSearchQuery || initialShipmentId)) {
+      fetchShipmentTrail(shipmentSearchQuery || initialShipmentId);
     }
   }, [activeTab]);
 
@@ -190,53 +293,159 @@ export function CompanyGpsReportsPage() {
     map.fitBounds(polyline.getBounds(), { padding: [50, 50], maxZoom: 15 });
   };
 
-  // Render Shipment Route
-  const renderShipmentRoute = (waypoints) => {
+  // Render Shipment Route & Checkpoints
+  const renderShipmentRoute = (waypoints = [], shipment = {}, milestones = [], liveRider = null) => {
     const map = mapInstanceRef.current;
     const group = routeLayerGroupRef.current;
     if (!map || !group) return;
 
     group.clearLayers();
 
-    if (!waypoints || waypoints.length === 0) return;
+    const boundsPoints = [];
 
-    const latLngs = waypoints.map((w) => [Number(w.latitude), Number(w.longitude)]);
+    // 1. Origin Hub Pin
+    const originCoords = resolveCoordinates(
+      `${shipment.origin_branch_name || ''} ${shipment.origin_district || ''} ${shipment.sender_address || ''}`,
+      [27.6884, 83.4429]
+    );
+    boundsPoints.push(originCoords);
 
-    const polyline = L.polyline(latLngs, {
-      color: '#dc2626',
-      weight: 4,
-      dashArray: '6, 8',
-      opacity: 0.85,
-    }).addTo(group);
+    const originIcon = L.divIcon({
+      className: 'rtc-origin-marker',
+      html: `
+        <div style="background: #2563eb; color: #fff; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; border: 2px solid #fff; box-shadow: 0 3px 10px rgba(0,0,0,0.3);">
+          🏢
+        </div>
+      `,
+      iconSize: [32, 32],
+      iconAnchor: [16, 16],
+    });
+    L.marker(originCoords, { icon: originIcon })
+      .bindPopup(`
+        <div style="font-size: 12px; min-width: 160px;">
+          <strong style="color: #2563eb;">Origin Hub</strong><br/>
+          <b>${shipment.origin_branch_name || 'Origin Branch'}</b><br/>
+          <span style="color: #64748b; font-size: 11px;">${shipment.sender_name || 'Sender'}</span>
+        </div>
+      `)
+      .addTo(group);
 
-    waypoints.forEach((wp, idx) => {
-      const isMilestone = wp.event_type && wp.event_type !== 'PING';
-      const label = isMilestone ? wp.event_type : `${idx + 1}`;
+    // 2. Destination Hub / Dropoff Pin
+    const destCoords = resolveCoordinates(
+      `${shipment.destination_branch_name || ''} ${shipment.destination_district || ''} ${shipment.recipient_address || ''}`,
+      [27.7172, 85.3240]
+    );
+    boundsPoints.push(destCoords);
 
-      const icon = L.divIcon({
-        className: 'rtc-wp-marker',
+    const destIcon = L.divIcon({
+      className: 'rtc-dest-marker',
+      html: `
+        <div style="background: #16a34a; color: #fff; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; border: 2px solid #fff; box-shadow: 0 3px 10px rgba(0,0,0,0.3);">
+          📍
+        </div>
+      `,
+      iconSize: [32, 32],
+      iconAnchor: [16, 16],
+    });
+    L.marker(destCoords, { icon: destIcon })
+      .bindPopup(`
+        <div style="font-size: 12px; min-width: 160px;">
+          <strong style="color: #16a34a;">Delivery Destination</strong><br/>
+          <b>${shipment.recipient_name || 'Customer'}</b><br/>
+          <span style="color: #64748b; font-size: 11px;">${shipment.recipient_address || ''}</span>
+        </div>
+      `)
+      .addTo(group);
+
+    // 3. Live Courier Marker (if active)
+    const riderLat = liveRider?.latitude || shipment.rider_live_lat;
+    const riderLng = liveRider?.longitude || shipment.rider_live_lng;
+    if (riderLat && riderLng) {
+      const courierCoords = [Number(riderLat), Number(riderLng)];
+      boundsPoints.push(courierCoords);
+
+      const courierIcon = L.divIcon({
+        className: 'rtc-courier-marker',
         html: `
-          <div style="background: ${isMilestone ? '#dc2626' : '#475569'}; color: #fff; width: ${isMilestone ? '28px' : '20px'}; height: ${isMilestone ? '28px' : '20px'}; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: ${isMilestone ? '10px' : '9px'}; font-weight: 700; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.25);">
-            ${isMilestone ? '★' : idx + 1}
+          <div style="background: #f59e0b; color: #fff; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 15px; border: 2px solid #fff; box-shadow: 0 3px 10px rgba(0,0,0,0.35); animation: pulse 2s infinite;">
+            🚴
           </div>
         `,
-        iconSize: isMilestone ? [28, 28] : [20, 20],
-        iconAnchor: isMilestone ? [14, 14] : [10, 10],
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
       });
-
-      L.marker([wp.latitude, wp.longitude], { icon })
+      L.marker(courierCoords, { icon: courierIcon })
         .bindPopup(`
-          <div style="font-size: 11.5px;">
-            <strong>${wp.event_type || 'GPS Ping'}</strong><br/>
-            Time: ${wp.recorded_at}<br/>
-            Speed: ${wp.speed_kmh || 0} km/h<br/>
-            Rider: ${wp.rider_name || 'Assigned Courier'}
+          <div style="font-size: 12px; min-width: 170px;">
+            <strong style="color: #d97706;">Assigned Delivery Courier</strong><br/>
+            <b>${shipment.rider_name || 'Courier'}</b> (${shipment.rider_phone || 'N/A'})<br/>
+            <span style="font-size: 11px; color: #16a34a; font-weight: 600;">● Live GPS Signal</span><br/>
+            <span style="color: #64748b; font-size: 10.5px;">Vehicle: ${shipment.rider_vehicle_number || shipment.rider_vehicle_type || 'Bike'}</span>
           </div>
         `)
         .addTo(group);
-    });
+    }
 
-    map.fitBounds(polyline.getBounds(), { padding: [50, 50], maxZoom: 15 });
+    // 4. GPS Breadcrumbs & Trail
+    if (waypoints && waypoints.length > 0) {
+      const latLngs = waypoints.map((w) => [Number(w.latitude), Number(w.longitude)]);
+      boundsPoints.push(...latLngs);
+
+      // Polyline trail
+      L.polyline(latLngs, {
+        color: '#dc2626',
+        weight: 4,
+        opacity: 0.85,
+        lineJoin: 'round',
+      }).addTo(group);
+
+      // Intermediate waypoints
+      waypoints.forEach((wp, idx) => {
+        const isMilestone = wp.event_type && wp.event_type !== 'PING';
+        if (isMilestone || idx === 0 || idx === waypoints.length - 1) {
+          const wpIcon = L.divIcon({
+            className: 'rtc-wp-marker',
+            html: `
+              <div style="background: ${isMilestone ? '#dc2626' : '#475569'}; color: #fff; width: ${isMilestone ? '24px' : '18px'}; height: ${isMilestone ? '24px' : '18px'}; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: ${isMilestone ? '10px' : '8px'}; font-weight: 700; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.25);">
+                ${isMilestone ? '★' : idx + 1}
+              </div>
+            `,
+            iconSize: isMilestone ? [24, 24] : [18, 18],
+            iconAnchor: isMilestone ? [12, 12] : [9, 9],
+          });
+
+          L.marker([wp.latitude, wp.longitude], { icon: wpIcon })
+            .bindPopup(`
+              <div style="font-size: 11.5px;">
+                <strong>${wp.event_type || 'GPS Ping'}</strong><br/>
+                Time: ${wp.recorded_at}<br/>
+                Speed: ${wp.speed_kmh || 0} km/h<br/>
+                Rider: ${wp.rider_name || shipment.rider_name || 'Courier'}
+              </div>
+            `)
+            .addTo(group);
+        }
+      });
+    } else {
+      // Draw dashed milestone line between Origin, Courier (if any), and Destination
+      const routePoints = [originCoords];
+      if (riderLat && riderLng) {
+        routePoints.push([Number(riderLat), Number(riderLng)]);
+      }
+      routePoints.push(destCoords);
+
+      L.polyline(routePoints, {
+        color: '#2563eb',
+        weight: 3,
+        dashArray: '8, 8',
+        opacity: 0.75,
+      }).addTo(group);
+    }
+
+    if (boundsPoints.length > 0) {
+      const bounds = L.latLngBounds(boundsPoints);
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+    }
   };
 
   // Export to CSV
@@ -287,7 +496,7 @@ export function CompanyGpsReportsPage() {
               GPS Trip Reports & Route Playback
             </h1>
             <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>
-              Audit historical rider paths, distance traveled, transit milestones, and export GPS breadcrumb logs.
+              Audit historical rider paths, waybill transit trails, order milestones, and export GPS breadcrumb logs.
             </p>
           </div>
         </div>
@@ -418,13 +627,33 @@ export function CompanyGpsReportsPage() {
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', flex: 1 }}>
-            <div style={{ minWidth: '280px', flex: 1, maxWidth: '400px' }}>
+            {/* Quick Pick Dropdown */}
+            <div style={{ minWidth: '240px', flex: '1 1 260px', maxWidth: '380px' }}>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>
-                Waybill / Tracking Number or Order ID
+                Select From Active Waybills
+              </label>
+              <SearchableSelect
+                value={selectedShipmentDropdown}
+                onChange={(val) => {
+                  setSelectedShipmentDropdown(val);
+                  setShipmentSearchQuery(val);
+                  fetchShipmentTrail(val);
+                }}
+                options={shipmentOptions}
+                placeholder="Choose waybill or order..."
+                searchPlaceholder="Search waybills / recipient..."
+                height="36px"
+              />
+            </div>
+
+            {/* Direct Input */}
+            <div style={{ minWidth: '220px', flex: '1 1 240px', maxWidth: '340px' }}>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>
+                Or Enter Waybill / Tracking # / Order ID
               </label>
               <input
                 type="text"
-                placeholder="e.g. RTC-20261112-18"
+                placeholder="e.g. RTC-20261116-25 or #48"
                 value={shipmentSearchQuery}
                 onChange={(e) => setShipmentSearchQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && fetchShipmentTrail()}
@@ -457,7 +686,7 @@ export function CompanyGpsReportsPage() {
                 }}
               >
                 <Search size={13} />
-                {isLoadingShipment ? 'Searching...' : 'Trace Waybill Path'}
+                {isLoadingShipment ? 'Tracing...' : 'Trace Waybill Path'}
               </button>
             </div>
           </div>
@@ -484,6 +713,27 @@ export function CompanyGpsReportsPage() {
           </button>
         )}
       </div>
+
+      {/* Error Alert (Shipment Tab) */}
+      {activeTab === 'shipment' && shipmentError && (
+        <div
+          style={{
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            borderRadius: '10px',
+            padding: '14px 18px',
+            color: '#991b1b',
+            fontSize: '13px',
+            marginBottom: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+          }}
+        >
+          <AlertCircle size={18} color="#dc2626" style={{ flexShrink: 0 }} />
+          <span>{shipmentError}</span>
+        </div>
+      )}
 
       {/* KPI Metrics Row (Rider Report) */}
       {activeTab === 'rider' && riderReport && (
@@ -519,56 +769,185 @@ export function CompanyGpsReportsPage() {
         </div>
       )}
 
-      {/* Shipment Info Card (Waybill Tab) */}
+      {/* Comprehensive Shipment Info Card (Waybill Tab) */}
       {activeTab === 'shipment' && shipmentReport?.shipment && (
-        <div
-          style={{
-            background: '#ffffff',
-            borderRadius: '10px',
-            border: '1px solid #e2e8f0',
-            padding: '16px 20px',
-            marginBottom: '20px',
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: '12px',
-          }}
-        >
-          <div>
-            <div style={{ fontSize: '11px', color: '#64748b' }}>TRACKING NUMBER</div>
-            <div style={{ fontSize: '15px', fontWeight: 700, color: '#dc2626' }}>
-              {shipmentReport.shipment.tracking_number}
+        <div style={{ marginBottom: '20px' }}>
+          {/* Main Details Grid */}
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: '10px',
+              border: '1px solid #e2e8f0',
+              padding: '16px 20px',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: '16px',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+            }}
+          >
+            {/* Tracking ID & Status */}
+            <div>
+              <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>WAYBILL / TRACKING NUMBER</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px' }}>
+                <span style={{ fontSize: '16px', fontWeight: 700, color: '#dc2626', letterSpacing: '0.3px' }}>
+                  {shipmentReport.shipment.tracking_number}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleCopy(shipmentReport.shipment.tracking_number)}
+                  style={{
+                    background: copiedId === shipmentReport.shipment.tracking_number ? '#16a34a' : '#f1f5f9',
+                    color: copiedId === shipmentReport.shipment.tracking_number ? '#fff' : '#64748b',
+                    border: 'none',
+                    borderRadius: '4px',
+                    padding: '2px 6px',
+                    cursor: 'pointer',
+                    fontSize: '10.5px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '3px',
+                  }}
+                >
+                  {copiedId === shipmentReport.shipment.tracking_number ? <Check size={11} /> : <Copy size={11} />}
+                  {copiedId === shipmentReport.shipment.tracking_number ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+              <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <StatusPill status={shipmentReport.shipment.status} />
+                <span style={{ fontSize: '11px', color: '#64748b' }}>Order #{shipmentReport.shipment.id}</span>
+              </div>
             </div>
-            <div style={{ fontSize: '11.5px', color: '#475569' }}>
-              Status: <strong>{shipmentReport.shipment.status?.replace(/_/g, ' ')}</strong>
+
+            {/* Recipient */}
+            <div>
+              <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>RECIPIENT & DESTINATION</div>
+              <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#0f172a', marginTop: '3px' }}>
+                {shipmentReport.shipment.recipient_name}
+              </div>
+              <div style={{ fontSize: '11.5px', color: '#475569' }}>
+                Phone: {shipmentReport.shipment.recipient_phone || 'N/A'}
+              </div>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                {shipmentReport.shipment.recipient_address}
+              </div>
+              <div style={{ fontSize: '10.5px', color: '#2563eb', marginTop: '3px' }}>
+                📍 Dest Hub: {shipmentReport.shipment.destination_branch_name || 'Destination Branch'}
+              </div>
+            </div>
+
+            {/* Sender / Origin */}
+            <div>
+              <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>SENDER & ORIGIN HUB</div>
+              <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#0f172a', marginTop: '3px' }}>
+                {shipmentReport.shipment.sender_name || 'Vendor / Walk-in'}
+              </div>
+              <div style={{ fontSize: '11.5px', color: '#475569' }}>
+                Phone: {shipmentReport.shipment.sender_phone || 'N/A'}
+              </div>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                {shipmentReport.shipment.sender_address || 'Origin Address'}
+              </div>
+              <div style={{ fontSize: '10.5px', color: '#2563eb', marginTop: '3px' }}>
+                🏢 Origin Hub: {shipmentReport.shipment.origin_branch_name || 'Origin Hub'}
+              </div>
+            </div>
+
+            {/* Courier & Waypoints */}
+            <div>
+              <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>ASSIGNED COURIER & GPS</div>
+              {shipmentReport.shipment.rider_name ? (
+                <>
+                  <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#0f172a', marginTop: '3px' }}>
+                    🚴 {shipmentReport.shipment.rider_name}
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: '#475569' }}>
+                    Phone: {shipmentReport.shipment.rider_phone || 'N/A'}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#64748b' }}>
+                    Vehicle: {shipmentReport.shipment.rider_vehicle_number || shipmentReport.shipment.rider_vehicle_type || 'Bike'}
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                  No delivery courier assigned yet
+                </div>
+              )}
+              <div style={{ marginTop: '6px', fontSize: '11px', fontWeight: 600, color: '#16a34a' }}>
+                {shipmentReport.total_points > 0
+                  ? `● ${shipmentReport.total_points} GPS Breadcrumbs Recorded`
+                  : '📍 Route Checkpoints Active'}
+              </div>
+            </div>
+
+            {/* Financials */}
+            <div>
+              <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>BILLING & CHARGES</div>
+              <div style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a', marginTop: '3px' }}>
+                COD: {fmtMoney(shipmentReport.shipment.cod_amount || 0)}
+              </div>
+              <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
+                Delivery Fee: {fmtMoney(shipmentReport.shipment.delivery_fee || 0)}
+              </div>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                Weight: {shipmentReport.shipment.weight_kg ? `${shipmentReport.shipment.weight_kg} kg` : 'Standard'}
+              </div>
             </div>
           </div>
 
-          <div>
-            <div style={{ fontSize: '11px', color: '#64748b' }}>RECIPIENT</div>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>
-              {shipmentReport.shipment.recipient_name}
+          {/* Transit Milestones Stepper */}
+          {Array.isArray(shipmentReport.milestones) && shipmentReport.milestones.length > 0 && (
+            <div
+              style={{
+                marginTop: '12px',
+                background: '#ffffff',
+                borderRadius: '10px',
+                border: '1px solid #e2e8f0',
+                padding: '14px 20px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+              }}
+            >
+              <div style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', marginBottom: '10px' }}>
+                Milestone Progress & Checkpoints ({shipmentReport.milestones.length})
+              </div>
+              <div style={{ display: 'flex', gap: '16px', overflowX: 'auto', paddingBottom: '6px' }}>
+                {shipmentReport.milestones.map((m, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      minWidth: '180px',
+                      flex: '1 0 180px',
+                      background: '#f8fafc',
+                      borderRadius: '8px',
+                      border: '1px solid #e2e8f0',
+                      padding: '10px 12px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <CheckCircle2 size={13} color="#16a34a" />
+                      <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#0f172a', textTransform: 'capitalize' }}>
+                        {(m.status || m.event_type || 'Checkpoint').replace(/_/g, ' ')}
+                      </span>
+                    </div>
+                    {m.location && (
+                      <div style={{ fontSize: '10.5px', color: '#2563eb', marginTop: '4px' }}>
+                        📍 {m.location}
+                      </div>
+                    )}
+                    {m.notes && (
+                      <div style={{ fontSize: '10px', color: '#475569', marginTop: '3px' }}>
+                        {m.notes}
+                      </div>
+                    )}
+                    {m.at && (
+                      <div style={{ fontSize: '9.5px', color: '#94a3b8', marginTop: '4px' }}>
+                        {fmtDate(m.at)}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
-            <div style={{ fontSize: '11px', color: '#64748b' }}>
-              {shipmentReport.shipment.recipient_address}
-            </div>
-          </div>
-
-          <div>
-            <div style={{ fontSize: '11px', color: '#64748b' }}>SENDER / VENDOR</div>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>
-              {shipmentReport.shipment.sender_name || 'N/A'}
-            </div>
-            <div style={{ fontSize: '11px', color: '#64748b' }}>
-              {shipmentReport.shipment.sender_address}
-            </div>
-          </div>
-
-          <div>
-            <div style={{ fontSize: '11px', color: '#64748b' }}>RECORDED GPS WAYPOINTS</div>
-            <div style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>
-              {shipmentReport.total_points || 0} Points
-            </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -582,6 +961,45 @@ export function CompanyGpsReportsPage() {
           boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
         }}
       >
+        {activeTab === 'shipment' && shipmentReport?.shipment && (
+          <div
+            style={{
+              padding: '10px 16px',
+              background: '#f8fafc',
+              borderBottom: '1px solid #e2e8f0',
+              fontSize: '11.5px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '8px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ color: '#2563eb', fontWeight: 600 }}>
+                🏢 {shipmentReport.shipment.origin_branch_name || 'Origin Hub'}
+              </span>
+              <ArrowRight size={13} color="#94a3b8" />
+              {shipmentReport.shipment.rider_name && (
+                <>
+                  <span style={{ color: '#d97706', fontWeight: 600 }}>
+                    🚴 Courier: {shipmentReport.shipment.rider_name}
+                  </span>
+                  <ArrowRight size={13} color="#94a3b8" />
+                </>
+              )}
+              <span style={{ color: '#16a34a', fontWeight: 600 }}>
+                📍 {shipmentReport.shipment.destination_branch_name || shipmentReport.shipment.recipient_address || 'Destination Hub'}
+              </span>
+            </div>
+            <div style={{ color: '#64748b', fontSize: '11px' }}>
+              {shipmentReport.total_points > 0
+                ? `${shipmentReport.total_points} GPS Breadcrumbs Recorded`
+                : 'Showing branch route & destination checkpoints'}
+            </div>
+          </div>
+        )}
+
         <div style={{ height: '550px', width: '100%', position: 'relative' }}>
           <div ref={mapContainerRef} style={{ height: '100%', width: '100%' }} />
         </div>

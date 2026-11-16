@@ -10,6 +10,7 @@ export function BranchShipmentReportPage() {
   const { currentBranch } = useOutletContext();
   const { shipments, couriers, findCustomer, findCourier } = useCompany();
 
+  const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [riderFilter, setRiderFilter] = useState('');
@@ -18,6 +19,17 @@ export function BranchShipmentReportPage() {
     return shipments.filter((s) => {
       const isHere = s.current_branch_id === currentBranch.id || s.branch_id === currentBranch.id;
       if (!isHere) return false;
+      if (searchQuery && searchQuery.trim()) {
+        const q = searchQuery.trim().toLowerCase();
+        const trk = String(s.tracking_number || '').toLowerCase();
+        const sId = String(s.id || '').toLowerCase();
+        const refId = String(s.vendor_reference_id || '').toLowerCase();
+        const recName = String(s.receiver_name || '').toLowerCase();
+        const recPhone = String(s.receiver_phone || '').toLowerCase();
+        if (!trk.includes(q) && !sId.includes(q) && !refId.includes(q) && !recName.includes(q) && !recPhone.includes(q)) {
+          return false;
+        }
+      }
       if (typeFilter) {
         const isVendor = s.client_type === 'vendor' || !!s.customer_id;
         if (typeFilter === 'vendor' && !isVendor) return false;
@@ -27,7 +39,7 @@ export function BranchShipmentReportPage() {
       if (riderFilter && s.courier_id !== Number(riderFilter)) return false;
       return true;
     });
-  }, [shipments, currentBranch.id, typeFilter, statusFilter, riderFilter]);
+  }, [shipments, currentBranch.id, searchQuery, typeFilter, statusFilter, riderFilter]);
 
   const delivered = branchShipments.filter((s) => s.status === 'delivered').length;
   const failed = branchShipments.filter((s) => s.status === 'failed' || s.status === 'returned').length;
@@ -84,6 +96,21 @@ export function BranchShipmentReportPage() {
       </div>
 
       <div className="filters" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <input
+          type="text"
+          placeholder="🔍 Waybill / Tracking # / Order ID..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{
+            height: '34px',
+            padding: '0 10px',
+            borderRadius: '6px',
+            border: '1px solid #cbd5e1',
+            fontSize: '12px',
+            minWidth: '220px',
+            outline: 'none',
+          }}
+        />
         <SearchableSelect
           value={typeFilter}
           onChange={(val) => setTypeFilter(val || '')}
