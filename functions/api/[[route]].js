@@ -9224,10 +9224,13 @@ export async function onRequest(context) {
           const data = await apiRes.json().catch(() => ({ status: apiRes.status }));
           return jsonResponse(data, apiRes.status);
         }
+      }
 
-        // ==========================================
-        // GPS TRACKING SYSTEM ENDPOINTS
-        // ==========================================
+      // ==========================================
+      // GPS TRACKING SYSTEM ENDPOINTS
+      // ==========================================
+      if (path === 'rider/gps/ping' || path.startsWith('admin/gps/')) {
+        const companyId = Number(url.searchParams.get('company_id') || 1);
 
         // Helper for Haversine distance in km
         function calculateHaversineDistanceKm(lat1, lon1, lat2, lon2) {
@@ -9273,8 +9276,8 @@ export async function onRequest(context) {
                 rider_id, company_id, branch_id, active_shipment_id,
                 latitude, longitude, speed_kmh, heading,
                 accuracy_meters, battery_level, duty_status,
-                last_ping_at, updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                last_ping_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               ON CONFLICT(rider_id) DO UPDATE SET
                 company_id = excluded.company_id,
                 branch_id = COALESCE(excluded.branch_id, rider_live_locations.branch_id),
@@ -9286,14 +9289,13 @@ export async function onRequest(context) {
                 accuracy_meters = excluded.accuracy_meters,
                 battery_level = excluded.battery_level,
                 duty_status = excluded.duty_status,
-                last_ping_at = excluded.last_ping_at,
-                updated_at = CURRENT_TIMESTAMP
+                last_ping_at = excluded.last_ping_at
             `).bind(
               riderId, cid, branchId, shipmentId,
               lat, lng, speed, heading,
               accuracy, battery, duty,
               recordedAt
-            ).run().catch((e) => console.error('Error upserting live location:', e));
+            ).run();
 
             // Insert into history log
             await db.prepare(`
@@ -9306,7 +9308,7 @@ export async function onRequest(context) {
               riderId, shipmentId, cid, branchId,
               lat, lng, speed, heading,
               accuracy, battery, eventType, recordedAt
-            ).run().catch((e) => console.error('Error inserting location log:', e));
+            ).run();
 
             processed++;
           }
@@ -9337,13 +9339,13 @@ export async function onRequest(context) {
               r.name as rider_name,
               r.phone as rider_phone,
               r.vehicle_type,
-              r.vehicle_number,
+              r.vehicle_plate_number as vehicle_number,
               b.name as branch_name,
               b.tier as branch_tier,
               b.district as branch_district,
               b.province as branch_province,
               s.tracking_number as active_tracking_number,
-              s.recipient_name as active_recipient_name,
+              s.receiver_name as active_recipient_name,
               s.status as active_shipment_status,
               ROUND((JULIANDAY('now') - JULIANDAY(l.last_ping_at)) * 1440, 1) as minutes_since_ping
             FROM rider_live_locations l
@@ -9369,8 +9371,8 @@ export async function onRequest(context) {
 
           query += ' ORDER BY l.last_ping_at DESC';
 
-          const { results = [] } = await db.prepare(query).bind(...params).all().catch(() => ({ results: [] }));
-          return jsonResponse({ success: true, live_riders: results });
+          const { results = [], error: queryError } = await db.prepare(query).bind(...params).all().catch((err) => ({ error: err.message, results: [] }));
+          return jsonResponse({ success: !queryError, live_riders: results, error: queryError });
         }
 
         // 3. GET /api/admin/gps/shipment-route (Trail for a single shipment/waybill)
@@ -9385,8 +9387,9 @@ export async function onRequest(context) {
           }
 
           const shipmentRes = await db.prepare(`
-            SELECT id, tracking_number, status, recipient_name, recipient_phone, recipient_address, 
-                   sender_name, sender_address, rider_id, origin_branch_id, destination_branch_id
+            SELECT id, tracking_number, status, receiver_name as recipient_name, receiver_phone as recipient_phone, 
+                   delivery_address as recipient_address, sender_name, pickup_address as sender_address, 
+                   courier_id as rider_id, branch_id as origin_branch_id, destination_branch_id
             FROM shipments
             WHERE id = ? OR tracking_number = ?
           `).bind(sId, sId).first().catch(() => null);
@@ -9465,7 +9468,7 @@ export async function onRequest(context) {
             }
           }
 
-          const riderInfo = await db.prepare(`SELECT id, name, phone, branch_id, vehicle_type, vehicle_number FROM riders WHERE id = ?`).bind(Number(rId)).first().catch(() => null);
+          const riderInfo = await db.prepare(`SELECT id, name, phone, branch_id, vehicle_type, vehicle_plate_number as vehicle_number FROM riders WHERE id = ?`).bind(Number(rId)).first().catch(() => null);
 
           return jsonResponse({
             success: true,
