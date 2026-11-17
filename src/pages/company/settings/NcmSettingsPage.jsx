@@ -57,10 +57,19 @@ export function NcmSettingsPage() {
   const [commentTypeFilter, setCommentTypeFilter] = useState('');
   const [commentFollowupFilter, setCommentFollowupFilter] = useState('');
 
-  // Host Origin
-  const hostOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://rtccourrier.pages.dev';
-  const deliveryWebhookUrl = `${hostOrigin}/api/webhooks/ncm/delivery${secretToken ? `?token=${secretToken}` : ''}`;
-  const commentWebhookUrl = `${hostOrigin}/api/webhooks/ncm/comments${secretToken ? `?token=${secretToken}` : ''}`;
+  // Host Origin & Custom Domain Override
+  const defaultHost = typeof window !== 'undefined' ? window.location.origin : 'https://rtccourrier.pages.dev';
+  const [selectedDomain, setSelectedDomain] = useState(() => {
+    if (typeof window !== 'undefined' && window.location.host.includes('rtccourier.com.np')) {
+      return window.location.origin;
+    }
+    return 'https://app.rtccourier.com.np';
+  });
+  const [customDomainInput, setCustomDomainInput] = useState('');
+
+  const effectiveOrigin = selectedDomain === 'custom' ? (customDomainInput.trim() || defaultHost) : selectedDomain;
+  const deliveryWebhookUrl = `${effectiveOrigin}/api/webhooks/ncm/delivery${secretToken ? `?token=${secretToken}` : ''}`;
+  const commentWebhookUrl = `${effectiveOrigin}/api/webhooks/ncm/comments${secretToken ? `?token=${secretToken}` : ''}`;
 
   // Copy helper
   const handleCopy = (text, key) => {
@@ -341,6 +350,52 @@ export function NcmSettingsPage() {
               Your Webhook Ingestion URLs
             </h2>
           </div>
+
+          {/* Domain Selector */}
+          <div style={{ marginBottom: '16px', background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+              Target Domain / Base URL:
+            </label>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <select
+                value={selectedDomain}
+                onChange={(e) => setSelectedDomain(e.target.value)}
+                style={{
+                  flex: 1,
+                  padding: '6px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '12px',
+                  background: '#ffffff',
+                  color: '#0f172a',
+                  fontWeight: 600,
+                }}
+              >
+                <option value="https://app.rtccourier.com.np">https://app.rtccourier.com.np (Recommended Custom Domain)</option>
+                <option value="https://api.rtccourier.com.np">https://api.rtccourier.com.np (Custom API Domain)</option>
+                <option value="https://rtccourrier.pages.dev">https://rtccourrier.pages.dev (Cloudflare Pages Default)</option>
+                <option value={defaultHost}>Current Origin ({defaultHost})</option>
+                <option value="custom">Enter Custom Domain...</option>
+              </select>
+            </div>
+            {selectedDomain === 'custom' && (
+              <input
+                type="text"
+                placeholder="https://yourdomain.com"
+                value={customDomainInput}
+                onChange={(e) => setCustomDomainInput(e.target.value)}
+                style={{
+                  width: '100%',
+                  marginTop: '6px',
+                  padding: '6px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '12px',
+                }}
+              />
+            )}
+          </div>
+
           <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#64748b', lineHeight: 1.5 }}>
             Paste these URLs into the Nepal Can Move vendor portal under{' '}
             <a
@@ -485,6 +540,37 @@ export function NcmSettingsPage() {
                 color: '#475569',
               }}
             />
+          </div>
+
+          {/* Cloudflare Error 1010 Notice & Fix */}
+          <div
+            style={{
+              marginTop: '16px',
+              padding: '12px 14px',
+              background: '#fffbeb',
+              borderRadius: '8px',
+              border: '1px solid #fde68a',
+              fontSize: '12px',
+              color: '#92400e',
+              lineHeight: 1.5,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, marginBottom: '4px' }}>
+              <AlertTriangle size={15} color="#b45309" />
+              <span>Getting "Server responded with status: 403 (error code: 1010)" in NCM Test?</span>
+            </div>
+            <p style={{ margin: '0 0 8px 0', fontSize: '11.5px', color: '#78350f' }}>
+              Cloudflare's default <b>Browser Integrity Check (BIC)</b> on <code>*.pages.dev</code> blocks automated non-browser clients (NCM sends <code>User-Agent: NCM-Webhook/1.0</code>) before requests reach our worker.
+            </p>
+            <div style={{ background: '#ffffff', padding: '8px 10px', borderRadius: '6px', border: '1px solid #fcd34d', fontSize: '11px', color: '#451a03' }}>
+              <b>Quick 2-minute Fix:</b>
+              <ol style={{ margin: '4px 0 0 0', paddingLeft: '18px' }}>
+                <li>In Cloudflare Dashboard, go to <b>Workers &amp; Pages</b> &gt; <b>rtccourrier</b> &gt; <b>Custom domains</b>.</li>
+                <li>Add a custom domain like <b><code>app.rtccourier.com.np</code></b> or <b><code>api.rtccourier.com.np</code></b>.</li>
+                <li>Under domain <b>Security &gt; Settings</b> (or Configuration Rules), set <b>Browser Integrity Check</b> to <b>OFF</b>.</li>
+                <li>Use the custom domain URL in NCM. Test Webhook will immediately return <b>200 OK / Success</b>.</li>
+              </ol>
+            </div>
           </div>
         </div>
 
