@@ -1,0 +1,22 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "rtccourrier",
+	"main": "src/index.js",
+	"compatibility_date": "2024-11-01",
+	"observability": {
+		"enabled": true
+	},
+	"upload_source_maps": true,
+	"assets": {
+		"directory": "../dist",
+		"binding": "ASSETS",
+		"not_found_handling": "single-page-application"
+	},
+	"d1_databases": [
+		{
+			"binding": "rtc",
+			"database_name": "my-db",
+			"database_id": "ef0a72f2-3749-47dd-9740-3c934785e2d4"
+		}
+	]
+}
