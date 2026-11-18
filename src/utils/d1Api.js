@@ -1751,6 +1751,21 @@ export const d1Api = {
     }
   },
 
+  // Quick-update Third-Party Courier Order ID / Handover link in D1
+  updateThirdPartyLink: async (shipmentId, payload = {}) => {
+    try {
+      const res = await fetch(`/api/admin/orders/${shipmentId}/third-party-link`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      return await res.json();
+    } catch (e) {
+      console.error('Failed to update third-party link:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
   // Update existing shipment in D1 table 'shipments'
   updateShipment: async (shipmentId, updates) => {
     try {

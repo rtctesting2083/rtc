@@ -6739,8 +6739,13 @@ export async function onRequest(context) {
       }
     }
 
-// 8. Shipments endpoint: read and write on D1 table 'shipments'
-    if (path === 'shipments' || path.startsWith('shipments/')) {
+// 8. Shipments & Admin Orders endpoint: read and write on D1 table 'shipments'
+    if (
+      path === 'shipments' ||
+      path.startsWith('shipments/') ||
+      path === 'admin/orders' ||
+      path.startsWith('admin/orders/')
+    ) {
         const companyId = url.searchParams.get('company_id') || 1;
         const branchId = url.searchParams.get('branch_id');
         const customerId = url.searchParams.get('customer_id');
@@ -6748,9 +6753,118 @@ export async function onRequest(context) {
         const trackingNumber = url.searchParams.get('tracking_number');
         const clientType = url.searchParams.get('client_type');
 
-        // GET /api/shipments
+        // Auto-ensure third_party columns on D1 tables
+        try {
+          await db.prepare('ALTER TABLE shipments ADD COLUMN third_party_courier_name TEXT').run().catch(() => {});
+          await db.prepare('ALTER TABLE shipments ADD COLUMN third_party_order_id TEXT').run().catch(() => {});
+          await db.prepare('CREATE INDEX IF NOT EXISTS idx_shipments_third_party_order_id ON shipments(third_party_order_id)').run().catch(() => {});
+          await db.prepare('CREATE INDEX IF NOT EXISTS idx_shipments_third_party_courier ON shipments(third_party_courier_name)').run().catch(() => {});
+          await db.prepare('ALTER TABLE vendor_order ADD COLUMN third_party_courier_name TEXT').run().catch(() => {});
+          await db.prepare('ALTER TABLE vendor_order ADD COLUMN third_party_order_id TEXT').run().catch(() => {});
+          await db.prepare('CREATE INDEX IF NOT EXISTS idx_vendor_order_third_party_order_id ON vendor_order(third_party_order_id)').run().catch(() => {});
+        } catch (e) {}
+
+        // Lightweight quick-update endpoint: PATCH /api/admin/orders/:id/third-party-link or /api/shipments/:id/third-party-link
+        const tpLinkMatch = path.match(/^(?:shipments|admin\/orders)\/(\d+)\/third-party-link$/);
+        if (tpLinkMatch && (method === 'PATCH' || method === 'POST' || method === 'PUT')) {
+          const sId = Number(tpLinkMatch[1]);
+          const body = await request.json().catch(() => ({}));
+          const current = (await db.prepare('SELECT * FROM shipments WHERE id = ?').bind(sId).first()) || {};
+          if (!current.id) {
+            return jsonResponse({ error: 'Shipment not found' }, 404);
+          }
+
+          const rawCourier = body.third_party_courier_name !== undefined ? body.third_party_courier_name : current.third_party_courier_name;
+          const rawOrderId = body.third_party_order_id !== undefined ? body.third_party_order_id : current.third_party_order_id;
+          const courierName = rawCourier ? String(rawCourier).trim() || null : null;
+          const orderId = rawOrderId ? String(rawOrderId).trim() || null : null;
+
+          let currentEvents = [];
+          if (current.tracking_events_json) {
+            try { currentEvents = JSON.parse(current.tracking_events_json); } catch (e) {}
+          }
+
+          const now = new Date().toISOString();
+          const customNote = body.notes ? String(body.notes).trim() : '';
+
+          // If newly linked or 3PL ID changed, append milestone tracking event
+          if (orderId && orderId !== current.third_party_order_id) {
+            currentEvents.push({
+              status: body.status || current.status,
+              location: body.location || null,
+              notes: customNote || `Handed over / linked to external 3PL courier: ${courierName || 'Third-Party Partner'} (External Waybill: ${orderId}).`,
+              at: now,
+              partner: courierName || '3PL',
+            });
+          } else if (!orderId && current.third_party_order_id) {
+            currentEvents.push({
+              status: current.status,
+              location: null,
+              notes: `Manual third-party courier link removed. Returning parcel to internal fleet workflow.`,
+              at: now,
+            });
+          }
+
+          const newStatus = body.status && body.status !== current.status ? body.status : current.status;
+          const deliveredAt = newStatus === 'delivered' ? (current.delivered_at || now) : current.delivered_at;
+
+          await db.prepare(`
+            UPDATE shipments SET
+              third_party_courier_name = ?,
+              third_party_order_id = ?,
+              status = ?,
+              delivered_at = ?,
+              tracking_events_json = ?,
+              updated_at = datetime('now')
+            WHERE id = ?
+          `).bind(
+            courierName,
+            orderId,
+            newStatus,
+            deliveredAt,
+            JSON.stringify(currentEvents),
+            sId
+          ).run();
+
+          // Mirror to vendor_order table if exists
+          if (current.tracking_number) {
+            try {
+              await db.prepare(`
+                UPDATE vendor_order SET
+                  third_party_courier_name = ?,
+                  third_party_order_id = ?,
+                  status = ?,
+                  tracking_events_json = ?,
+                  updated_at = datetime('now')
+                WHERE tracking_number = ?
+              `).bind(
+                courierName,
+                orderId,
+                newStatus,
+                JSON.stringify(currentEvents),
+                current.tracking_number
+              ).run();
+            } catch (e) {}
+          }
+
+          const updated = await db.prepare('SELECT * FROM shipments WHERE id = ?').bind(sId).first();
+          let trackingEvents = [];
+          if (updated?.tracking_events_json) {
+            try { trackingEvents = JSON.parse(updated.tracking_events_json); } catch (e) {}
+          }
+
+          return jsonResponse({
+            success: true,
+            message: orderId
+              ? `Successfully linked to ${courierName || '3PL Partner'} (#${orderId})`
+              : 'Third-party courier link updated successfully',
+            shipment: { ...updated, tracking_events: trackingEvents },
+          });
+        }
+
+        // GET /api/shipments or /api/admin/orders
         if (method === 'GET') {
-          const shipmentIdMatch = path.match(/^shipments\/(\d+)$/);
+          const shipmentIdMatch = path.match(/^(?:shipments|admin\/orders)\/(\d+)$/);
           if (shipmentIdMatch) {
             const sId = Number(shipmentIdMatch[1]);
             const row = await db.prepare('SELECT * FROM shipments WHERE id = ?').bind(sId).first();
@@ -6764,10 +6878,38 @@ export async function onRequest(context) {
 
           let query = 'SELECT * FROM shipments WHERE company_id = ?';
           const params = [Number(companyId)];
+
           if (trackingNumber) {
-            query += ' AND tracking_number = ?';
-            params.push(trackingNumber.trim());
+            query += ' AND (tracking_number = ? OR third_party_order_id = ? OR vendor_reference_id = ?)';
+            const trkClean = trackingNumber.trim();
+            params.push(trkClean, trkClean, trkClean);
           }
+
+          // Dual-ID Search & Keyword lookup (Order ID, Third-Party Order ID, Ref, Receiver, Sender)
+          const searchKeyword = (url.searchParams.get('search') || url.searchParams.get('q') || '').trim();
+          if (searchKeyword) {
+            query += ` AND (
+              tracking_number LIKE ? 
+              OR third_party_order_id LIKE ? 
+              OR third_party_courier_name LIKE ?
+              OR vendor_reference_id LIKE ? 
+              OR receiver_name LIKE ? 
+              OR receiver_phone LIKE ? 
+              OR sender_name LIKE ? 
+              OR sender_phone LIKE ?
+            )`;
+            const kw = `%${searchKeyword}%`;
+            params.push(kw, kw, kw, kw, kw, kw, kw, kw);
+          }
+
+          // Optional 3PL / Delivery Mode Filter (All Orders, Internal Fleet Only, Third-Party Handover)
+          const tpFilter = (url.searchParams.get('third_party_filter') || url.searchParams.get('delivery_mode') || '').trim().toLowerCase();
+          if (tpFilter === 'third_party' || tpFilter === '3pl') {
+            query += " AND (third_party_order_id IS NOT NULL AND third_party_order_id != '')";
+          } else if (tpFilter === 'internal' || tpFilter === 'fleet') {
+            query += " AND (third_party_order_id IS NULL OR third_party_order_id = '')";
+          }
+
           if (customerId) {
             query += ' AND customer_id = ?';
             params.push(Number(customerId));
@@ -6872,6 +7014,8 @@ export async function onRequest(context) {
           const distance_km = parseFloat(body.distance_km) || 0;
           const delivery_fee = parseFloat(body.delivery_fee) || 0;
           const notes = body.notes || '';
+          const third_party_courier_name = body.third_party_courier_name ? String(body.third_party_courier_name).trim() || null : null;
+          const third_party_order_id = body.third_party_order_id ? String(body.third_party_order_id).trim() || null : null;
 
           const now = new Date().toISOString();
           let events = body.tracking_events;
@@ -6885,6 +7029,15 @@ export async function onRequest(context) {
               },
             ];
           }
+          if (third_party_order_id) {
+            events.push({
+              status,
+              location: null,
+              notes: `Manual third-party handover assigned: ${third_party_courier_name || '3PL Partner'} (#${third_party_order_id})`,
+              at: now,
+              partner: third_party_courier_name || '3PL',
+            });
+          }
           const tracking_events_json = JSON.stringify(events);
 
           const res = await db
@@ -6897,6 +7050,7 @@ export async function onRequest(context) {
                 order_type, service_type, weight_kg, package_description, product_category,
                 item_value, promo_code, priority, status, custom_status,
                 cod_amount, distance_km, delivery_fee, notes, tracking_events_json,
+                third_party_courier_name, third_party_order_id,
                 status_updated_at, created_at, updated_at
               ) VALUES (
                 ?, ?, ?, ?, ?, ?,
@@ -6906,6 +7060,7 @@ export async function onRequest(context) {
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
+                ?, ?,
                 ?, ?, datetime('now')
               )
             `)
@@ -6917,6 +7072,7 @@ export async function onRequest(context) {
               order_type, service_type, weight_kg, package_description, product_category,
               item_value, promo_code, priority, status, custom_status,
               cod_amount, distance_km, delivery_fee, notes, tracking_events_json,
+              third_party_courier_name, third_party_order_id,
               now, now
             )
             .run();
@@ -6933,7 +7089,8 @@ export async function onRequest(context) {
                     delivery_address, order_type, service_type, weight_kg,
                     package_description, product_category, item_value, promo_code,
                     priority, status, cod_amount, delivery_fee, notes,
-                    tracking_events_json, status_updated_at, created_at, updated_at
+                    tracking_events_json, third_party_courier_name, third_party_order_id,
+                    status_updated_at, created_at, updated_at
                   ) VALUES (
                     ?, ?, ?, ?,
                     ?, ?, ?, ?,
@@ -6941,7 +7098,8 @@ export async function onRequest(context) {
                     ?, ?, ?, ?,
                     ?, ?, ?, ?,
                     ?, ?, ?, ?, ?,
-                    ?, ?, datetime('now'), datetime('now')
+                    ?, ?, ?,
+                    ?, datetime('now'), datetime('now')
                   )
                 `)
                 .bind(
@@ -6951,7 +7109,8 @@ export async function onRequest(context) {
                   delivery_address, order_type, service_type, weight_kg,
                   package_description, product_category, item_value, promo_code,
                   priority, status, cod_amount, delivery_fee, notes,
-                  tracking_events_json, now
+                  tracking_events_json, third_party_courier_name, third_party_order_id,
+                  now
                 )
                 .run();
             } catch (errSync) {
@@ -7061,6 +7220,12 @@ export async function onRequest(context) {
           const custom_status = body.custom_status !== undefined ? body.custom_status : current.custom_status;
           const notes = body.notes !== undefined ? body.notes : current.notes;
           const invoice_id = body.invoice_id !== undefined ? body.invoice_id : current.invoice_id;
+          const third_party_courier_name = body.third_party_courier_name !== undefined
+            ? (body.third_party_courier_name ? String(body.third_party_courier_name).trim() || null : null)
+            : current.third_party_courier_name;
+          const third_party_order_id = body.third_party_order_id !== undefined
+            ? (body.third_party_order_id ? String(body.third_party_order_id).trim() || null : null)
+            : current.third_party_order_id;
 
           await db
             .prepare(`
@@ -7072,6 +7237,7 @@ export async function onRequest(context) {
                 order_type = ?, service_type = ?, weight_kg = ?, package_description = ?, product_category = ?, item_value = ?,
                 status = ?, custom_status = ?, cod_amount = ?, delivery_fee = ?,
                 notes = ?, invoice_id = ?, delivered_at = ?, tracking_events_json = ?,
+                third_party_courier_name = ?, third_party_order_id = ?,
                 status_updated_at = (CASE WHEN ? != status THEN datetime('now') ELSE status_updated_at END),
                 updated_at = datetime('now')
               WHERE id = ?
@@ -7084,6 +7250,7 @@ export async function onRequest(context) {
               order_type, service_type, weight_kg, package_description, product_category, item_value,
               newStatus, custom_status, cod_amount, delivery_fee,
               notes, invoice_id, deliveredAt, JSON.stringify(currentEvents),
+              third_party_courier_name, third_party_order_id,
               newStatus,
               sId
             )
@@ -7110,6 +7277,8 @@ export async function onRequest(context) {
               if (courier_id !== undefined) { syncFields.push('courier_id = ?'); syncVals.push(courier_id); }
               if (destination_branch_id !== undefined) { syncFields.push('destination_branch_id = ?'); syncVals.push(destination_branch_id); }
               if (branch_id !== undefined) { syncFields.push('branch_id = ?'); syncVals.push(branch_id); }
+              if (third_party_courier_name !== undefined) { syncFields.push('third_party_courier_name = ?'); syncVals.push(third_party_courier_name); }
+              if (third_party_order_id !== undefined) { syncFields.push('third_party_order_id = ?'); syncVals.push(third_party_order_id); }
               if (currentEvents && currentEvents.length > 0) { syncFields.push('tracking_events_json = ?'); syncVals.push(JSON.stringify(currentEvents)); }
               if (syncFields.length > 0) {
                 syncFields.push("updated_at = datetime('now')");

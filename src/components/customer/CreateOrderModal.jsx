@@ -39,6 +39,7 @@ export function CreateOrderModal({
     landmarks = [],
     chargeSettings,
     addShipment,
+    updateShipment,
     addVendorCustomer,
     findBranch,
     company,
@@ -178,6 +179,17 @@ export function CreateOrderModal({
   const [productCategory, setProductCategory] = useState('');
   const [itemValue, setItemValue] = useState('');
   const [packageDesc, setPackageDesc] = useState('');
+
+  // Third-Party Courier Handover State (Admin Portal Only)
+  const [thirdPartyCourierName, setThirdPartyCourierName] = useState(() => orderToEdit?.third_party_courier_name || '');
+  const [thirdPartyOrderId, setThirdPartyOrderId] = useState(() => orderToEdit?.third_party_order_id || '');
+  const [isCustomCourier, setIsCustomCourier] = useState(() => {
+    const val = orderToEdit?.third_party_courier_name || '';
+    if (!val) return false;
+    const presets = ['NCM', 'Upaya City Cargo', 'Nepal Post', 'Aramex', 'Delivery Tiger', 'Pathao Courier', 'Sundar Courier'];
+    return !presets.includes(val);
+  });
+  const [copiedThirdPartyId, setCopiedThirdPartyId] = useState(false);
 
   // Right Side: Branch Lookup Search State
   const [areaSearchQuery, setAreaSearchQuery] = useState('');
@@ -575,9 +587,18 @@ export function CreateOrderModal({
       cod_amount: parseFloat(codAmount) || 0,
       delivery_fee: serviceCharge,
       notes: noteText,
+      third_party_courier_name: portalType === 'company' && thirdPartyCourierName.trim() ? thirdPartyCourierName.trim() : null,
+      third_party_order_id: portalType === 'company' && thirdPartyOrderId.trim() ? thirdPartyOrderId.trim() : null,
     };
 
-    addShipment(newShipment);
+    if (orderToEdit?.id) {
+      updateShipment(orderToEdit.id, newShipment);
+      if (typeof onOrderUpdated === 'function') {
+        onOrderUpdated(newShipment);
+      }
+    } else {
+      addShipment(newShipment);
+    }
 
     // Save customer to vendor address book if new
     if (effectiveCustomer && receiverPhone && !effectiveCustomer?.vendorCustomers?.some((c) => c.phone === receiverPhone.trim())) {
@@ -1212,6 +1233,133 @@ export function CreateOrderModal({
                     />
                   </div>
                 </div>
+
+                {/* 7b. Admin-Only: Third-Party Courier Handover (Manual 3PL Tracking) */}
+                {portalType === 'company' && (
+                  <div
+                    style={{
+                      background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+                      border: '1.5px dashed #cbd5e1',
+                      borderRadius: '8px',
+                      padding: '14px 16px',
+                      margin: '14px 0',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '15px' }}>📦</span>
+                        <span style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>
+                          Third-Party Courier Handover (Manual)
+                        </span>
+                      </div>
+                      <span
+                        style={{
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          padding: '2px 7px',
+                          borderRadius: '4px',
+                          background: '#eff6ff',
+                          color: '#1d4ed8',
+                          border: '1px solid #bfdbfe',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.4px',
+                        }}
+                      >
+                        Admin Only
+                      </span>
+                    </div>
+
+                    <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px', lineHeight: 1.4 }}>
+                      Optional: Record external courier details if this order is dispatched or forwarded through a 3PL logistics partner.
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+                      {/* Courier Partner Name */}
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                          Courier Partner Name
+                        </label>
+                        <select
+                          className="create-order-select"
+                          value={isCustomCourier ? '__custom__' : (thirdPartyCourierName || '')}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === '__custom__') {
+                              setIsCustomCourier(true);
+                              setThirdPartyCourierName('');
+                            } else {
+                              setIsCustomCourier(false);
+                              setThirdPartyCourierName(val);
+                            }
+                          }}
+                          style={{ height: '36px', fontSize: '12px', width: '100%' }}
+                        >
+                          <option value="">None (Internal RTC Fleet)</option>
+                          <option value="NCM">NCM (Nepal Can Move)</option>
+                          <option value="Upaya City Cargo">Upaya City Cargo</option>
+                          <option value="Nepal Post">Nepal Post (Hulak)</option>
+                          <option value="Aramex">Aramex</option>
+                          <option value="Delivery Tiger">Delivery Tiger</option>
+                          <option value="Pathao Courier">Pathao Courier</option>
+                          <option value="Sundar Courier">Sundar Courier</option>
+                          <option value="__custom__">✎ Other / Custom Courier Name...</option>
+                        </select>
+                        {isCustomCourier && (
+                          <input
+                            type="text"
+                            className="create-order-input"
+                            placeholder="Type custom courier name..."
+                            value={thirdPartyCourierName}
+                            onChange={(e) => setThirdPartyCourierName(e.target.value)}
+                            style={{ height: '34px', fontSize: '12px', marginTop: '6px', width: '100%' }}
+                          />
+                        )}
+                      </div>
+
+                      {/* Third-Party Order / Tracking ID */}
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                          Third-Party Order / Waybill ID
+                        </label>
+                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                          <input
+                            type="text"
+                            className="create-order-input mono"
+                            placeholder="e.g. NCM-102938, UP-48210..."
+                            value={thirdPartyOrderId}
+                            onChange={(e) => setThirdPartyOrderId(e.target.value)}
+                            style={{ height: '36px', fontSize: '12px', width: '100%', paddingRight: thirdPartyOrderId ? '65px' : '10px' }}
+                          />
+                          {Boolean(thirdPartyOrderId && thirdPartyOrderId.trim()) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(thirdPartyOrderId.trim());
+                                setCopiedThirdPartyId(true);
+                                setTimeout(() => setCopiedThirdPartyId(false), 2000);
+                              }}
+                              style={{
+                                position: 'absolute',
+                                right: '6px',
+                                background: copiedThirdPartyId ? '#dcfce7' : '#f1f5f9',
+                                color: copiedThirdPartyId ? '#15803d' : '#475569',
+                                border: '1px solid ' + (copiedThirdPartyId ? '#86efac' : '#cbd5e1'),
+                                borderRadius: '4px',
+                                padding: '3px 7px',
+                                fontSize: '10.5px',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {copiedThirdPartyId ? 'Copied!' : 'Copy'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* 8. Order Type */}
                 <div className="create-order-row">

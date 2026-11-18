@@ -28,6 +28,7 @@ import {
   Hash,
   MapPin,
   ExternalLink,
+  Copy,
 } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
@@ -544,6 +545,7 @@ export function CompanyShipmentsPage({ view }) {
 
   const [searchOrderId, setSearchOrderId] = useState('');
   const [selectedOrderType, setSelectedOrderType] = useState('all');
+  const [selectedCourierFilter, setSelectedCourierFilter] = useState('all');
   const [selectedHub, setSelectedHub] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
 
@@ -583,12 +585,19 @@ export function CompanyShipmentsPage({ view }) {
     { value: 'this_month', label: 'This Month' },
     { value: 'last_30_days', label: 'Last 30 Days' },
   ], []);
+  const courierFilterOptions = useMemo(() => [
+    { value: 'all', label: 'All Channels (Internal & 3PL)' },
+    { value: 'internal', label: 'Internal Fleet Only' },
+    { value: 'third_party', label: 'Third-Party Handover (3PL)' },
+  ], []);
+
   const [appliedFilters, setAppliedFilters] = useState({
     startDate: '',
     endDate: '',
     dateLabel: '',
     orderId: '',
     orderType: 'all',
+    courierFilter: 'all',
     hub: 'all',
     status: 'all',
   });
@@ -762,6 +771,7 @@ export function CompanyShipmentsPage({ view }) {
       dateLabel,
       orderId: searchOrderId.trim(),
       orderType: selectedOrderType,
+      courierFilter: selectedCourierFilter,
       hub: selectedHub,
       status: selectedStatus,
     });
@@ -774,6 +784,7 @@ export function CompanyShipmentsPage({ view }) {
     setDatePreset('');
     setSearchOrderId('');
     setSelectedOrderType('all');
+    setSelectedCourierFilter('all');
     setSelectedHub('all');
     setSelectedStatus('all');
     setAppliedFilters({
@@ -782,6 +793,7 @@ export function CompanyShipmentsPage({ view }) {
       dateLabel: '',
       orderId: '',
       orderType: 'all',
+      courierFilter: 'all',
       hub: 'all',
       status: 'all',
     });
@@ -957,12 +969,39 @@ export function CompanyShipmentsPage({ view }) {
         if (!isRet) return false;
       }
 
-      // Order ID Search
+      // Dual-ID Search (Internal Tracking ID, Ref ID, or External 3PL Order ID)
       if (appliedFilters.orderId) {
-        const q = appliedFilters.orderId.toLowerCase();
+        const q = appliedFilters.orderId.toLowerCase().trim();
         const trk = (o.tracking_number || '').toLowerCase();
         const ref = (o.vendor_reference_id || '').toLowerCase();
-        if (!trk.includes(q) && !ref.includes(q)) return false;
+        const tpId = (o.third_party_order_id || o.rawShipment?.third_party_order_id || '').toLowerCase();
+        const tpCourier = (o.third_party_courier_name || o.rawShipment?.third_party_courier_name || '').toLowerCase();
+        const recName = (o.receiver_name || '').toLowerCase();
+        const recPhone = (o.receiver_phone || '').toLowerCase();
+        const senderName = (o.sender_name || '').toLowerCase();
+        if (
+          !trk.includes(q) &&
+          !ref.includes(q) &&
+          !tpId.includes(q) &&
+          !tpCourier.includes(q) &&
+          !recName.includes(q) &&
+          !recPhone.includes(q) &&
+          !senderName.includes(q)
+        ) {
+          return false;
+        }
+      }
+
+      // Courier Channel Filter (Internal Fleet vs Third-Party Handover)
+      if (appliedFilters.courierFilter && appliedFilters.courierFilter !== 'all') {
+        const hasThirdParty = Boolean(
+          (o.third_party_order_id && o.third_party_order_id.trim()) ||
+          (o.rawShipment?.third_party_order_id && o.rawShipment.third_party_order_id.trim()) ||
+          (o.third_party_courier_name && o.third_party_courier_name.trim()) ||
+          (o.rawShipment?.third_party_courier_name && o.rawShipment.third_party_courier_name.trim())
+        );
+        if (appliedFilters.courierFilter === 'third_party' && !hasThirdParty) return false;
+        if (appliedFilters.courierFilter === 'internal' && hasThirdParty) return false;
       }
 
       // Date Range Filter
@@ -1091,6 +1130,22 @@ export function CompanyShipmentsPage({ view }) {
         onUpdated={() => {
           if (refreshData) refreshData();
           loadDirectData();
+        }}
+      />
+    );
+  };
+
+  const handleOpenQuickThirdParty = (order) => {
+    const s = order.rawShipment || order;
+    openModal(
+      `3PL Handover & External ID — ${s.tracking_number}`,
+      <QuickThirdPartyModal
+        shipment={s}
+        onClose={closeModal}
+        onUpdated={async () => {
+          closeModal();
+          if (refreshData) refreshData();
+          await loadDirectData();
         }}
       />
     );
@@ -2562,6 +2617,31 @@ export function CompanyShipmentsPage({ view }) {
                   />
                 </div>
 
+                {/* 3b. Channel / Courier Filter (Internal Fleet vs 3PL) */}
+                <div style={{ flex: '1.1', minWidth: '140px' }}>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      color: '#475569',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.4px',
+                      marginBottom: '4px',
+                    }}
+                  >
+                    Channel / 3PL
+                  </label>
+                  <SearchableSelect
+                    value={selectedCourierFilter}
+                    onChange={(val) => setSelectedCourierFilter(val || 'all')}
+                    options={courierFilterOptions}
+                    placeholder="All Channels"
+                    searchPlaceholder="Filter delivery channel..."
+                    height="38px"
+                  />
+                </div>
+
                 {/* 4. Time Period / Date Preset */}
                 <div style={{ flex: '1.1', minWidth: '130px' }}>
                   <label
@@ -2595,8 +2675,8 @@ export function CompanyShipmentsPage({ view }) {
                   />
                 </div>
 
-                {/* 5. Search Keyword Input */}
-                <div style={{ flex: '1.6', minWidth: '200px' }}>
+                {/* 5. Search Keyword Input (Dual-ID: Internal or 3PL ID) */}
+                <div style={{ flex: '1.6', minWidth: '220px' }}>
                   <label
                     style={{
                       display: 'block',
@@ -2608,7 +2688,7 @@ export function CompanyShipmentsPage({ view }) {
                       marginBottom: '4px',
                     }}
                   >
-                    Search Order
+                    Search Order (Dual-ID)
                   </label>
                   <div
                     style={{
@@ -2628,7 +2708,7 @@ export function CompanyShipmentsPage({ view }) {
                     />
                     <input
                       type="text"
-                      placeholder="Order ID, Name, Phone, Address..."
+                      placeholder="Search by RTC Order ID or Third-Party Order ID..."
                       value={searchOrderId}
                       onChange={(e) => setSearchOrderId(e.target.value)}
                       style={{
@@ -3030,6 +3110,82 @@ export function CompanyShipmentsPage({ view }) {
                             </span>
                           </div>
                         )}
+                        {/* 3PL External Courier Handover Badge */}
+                        {(() => {
+                          const tpCourier = order.third_party_courier_name || raw.third_party_courier_name;
+                          const tpId = order.third_party_order_id || raw.third_party_order_id;
+                          if (tpId || tpCourier) {
+                            return (
+                              <div
+                                style={{
+                                  marginTop: '3px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  background: '#f0f9ff',
+                                  border: '1px solid #bae6fd',
+                                  borderRadius: '4px',
+                                  padding: '1.5px 5px',
+                                  fontSize: '11px',
+                                  maxWidth: '100%',
+                                }}
+                              >
+                                <span style={{ fontWeight: 700, color: '#0369a1' }}>
+                                  3PL: {tpCourier || 'External'}
+                                </span>
+                                {tpId && (
+                                  <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#0f172a' }}>
+                                    #{tpId}
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenQuickThirdParty(order);
+                                  }}
+                                  title="Edit 3PL tracking details"
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: '0 2px',
+                                    cursor: 'pointer',
+                                    color: '#0284c7',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                  }}
+                                >
+                                  <Edit2 size={10} />
+                                </button>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div style={{ marginTop: '2px' }}>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenQuickThirdParty(order);
+                                }}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#94a3b8',
+                                  fontSize: '10px',
+                                  cursor: 'pointer',
+                                  padding: 0,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '2px',
+                                }}
+                                title="Assign manual Third-Party Courier Order ID"
+                              >
+                                <span>+ Link 3PL ID</span>
+                              </button>
+                            </div>
+                          );
+                        })()}
                         <div className="amount-line">
                           <span className="amount-label">Date:</span>{' '}
                           <span className="amount-val" style={{ fontWeight: 500, color: '#64748b' }}>
@@ -3229,6 +3385,349 @@ function SetTagModal({ shipment, onSet, customStatuses = [] }) {
         </button>
       </div>
     </form>
+  );
+}
+
+export function QuickThirdPartyModal({ shipment, onClose, onUpdated }) {
+  const { refreshData } = useCompany();
+  const [courierName, setCourierName] = useState(shipment?.third_party_courier_name || '');
+  const [orderId, setOrderId] = useState(shipment?.third_party_order_id || '');
+  const [isCustomCourier, setIsCustomCourier] = useState(() => {
+    const val = shipment?.third_party_courier_name || '';
+    if (!val) return false;
+    const presets = ['NCM', 'Upaya City Cargo', 'Nepal Post', 'Aramex', 'Delivery Tiger', 'Pathao Courier', 'Sundar Courier'];
+    return !presets.includes(val);
+  });
+  const [selectedStatus, setSelectedStatus] = useState(shipment?.status || 'in_transit');
+  const [shouldUpdateStatus, setShouldUpdateStatus] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const courierPresets = [
+    { value: '', label: 'Select Courier Partner...' },
+    { value: 'NCM', label: 'NCM (Nepal Can Move)' },
+    { value: 'Upaya City Cargo', label: 'Upaya City Cargo' },
+    { value: 'Nepal Post', label: 'Nepal Post (Hulak)' },
+    { value: 'Aramex', label: 'Aramex' },
+    { value: 'Delivery Tiger', label: 'Delivery Tiger' },
+    { value: 'Pathao Courier', label: 'Pathao Courier' },
+    { value: 'Sundar Courier', label: 'Sundar Courier' },
+    { value: '__custom__', label: '✎ Custom / Other Courier Partner...' },
+  ];
+
+  const handleSave = async (e) => {
+    if (e) e.preventDefault();
+    if (!shipment?.id) return;
+    setSaving(true);
+    setError('');
+
+    try {
+      const payload = {
+        third_party_courier_name: courierName.trim() || null,
+        third_party_order_id: orderId.trim() || null,
+      };
+      if (shouldUpdateStatus && selectedStatus) {
+        payload.status = selectedStatus;
+      }
+      if (notes.trim()) {
+        payload.notes = notes.trim();
+      }
+
+      const res = await d1Api.updateThirdPartyLink(shipment.id, payload);
+      if (res && (res.success || res.status === 'success' || res.shipment)) {
+        if (typeof onUpdated === 'function') onUpdated();
+        if (typeof refreshData === 'function') refreshData();
+        if (typeof onClose === 'function') onClose();
+      } else {
+        setError(res?.error || 'Failed to update third-party courier details.');
+      }
+    } catch (err) {
+      setError(err?.message || 'Network error updating Cloudflare D1 record.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleUnlink = async () => {
+    if (!window.confirm(`Unlink external 3PL courier tracking for ${shipment?.tracking_number}?`)) return;
+    setSaving(true);
+    setError('');
+
+    try {
+      const res = await d1Api.updateThirdPartyLink(shipment.id, {
+        third_party_courier_name: null,
+        third_party_order_id: null,
+        notes: 'External third-party courier link removed manually by Admin.',
+      });
+      if (res && (res.success || res.status === 'success' || res.shipment)) {
+        if (typeof onUpdated === 'function') onUpdated();
+        if (typeof refreshData === 'function') refreshData();
+        if (typeof onClose === 'function') onClose();
+      } else {
+        setError(res?.error || 'Failed to remove third-party courier link.');
+      }
+    } catch (err) {
+      setError(err?.message || 'Error communicating with API.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ padding: '4px 0' }}>
+      <form onSubmit={handleSave}>
+        {error && (
+          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '8px 12px', color: '#991b1b', fontSize: '12px', marginBottom: '14px' }}>
+            {error}
+          </div>
+        )}
+
+        {/* Parcel Info Banner */}
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+            <div>
+              <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>RTC TRACKING NUMBER</span>
+              <div style={{ fontSize: '15px', fontWeight: 700, color: '#dc2626', fontFamily: 'monospace' }}>
+                {shipment.tracking_number}
+              </div>
+            </div>
+            <div>
+              <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>CURRENT STATUS</span>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#0f172a' }}>
+                {shipment.status || 'Pending'}
+              </div>
+            </div>
+            <div>
+              <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>RECEIVER</span>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#0f172a' }}>
+                {shipment.receiver_name} ({shipment.destination_branch_name || shipment.destination_city || 'Nepal'})
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 1. Courier Partner Select */}
+        <div style={{ marginBottom: '14px' }}>
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '5px' }}>
+            Third-Party Courier Partner <span style={{ color: '#dc2626' }}>*</span>
+          </label>
+          <select
+            value={isCustomCourier ? '__custom__' : courierName}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val === '__custom__') {
+                setIsCustomCourier(true);
+                setCourierName('');
+              } else {
+                setIsCustomCourier(false);
+                setCourierName(val);
+              }
+            }}
+            style={{
+              width: '100%',
+              height: '38px',
+              padding: '0 10px',
+              borderRadius: '6px',
+              border: '1px solid #cbd5e1',
+              fontSize: '13px',
+              background: '#ffffff',
+              color: '#0f172a',
+            }}
+          >
+            {courierPresets.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+
+          {isCustomCourier && (
+            <input
+              type="text"
+              placeholder="Type custom courier name (e.g. DTDC, Sundar Courier, Blue Dart)..."
+              value={courierName}
+              onChange={(e) => setCourierName(e.target.value)}
+              style={{
+                width: '100%',
+                height: '36px',
+                marginTop: '6px',
+                padding: '0 10px',
+                borderRadius: '6px',
+                border: '1px solid #cbd5e1',
+                fontSize: '12.5px',
+                boxSizing: 'border-box',
+              }}
+              required={isCustomCourier}
+            />
+          )}
+        </div>
+
+        {/* 2. External Order / Tracking ID */}
+        <div style={{ marginBottom: '14px' }}>
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '5px' }}>
+            External Order ID / Waybill Number <span style={{ color: '#dc2626' }}>*</span>
+          </label>
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <input
+              type="text"
+              placeholder="e.g. NCM-8839201, UP-482104, Hulak-902..."
+              value={orderId}
+              onChange={(e) => setOrderId(e.target.value)}
+              style={{
+                width: '100%',
+                height: '38px',
+                padding: '0 80px 0 10px',
+                borderRadius: '6px',
+                border: '1px solid #cbd5e1',
+                fontSize: '13px',
+                fontFamily: 'monospace',
+                fontWeight: 600,
+                color: '#0f172a',
+                boxSizing: 'border-box',
+              }}
+            />
+            {Boolean(orderId && orderId.trim()) && (
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(orderId.trim());
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1800);
+                }}
+                style={{
+                  position: 'absolute',
+                  right: '6px',
+                  background: copied ? '#dcfce7' : '#f1f5f9',
+                  color: copied ? '#15803d' : '#475569',
+                  border: '1px solid ' + (copied ? '#86efac' : '#cbd5e1'),
+                  borderRadius: '4px',
+                  padding: '4px 8px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '3px',
+                }}
+              >
+                <Copy size={11} />
+                <span>{copied ? 'Copied' : 'Copy'}</span>
+              </button>
+            )}
+          </div>
+          <span style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', display: 'block' }}>
+            Admins can search for this shipment directly using either this external ID or internal RTC ID.
+          </span>
+        </div>
+
+        {/* 3. Optional Status Update */}
+        <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0', marginBottom: '14px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12.5px', fontWeight: 600, color: '#1e293b' }}>
+            <input
+              type="checkbox"
+              checked={shouldUpdateStatus}
+              onChange={(e) => setShouldUpdateStatus(e.target.checked)}
+              style={{ width: 'auto', cursor: 'pointer' }}
+            />
+            <span>Also update shipment status now</span>
+          </label>
+
+          {shouldUpdateStatus && (
+            <div style={{ marginTop: '10px' }}>
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                style={{
+                  width: '100%',
+                  height: '36px',
+                  padding: '0 8px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '12px',
+                  background: '#ffffff',
+                }}
+              >
+                <option value="in_transit">Dispatched (In Transit) — On the way with 3PL</option>
+                <option value="out_for_delivery">Out for Delivery (Rider / 3PL Final Mile)</option>
+                <option value="delivered">Delivered (Handover completed)</option>
+                <option value="returned">Returned / Return to Vendor (RTV)</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+          )}
+        </div>
+
+        {/* 4. Audit Note */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '5px' }}>
+            Audit / Milestone Note (Optional)
+          </label>
+          <input
+            type="text"
+            placeholder="e.g. Handed over at NCM Butwal hub manifest #9921..."
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            style={{
+              width: '100%',
+              height: '36px',
+              padding: '0 10px',
+              borderRadius: '6px',
+              border: '1px solid #cbd5e1',
+              fontSize: '12.5px',
+              boxSizing: 'border-box',
+            }}
+          />
+        </div>
+
+        {/* Modal Actions */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '12px', borderTop: '1px solid #f1f5f9' }}>
+          {Boolean(shipment.third_party_order_id || shipment.third_party_courier_name) ? (
+            <button
+              type="button"
+              onClick={handleUnlink}
+              disabled={saving}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#dc2626',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                padding: '6px 0',
+              }}
+            >
+              Unlink 3PL Tracking
+            </button>
+          ) : <div />}
+
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={onClose}
+              disabled={saving}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={saving}
+              style={{
+                background: '#0284c7',
+                borderColor: '#0284c7',
+                padding: '7px 18px',
+                fontWeight: 600,
+              }}
+            >
+              {saving ? 'Saving...' : 'Save 3PL Details'}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
   );
 }
 
