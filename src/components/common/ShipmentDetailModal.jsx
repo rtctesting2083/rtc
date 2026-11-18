@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useCompany } from '../../context/CompanyContext';
 import { useAuth } from '../../context/AuthContext';
 import { useModal } from '../../context/ModalContext';
@@ -27,7 +27,20 @@ import '../../pages/customer/VendorDashboard.css';
 
 export function ShipmentDetailModal({ shipment, onClose, onEditOrder }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { session } = useAuth() || {};
+
+  // Strict portal check: Third-party 3PL information is strictly Admin Portal only
+  // Never display on Vendor Portal (/customer/*), Public Tracking, or non-admin sessions
+  const isVendorPortal =
+    session?.type === 'customer' ||
+    location.pathname.startsWith('/customer') ||
+    location.pathname.startsWith('/tracking') ||
+    location.pathname.startsWith('/track');
+  const isAdminPortal =
+    (session?.type === 'company' || session?.type === 'admin') &&
+    !isVendorPortal &&
+    location.pathname.startsWith('/company');
   const {
     company,
     findCustomer,
@@ -390,10 +403,32 @@ export function ShipmentDetailModal({ shipment, onClose, onEditOrder }) {
 
     const timeStr = formatTimelineTime(ev.at || ev.time || ev.created_at || shipment.created_at);
 
+    let cleanNotes = ev.notes || '';
+    if (!isAdminPortal) {
+      // If viewing on vendor portal or public tracking, filter out third-party/3PL courier mentions
+      const is3PLNote =
+        Boolean(ev.partner) ||
+        /3PL|third-party|third party|external courier|external waybill|NCM|Upaya|Nepal Post|Aramex/i.test(cleanNotes);
+
+      if (is3PLNote) {
+        if (st.includes('deliver') && !st.includes('out')) {
+          cleanNotes = 'Parcel successfully delivered to recipient.';
+        } else if (st.includes('out')) {
+          cleanNotes = 'Out for delivery to recipient address.';
+        } else if (st.includes('dispatch') || st.includes('in_transit')) {
+          cleanNotes = 'Dispatched for transit to destination hub.';
+        } else if (st.includes('picked') || st.includes('received')) {
+          cleanNotes = 'Received and processed at origin hub.';
+        } else {
+          cleanNotes = 'Order processing in hub inventory.';
+        }
+      }
+    }
+
     return {
       title,
       time: timeStr,
-      notes: ev.notes || '',
+      notes: cleanNotes,
       location: ev.location || '',
       rawStatus: st,
     };
@@ -494,7 +529,7 @@ export function ShipmentDetailModal({ shipment, onClose, onEditOrder }) {
             {copied && <span className="order-detail-copied-toast">Copied!</span>}
           </div>
           <div className="order-detail-subtext">{bannerSubtext}</div>
-          {(currentShipment?.third_party_order_id || shipment.third_party_order_id) && (
+          {isAdminPortal && (currentShipment?.third_party_order_id || shipment.third_party_order_id) && (
             <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span
                 style={{
@@ -618,81 +653,83 @@ export function ShipmentDetailModal({ shipment, onClose, onEditOrder }) {
                   <span className="kv-val">{destBranch.phone || '01-000301'}</span>
                 </div>
 
-                {/* 3PL Third-Party Handover Row (Admin Quick Edit) */}
-                <div className="kv-row" style={{ background: '#f8fafc', padding: '8px 10px', borderRadius: '6px', margin: '6px 0', border: '1px solid #e2e8f0' }}>
-                  <span className="kv-label" style={{ fontWeight: 700, color: '#1e293b' }}>
-                    📦 3PL Handover (Manual):
-                  </span>
-                  <div style={{ flex: 1, textAlign: 'right' }}>
-                    {editing3PL ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end', marginTop: '4px' }}>
-                        <select
-                          value={tpCourier}
-                          onChange={(e) => setTpCourier(e.target.value)}
-                          style={{ height: '30px', fontSize: '11px', borderRadius: '4px', border: '1px solid #cbd5e1', padding: '0 6px', width: '100%' }}
-                        >
-                          <option value="">None / Remove Link</option>
-                          <option value="NCM">NCM (Nepal Can Move)</option>
-                          <option value="Upaya City Cargo">Upaya City Cargo</option>
-                          <option value="Nepal Post">Nepal Post</option>
-                          <option value="Aramex">Aramex</option>
-                          <option value="Delivery Tiger">Delivery Tiger</option>
-                          <option value="Pathao Courier">Pathao Courier</option>
-                          <option value="Sundar Courier">Sundar Courier</option>
-                          <option value="Other">Other / Custom</option>
-                        </select>
-                        <input
-                          type="text"
-                          placeholder="External Order / Waybill ID..."
-                          value={tpOrderId}
-                          onChange={(e) => setTpOrderId(e.target.value)}
-                          style={{ height: '28px', fontSize: '11px', borderRadius: '4px', border: '1px solid #cbd5e1', padding: '0 6px', width: '100%' }}
-                        />
-                        <div style={{ display: 'flex', gap: '4px' }}>
+                {/* 3PL Third-Party Handover Row (Strictly Admin Portal Only) */}
+                {isAdminPortal && (
+                  <div className="kv-row" style={{ background: '#f8fafc', padding: '8px 10px', borderRadius: '6px', margin: '6px 0', border: '1px solid #e2e8f0' }}>
+                    <span className="kv-label" style={{ fontWeight: 700, color: '#1e293b' }}>
+                      📦 3PL Handover (Manual):
+                    </span>
+                    <div style={{ flex: 1, textAlign: 'right' }}>
+                      {editing3PL ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end', marginTop: '4px' }}>
+                          <select
+                            value={tpCourier}
+                            onChange={(e) => setTpCourier(e.target.value)}
+                            style={{ height: '30px', fontSize: '11px', borderRadius: '4px', border: '1px solid #cbd5e1', padding: '0 6px', width: '100%' }}
+                          >
+                            <option value="">None / Remove Link</option>
+                            <option value="NCM">NCM (Nepal Can Move)</option>
+                            <option value="Upaya City Cargo">Upaya City Cargo</option>
+                            <option value="Nepal Post">Nepal Post</option>
+                            <option value="Aramex">Aramex</option>
+                            <option value="Delivery Tiger">Delivery Tiger</option>
+                            <option value="Pathao Courier">Pathao Courier</option>
+                            <option value="Sundar Courier">Sundar Courier</option>
+                            <option value="Other">Other / Custom</option>
+                          </select>
+                          <input
+                            type="text"
+                            placeholder="External Order / Waybill ID..."
+                            value={tpOrderId}
+                            onChange={(e) => setTpOrderId(e.target.value)}
+                            style={{ height: '28px', fontSize: '11px', borderRadius: '4px', border: '1px solid #cbd5e1', padding: '0 6px', width: '100%' }}
+                          />
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            <button
+                              type="button"
+                              onClick={handleSave3PL}
+                              disabled={saving3PL}
+                              style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', padding: '4px 10px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                            >
+                              {saving3PL ? 'Saving...' : 'Save to D1'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditing3PL(false)}
+                              style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer' }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+                          <span style={{ fontWeight: 600, color: (currentShipment?.third_party_order_id ? '#1d4ed8' : '#64748b'), fontSize: '12px' }}>
+                            {currentShipment?.third_party_order_id 
+                              ? `${currentShipment.third_party_courier_name || '3PL Partner'}: #${currentShipment.third_party_order_id}` 
+                              : 'Internal Fleet Only'}
+                          </span>
                           <button
                             type="button"
-                            onClick={handleSave3PL}
-                            disabled={saving3PL}
-                            style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px', padding: '4px 10px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                            onClick={() => setEditing3PL(true)}
+                            style={{
+                              background: '#eff6ff',
+                              color: '#1d4ed8',
+                              border: '1px solid #bfdbfe',
+                              borderRadius: '4px',
+                              padding: '3px 8px',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
                           >
-                            {saving3PL ? 'Saving...' : 'Save to D1'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditing3PL(false)}
-                            style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer' }}
-                          >
-                            Cancel
+                            {currentShipment?.third_party_order_id ? '✎ Edit 3PL' : '+ Link 3PL'}
                           </button>
                         </div>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
-                        <span style={{ fontWeight: 600, color: (currentShipment?.third_party_order_id ? '#1d4ed8' : '#64748b'), fontSize: '12px' }}>
-                          {currentShipment?.third_party_order_id 
-                            ? `${currentShipment.third_party_courier_name || '3PL Partner'}: #${currentShipment.third_party_order_id}` 
-                            : 'Internal Fleet Only'}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setEditing3PL(true)}
-                          style={{
-                            background: '#eff6ff',
-                            color: '#1d4ed8',
-                            border: '1px solid #bfdbfe',
-                            borderRadius: '4px',
-                            padding: '3px 8px',
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {currentShipment?.third_party_order_id ? '✎ Edit 3PL' : '+ Link 3PL'}
-                        </button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               <div className="order-detail-divider" />

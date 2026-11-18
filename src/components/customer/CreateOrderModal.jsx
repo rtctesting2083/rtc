@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useCompany } from '../../context/CompanyContext';
+import { useAuth } from '../../context/AuthContext';
 import { useModal } from '../../context/ModalContext';
 import {
   calculateDeliveryCharge,
@@ -30,6 +31,12 @@ export function CreateOrderModal({
   branchId = null,
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { session } = useAuth() || {};
+  const isCompanyAdmin =
+    portalType === 'company' &&
+    (session?.type === 'company' || session?.type === 'admin') &&
+    !location.pathname.startsWith('/customer');
   const {
     branches = [],
     customers = [],
@@ -587,8 +594,8 @@ export function CreateOrderModal({
       cod_amount: parseFloat(codAmount) || 0,
       delivery_fee: serviceCharge,
       notes: noteText,
-      third_party_courier_name: portalType === 'company' && thirdPartyCourierName.trim() ? thirdPartyCourierName.trim() : null,
-      third_party_order_id: portalType === 'company' && thirdPartyOrderId.trim() ? thirdPartyOrderId.trim() : null,
+      third_party_courier_name: isCompanyAdmin && thirdPartyCourierName.trim() ? thirdPartyCourierName.trim() : null,
+      third_party_order_id: isCompanyAdmin && thirdPartyOrderId.trim() ? thirdPartyOrderId.trim() : null,
     };
 
     if (orderToEdit?.id) {
@@ -1235,7 +1242,7 @@ export function CreateOrderModal({
                 </div>
 
                 {/* 7b. Admin-Only: Third-Party Courier Handover (Manual 3PL Tracking) */}
-                {portalType === 'company' && (
+                {isCompanyAdmin && (
                   <div
                     style={{
                       background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',

@@ -6640,6 +6640,22 @@ export async function onRequest(context) {
             if (Array.isArray(parsed)) trackingEvents = parsed;
           } catch (e) {}
         }
+
+        // Sanitize tracking events for public parcel tracking (hide internal 3PL partner data)
+        trackingEvents = trackingEvents.map((ev) => {
+          const notes = String(ev.notes || '');
+          const is3PL = Boolean(ev.partner) || /3PL|third-party|third party|external courier|external waybill|NCM|Upaya|Nepal Post|Aramex/i.test(notes);
+          if (is3PL) {
+            const { partner, ...rest } = ev;
+            let cleanNote = 'Order processing in hub inventory.';
+            if (ev.status === 'in_transit' || ev.status === 'dispatched') cleanNote = 'Dispatched for transit to destination hub.';
+            else if (ev.status === 'out_for_delivery') cleanNote = 'Out for delivery to recipient address.';
+            else if (ev.status === 'delivered') cleanNote = 'Parcel successfully delivered to recipient.';
+            return { ...rest, notes: cleanNote };
+          }
+          return ev;
+        });
+
         if (trackingEvents.length === 0) {
           trackingEvents = [
             {
@@ -7801,7 +7817,27 @@ export async function onRequest(context) {
             if (row.tracking_events_json) {
               try { trackingEvents = JSON.parse(row.tracking_events_json); } catch (e) {}
             }
-            return jsonResponse({ ...row, tracking_events: trackingEvents });
+            // Sanitize tracking events and strip third-party data on vendor portal
+            const cleanEvents = trackingEvents.map((ev) => {
+              const notes = String(ev.notes || '');
+              const is3PL = Boolean(ev.partner) || /3PL|third-party|third party|external courier|external waybill|NCM|Upaya|Nepal Post|Aramex/i.test(notes);
+              if (is3PL) {
+                const { partner, ...rest } = ev;
+                let cleanNote = 'Order processing in hub inventory.';
+                if (ev.status === 'in_transit' || ev.status === 'dispatched') cleanNote = 'Dispatched for transit to destination hub.';
+                else if (ev.status === 'out_for_delivery') cleanNote = 'Out for delivery to recipient address.';
+                else if (ev.status === 'delivered') cleanNote = 'Parcel successfully delivered to recipient.';
+                return { ...rest, notes: cleanNote };
+              }
+              return ev;
+            });
+            const { third_party_courier_name, third_party_order_id, ...safeRow } = row;
+            return jsonResponse({
+              ...safeRow,
+              third_party_courier_name: null,
+              third_party_order_id: null,
+              tracking_events: cleanEvents,
+            });
           }
 
           let query = 'SELECT * FROM vendor_order WHERE company_id = ?';
@@ -7826,7 +7862,27 @@ export async function onRequest(context) {
             if (row.tracking_events_json) {
               try { trackingEvents = JSON.parse(row.tracking_events_json); } catch (e) {}
             }
-            return { ...row, tracking_events: trackingEvents };
+            // Sanitize tracking events and strip third-party data on vendor portal
+            const cleanEvents = trackingEvents.map((ev) => {
+              const notes = String(ev.notes || '');
+              const is3PL = Boolean(ev.partner) || /3PL|third-party|third party|external courier|external waybill|NCM|Upaya|Nepal Post|Aramex/i.test(notes);
+              if (is3PL) {
+                const { partner, ...rest } = ev;
+                let cleanNote = 'Order processing in hub inventory.';
+                if (ev.status === 'in_transit' || ev.status === 'dispatched') cleanNote = 'Dispatched for transit to destination hub.';
+                else if (ev.status === 'out_for_delivery') cleanNote = 'Out for delivery to recipient address.';
+                else if (ev.status === 'delivered') cleanNote = 'Parcel successfully delivered to recipient.';
+                return { ...rest, notes: cleanNote };
+              }
+              return ev;
+            });
+            const { third_party_courier_name, third_party_order_id, ...safeRow } = row;
+            return {
+              ...safeRow,
+              third_party_courier_name: null,
+              third_party_order_id: null,
+              tracking_events: cleanEvents,
+            };
           });
           return jsonResponse(formatted);
         }
