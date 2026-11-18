@@ -20,6 +20,7 @@ import {
   Clock,
   Inbox,
   ShieldCheck,
+  Wallet,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCompany } from '../../context/CompanyContext';
@@ -163,6 +164,13 @@ export function RiderLayout() {
       label: 'Delivered & COD',
       Icon: Banknote,
       path: '/rider/deliveries?tab=completed',
+      badge: null,
+    },
+    {
+      key: 'wallet',
+      label: 'Earning Wallet',
+      Icon: Wallet,
+      path: '/rider/wallet',
       badge: null,
     },
     {

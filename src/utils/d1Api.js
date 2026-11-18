@@ -2743,6 +2743,105 @@ export const d1Api = {
       return { success: false, error: e.message };
     }
   },
+
+  // ════════ COMMISSION DISTRIBUTION & MULTI-TIER WALLETS (D1) ════════
+  getCommissionSettings: async (companyId = 1) => {
+    try {
+      const res = await fetch(`/api/admin/commission/settings?company_id=${companyId}`);
+      return await res.json();
+    } catch (e) {
+      console.error('Error fetching commission settings:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  saveCommissionSettings: async (payload = {}) => {
+    try {
+      const res = await fetch('/api/admin/commission/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      return await res.json();
+    } catch (e) {
+      console.error('Error saving commission settings:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  getCommissionWallets: async (params = {}) => {
+    try {
+      const cleanParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, val]) => {
+        if (val !== undefined && val !== null && val !== '' && val !== 'all' && val !== 'ALL') {
+          cleanParams.append(key, val);
+        }
+      });
+      const query = cleanParams.toString();
+      const res = await fetch(`/api/admin/commission/wallets${query ? `?${query}` : ''}`);
+      return await res.json();
+    } catch (e) {
+      console.error('Error fetching commission wallets:', e);
+      return { success: false, wallets: [], summary: {}, error: e.message };
+    }
+  },
+
+  getCommissionWalletTransactions: async (walletId, params = {}) => {
+    try {
+      const query = new URLSearchParams(params).toString();
+      const res = await fetch(`/api/admin/commission/wallet/${walletId}/transactions${query ? `?${query}` : ''}`);
+      return await res.json();
+    } catch (e) {
+      console.error('Error fetching wallet transactions:', e);
+      return { success: false, transactions: [], error: e.message };
+    }
+  },
+
+  recordCommissionPayout: async (payload = {}) => {
+    try {
+      const res = await fetch('/api/admin/commission/wallet/payout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      return await res.json();
+    } catch (e) {
+      console.error('Error recording commission payout:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  syncDeliveredCommissions: async (companyId = 1) => {
+    try {
+      const res = await fetch(`/api/admin/commission/sync-delivered?company_id=${companyId}`, {
+        method: 'POST',
+      });
+      return await res.json();
+    } catch (e) {
+      console.error('Error syncing delivered commissions:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  getBranchCommissionWallet: async (branchId, companyId = 1) => {
+    try {
+      const res = await fetch(`/api/branch/commission/wallet?branch_id=${branchId}&company_id=${companyId}`);
+      return await res.json();
+    } catch (e) {
+      console.error('Error fetching branch commission wallet:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  getRiderCommissionWallet: async (riderId, companyId = 1) => {
+    try {
+      const res = await fetch(`/api/rider/commission/wallet?rider_id=${riderId}&company_id=${companyId}`);
+      return await res.json();
+    } catch (e) {
+      console.error('Error fetching rider commission wallet:', e);
+      return { success: false, error: e.message };
+    }
+  },
 };
 
 export default d1Api;

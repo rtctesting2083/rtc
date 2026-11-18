@@ -57,12 +57,15 @@ import { VendorTypesCategoriesSettingsPage } from './pages/company/settings/Vend
 import { UserManagementSettingsPage } from './pages/company/settings/UserManagementSettingsPage';
 import { SmsSettingsPage } from './pages/company/settings/SmsSettingsPage';
 import { NcmSettingsPage } from './pages/company/settings/NcmSettingsPage';
+import { CommissionDistributionSettingsPage } from './pages/company/settings/CommissionDistributionSettingsPage';
+import { CommissionWalletsPage } from './pages/company/CommissionWalletsPage';
 
 // Branch
 import { BranchOverviewPage } from './pages/branch/BranchOverviewPage';
 import { BranchCreateOrderPage } from './pages/branch/BranchCreateOrderPage';
 import { BranchShipmentsPage } from './pages/branch/BranchShipmentsPage';
 import { BranchReceivedShipmentsPage } from './pages/branch/BranchReceivedShipmentsPage';
+import { BranchCommissionWalletPage } from './pages/branch/BranchCommissionWalletPage';
 import { BranchTrackReceivePage } from './pages/branch/BranchTrackReceivePage';
 import { BranchShipmentReportPage } from './pages/branch/BranchShipmentReportPage';
 import { BranchCodSettlementPage } from './pages/branch/BranchCodSettlementPage';
@@ -96,6 +99,7 @@ import { CustomerPlaceholderPage } from './pages/customer/CustomerPlaceholderPag
 import { RiderDeliveriesPage } from './pages/rider/RiderDeliveriesPage';
 import { RiderNoticesPage } from './pages/rider/RiderNoticesPage';
 import { RiderProfilePage } from './pages/rider/RiderProfilePage';
+import { RiderCommissionWalletPage } from './pages/rider/RiderCommissionWalletPage';
 
 function ProtectedRoute({ allowedTypes, children }) {
   const { session } = useAuth();
@@ -178,11 +182,15 @@ export function App() {
                   <Route path="notices" element={<CompanyNoticesPage />} />
                   <Route path="gps/live" element={<CompanyGpsLiveMapPage />} />
                   <Route path="gps/reports" element={<CompanyGpsReportsPage />} />
+                  <Route path="commission-wallets" element={<CommissionWalletsPage />} />
+                  <Route path="wallets" element={<CommissionWalletsPage />} />
 
                   {/* Settings sub-routes */}
                   <Route path="settings/company" element={<CompanyThemeSettingsPage />} />
                   <Route path="settings/gps" element={<GpsSettingsPage />} />
                   <Route path="settings/ncm" element={<NcmSettingsPage />} />
+                  <Route path="settings/commission" element={<CommissionDistributionSettingsPage />} />
+                  <Route path="settings/commission-distribution" element={<CommissionDistributionSettingsPage />} />
                   <Route path="settings/theme" element={<CompanyThemeSettingsPage />} />
                   <Route path="settings/order-types" element={<OrderTypesSettingsPage />} />
                   <Route path="settings/exchange-reasons" element={<ExchangeReasonsSettingsPage />} />
@@ -231,6 +239,8 @@ export function App() {
                   <Route path="gps/live" element={<CompanyGpsLiveMapPage />} />
                   <Route path="gps/reports" element={<CompanyGpsReportsPage />} />
                   <Route path="profile" element={<BranchProfilePage />} />
+                  <Route path="commission-wallet" element={<BranchCommissionWalletPage />} />
+                  <Route path="wallet" element={<BranchCommissionWalletPage />} />
                   <Route path="users" element={<BranchUserManagementPage />} />
                   <Route path="notices" element={<BranchNoticesPage />} />
                 </Route>
@@ -291,6 +301,8 @@ export function App() {
                 >
                   <Route index element={<Navigate to="deliveries" replace />} />
                   <Route path="deliveries" element={<RiderDeliveriesPage />} />
+                  <Route path="wallet" element={<RiderCommissionWalletPage />} />
+                  <Route path="earnings" element={<RiderCommissionWalletPage />} />
                   <Route path="notices" element={<RiderNoticesPage />} />
                   <Route path="profile" element={<RiderProfilePage />} />
                 </Route>

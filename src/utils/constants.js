@@ -329,6 +329,8 @@ export const PERMISSION_VIEWS = [
   { key: 'product-categories', label: 'Product/Package Category', path: '/company/settings/product-categories' },
   { key: 'landmarks', label: 'Address/Landmark Names', path: '/company/settings/landmarks' },
   { key: 'delivery-charge-settings', label: 'Delivery Charge Setting', path: '/company/settings/delivery-charges' },
+  { key: 'commission-distribution-settings', label: 'Commission Distribution Setting', path: '/company/settings/commission-distribution' },
+  { key: 'commission-wallets', label: 'Commission Earning Wallets', path: '/company/commission-wallets' },
   { key: 'shipment-status-settings', label: 'Shipment Status Setting', path: '/company/settings/shipment-statuses' },
   { key: 'user-management', label: 'User Management', path: '/company/settings/users' },
 ];
@@ -366,6 +368,7 @@ export const BRANCH_PERMISSION_VIEWS = [
   { key: 'track-receive', label: 'Track & Receive', path: '/branch/track-receive' },
   { key: 'shipment-report', label: 'Shipment Report', path: '/branch/reports' },
   { key: 'cod-settlement', label: 'COD Settlement', path: '/branch/cod-settlement' },
+  { key: 'commission-wallet', label: 'Commission Wallet', path: '/branch/commission-wallet' },
   { key: 'riders', label: 'Riders', path: '/branch/riders' },
   { key: 'customers', label: 'Vendors', path: '/branch/vendors' },
   { key: 'profile', label: 'Branch Profile', path: '/branch/profile' },

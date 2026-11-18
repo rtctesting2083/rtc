@@ -60,10 +60,7 @@ export function NcmSettingsPage() {
   // Host Origin & Custom Domain Override
   const defaultHost = typeof window !== 'undefined' ? window.location.origin : 'https://rtccourrier.pages.dev';
   const [selectedDomain, setSelectedDomain] = useState(() => {
-    if (typeof window !== 'undefined' && window.location.host.includes('rtccourier.com.np')) {
-      return window.location.origin;
-    }
-    return 'https://app.rtccourier.com.np';
+    return typeof window !== 'undefined' ? window.location.origin : 'https://rtccourrier.pages.dev';
   });
   const [customDomainInput, setCustomDomainInput] = useState('');
 
@@ -371,9 +368,9 @@ export function NcmSettingsPage() {
                   fontWeight: 600,
                 }}
               >
-                <option value="https://app.rtccourier.com.np">https://app.rtccourier.com.np (Recommended Custom Domain)</option>
+                <option value="https://rtccourrier.pages.dev">https://rtccourrier.pages.dev (Active Cloudflare Deployment - Recommended)</option>
+                <option value="https://app.rtccourier.com.np">https://app.rtccourier.com.np (Custom Domain - Requires Pages Custom Domain Setup)</option>
                 <option value="https://api.rtccourier.com.np">https://api.rtccourier.com.np (Custom API Domain)</option>
-                <option value="https://rtccourrier.pages.dev">https://rtccourrier.pages.dev (Cloudflare Pages Default)</option>
                 <option value={defaultHost}>Current Origin ({defaultHost})</option>
                 <option value="custom">Enter Custom Domain...</option>
               </select>

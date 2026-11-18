@@ -1,0 +1,10 @@
+/api/webhooks/*
+  Access-Control-Allow-Origin: *
+  Access-Control-Allow-Methods: GET, POST, OPTIONS, HEAD
+  Access-Control-Allow-Headers: *
+  Cache-Control: no-store, no-cache, must-revalidate
+
+/api/*
+  Access-Control-Allow-Origin: *
+  Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS
+  Access-Control-Allow-Headers: *

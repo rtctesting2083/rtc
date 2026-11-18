@@ -46,6 +46,8 @@ import {
   MessageSquare,
   Navigation,
   Globe,
+  Coins,
+  Percent,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCompany } from '../../context/CompanyContext';
@@ -236,6 +238,7 @@ export function CompanyLayout() {
         { key: 'invoices', label: 'Billing (Tax Invoices)', Icon: Receipt, path: '/company/invoices' },
         { key: 'cod-settlement', label: 'COD Settlement', Icon: Banknote, path: '/company/cod-settlement' },
         { key: 'wallet', label: 'Wallet & Top-up Management', Icon: Wallet, path: '/company/wallet' },
+        { key: 'commission-wallets', label: 'Commission Earning Wallets', Icon: Coins, path: '/company/commission-wallets' },
       ],
     },
     {
@@ -272,6 +275,7 @@ export function CompanyLayout() {
     { key: 'product-categories', label: 'Product/Package Category', Icon: Boxes, path: '/company/settings/product-categories' },
     { key: 'landmarks', label: 'Address/Landmark Names', Icon: Flag, path: '/company/settings/landmarks' },
     { key: 'delivery-charge-settings', label: 'Delivery Charge Setting', Icon: Sliders, path: '/company/settings/delivery-charges' },
+    { key: 'commission-distribution-settings', label: 'Delivery Commission Distribution', Icon: Percent, path: '/company/settings/commission-distribution' },
     { key: 'shipment-status-settings', label: 'Shipment Status Setting', Icon: CheckCircle2, path: '/company/settings/shipment-statuses' },
     { key: 'portal-menu-settings', label: 'Portal Menu Setting', Icon: Menu, path: '/company/settings/portal-menus' },
     { key: 'vendor-types-categories', label: 'Vendor Types & Categories', Icon: ShoppingBag, path: '/company/settings/vendor-types-categories' },
