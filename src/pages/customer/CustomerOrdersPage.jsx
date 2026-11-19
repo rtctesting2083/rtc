@@ -1328,6 +1328,8 @@ export function CustomerOrdersPage() {
       `Order ${order.tracking_number}`,
       <ShipmentDetailModal
         shipment={raw}
+        isAdmin={false}
+        portalType="customer"
         onClose={closeModal}
         onEditOrder={(ship) => {
           closeModal();

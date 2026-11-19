@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import '../../pages/customer/VendorDashboard.css';
 
-export function ShipmentDetailModal({ shipment, onClose, onEditOrder }) {
+export function ShipmentDetailModal({ shipment, onClose, onEditOrder, isAdmin = false, portalType }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { session } = useAuth() || {};
@@ -33,13 +33,15 @@ export function ShipmentDetailModal({ shipment, onClose, onEditOrder }) {
   // Strict portal check: Third-party 3PL information is strictly Admin Portal only
   // Never display on Vendor Portal (/customer/*), Public Tracking, or non-admin sessions
   const isVendorPortal =
+    portalType === 'customer' ||
     session?.type === 'customer' ||
     location.pathname.startsWith('/customer') ||
     location.pathname.startsWith('/tracking') ||
     location.pathname.startsWith('/track');
   const isAdminPortal =
-    (session?.type === 'company' || session?.type === 'admin') &&
     !isVendorPortal &&
+    (isAdmin === true || portalType === 'company') &&
+    (session?.type === 'company' || session?.type === 'admin') &&
     location.pathname.startsWith('/company');
   const {
     company,
@@ -435,7 +437,21 @@ export function ShipmentDetailModal({ shipment, onClose, onEditOrder }) {
   };
 
   // Timeline events: Reverse chronological order (latest event at top, Order Created at bottom)
-  const timelineEvents = rawEvents.map(formatTimelineEvent).reverse();
+  const timelineEvents = rawEvents
+    .filter((ev) => {
+      if (isAdminPortal) return true;
+      const notes = String(ev.notes || '');
+      // If event is solely a 3PL handover or 3PL link milestone, hide it completely from vendors
+      if (
+        ev.partner ||
+        /handed over.*(?:3PL|external|courier|partner)|linked to external|manual third-party/i.test(notes)
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .map(formatTimelineEvent)
+    .reverse();
 
   const handlePrint = () => {
     printShipmentLabel(shipment, company, customer, originBranch, destBranch, {

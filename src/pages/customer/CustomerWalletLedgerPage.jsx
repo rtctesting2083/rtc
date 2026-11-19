@@ -1413,7 +1413,7 @@ export function CustomerWalletLedgerPage() {
 
       openModal(
         `Order ${effectiveShipment.tracking_number || effectiveShipment.id}`,
-        <ShipmentDetailModal shipment={effectiveShipment} onClose={closeModal} />,
+        <ShipmentDetailModal shipment={effectiveShipment} isAdmin={false} portalType="customer" onClose={closeModal} />,
         'xxwide',
         { hideHeader: true }
       );

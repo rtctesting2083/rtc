@@ -1103,6 +1103,8 @@ export function CompanyShipmentsPage({ view }) {
       `Shipment ${s.tracking_number}`,
       <ShipmentDetailModal
         shipment={s}
+        isAdmin={true}
+        portalType="company"
         onClose={closeModal}
         onEditOrder={(ship) => handleOpenEditOrder(ship)}
       />,

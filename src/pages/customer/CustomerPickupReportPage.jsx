@@ -95,7 +95,7 @@ export function CustomerPickupReportPage() {
     if (s) {
       openModal(
         `Shipment ${trackingNumber}`,
-        <ShipmentDetailModal shipment={s} onClose={closeModal} />,
+        <ShipmentDetailModal shipment={s} isAdmin={false} portalType="customer" onClose={closeModal} />,
         'xxwide',
         { hideHeader: true }
       );
