@@ -36,6 +36,7 @@ import { CompanyBranchesPage } from './pages/company/CompanyBranchesPage';
 import { CompanyBranchReportsPage } from './pages/company/CompanyBranchReportsPage';
 import { CompanyNoticesPage } from './pages/company/CompanyNoticesPage';
 import { AdminProfilePage } from './pages/company/AdminProfilePage';
+import { CompanyTrashPage } from './pages/company/CompanyTrashPage';
 import { CompanyGpsLiveMapPage } from './pages/company/CompanyGpsLiveMapPage';
 import { CompanyGpsReportsPage } from './pages/company/CompanyGpsReportsPage';
 import { GpsSettingsPage } from './pages/company/settings/GpsSettingsPage';
@@ -184,6 +185,9 @@ export function App() {
                   <Route path="gps/reports" element={<CompanyGpsReportsPage />} />
                   <Route path="commission-wallets" element={<CommissionWalletsPage />} />
                   <Route path="wallets" element={<CommissionWalletsPage />} />
+                  <Route path="trash" element={<CompanyTrashPage />} />
+                  <Route path="recycle-bin" element={<CompanyTrashPage />} />
+                  <Route path="backup-restore" element={<CompanyTrashPage />} />
 
                   {/* Settings sub-routes */}
                   <Route path="settings/company" element={<CompanyThemeSettingsPage />} />

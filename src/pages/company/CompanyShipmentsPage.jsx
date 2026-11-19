@@ -29,6 +29,7 @@ import {
   MapPin,
   ExternalLink,
   Copy,
+  Trash2,
 } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
@@ -40,6 +41,7 @@ import { NewShipmentModal } from '../../components/company/NewShipmentModal';
 import { AssignRiderModal } from '../../components/company/AssignRiderModal';
 import { ForwardShipmentModal } from '../../components/company/ForwardShipmentModal';
 import { PickupRequestWorkflowModal } from '../../components/common/PickupRequestWorkflowModal';
+import { ConfirmSoftDeleteModal } from '../../components/common/ConfirmSoftDeleteModal';
 import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { printShipmentLabel } from '../../utils/print';
 import {
@@ -438,6 +440,7 @@ export function CompanyShipmentsPage({ view }) {
     updateVendorOrder,
     setCustomStatus,
     chargeSettings,
+    softDeleteShipment,
     refreshData,
   } = useCompany();
 
@@ -1133,6 +1136,29 @@ export function CompanyShipmentsPage({ view }) {
           if (refreshData) refreshData();
           loadDirectData();
         }}
+      />
+    );
+  };
+
+  const handleOpenSoftDelete = (order) => {
+    const s = order.rawShipment || order;
+    openModal(
+      `Move Order to Trash — ${s.tracking_number}`,
+      <ConfirmSoftDeleteModal
+        entity="shipments"
+        entityLabel="Order / Shipment"
+        itemId={s.id}
+        itemTitle={s.tracking_number}
+        itemSubtitle={`Receiver: ${s.receiver_name} (${s.receiver_phone}) · Route: ${s.sender_name || 'Sender'} ➔ ${s.delivery_address || 'Destination'}`}
+        onConfirm={async ({ reason, force }) => {
+          const res = await softDeleteShipment(s.id, reason, force);
+          if (res && res.success) {
+            if (typeof refreshData === 'function') refreshData();
+            loadDirectData();
+          }
+          return res;
+        }}
+        onClose={closeModal}
       />
     );
   };
@@ -3332,6 +3358,16 @@ export function CompanyShipmentsPage({ view }) {
                             title="View Details"
                           >
                             <Eye size={13} />
+                          </button>
+
+                          <button
+                            type="button"
+                            className="action-icon-btn"
+                            onClick={() => handleOpenSoftDelete(order)}
+                            title="Move to Trash (Temporary Delete)"
+                            style={{ color: '#dc2626', background: '#fef2f2', borderColor: '#fecaca' }}
+                          >
+                            <Trash2 size={13} />
                           </button>
                         </div>
                       </td>

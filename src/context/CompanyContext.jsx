@@ -2845,6 +2845,65 @@ export function CompanyProvider({ children }) {
     }
   };
 
+  // =========================================================================
+  // Trash / Soft-Delete, Restore & Permanent Purge Actions
+  // =========================================================================
+  const softDeleteBranch = async (branchId, reason = '', force = false) => {
+    const res = await d1Api.softDeleteRecord('branches', branchId, { reason, force, companyId });
+    if (res.success) {
+      updateData((prev) => ({
+        ...prev,
+        branches: (prev.branches || []).filter((b) => Number(b.id) !== Number(branchId)),
+      }));
+    }
+    return res;
+  };
+
+  const softDeleteCourier = async (courierId, reason = '', force = false) => {
+    const res = await d1Api.softDeleteRecord('riders', courierId, { reason, force, companyId });
+    if (res.success) {
+      updateData((prev) => ({
+        ...prev,
+        couriers: (prev.couriers || []).filter((c) => Number(c.id) !== Number(courierId)),
+      }));
+    }
+    return res;
+  };
+
+  const softDeleteCustomer = async (customerId, reason = '', force = false) => {
+    const res = await d1Api.softDeleteRecord('vendors', customerId, { reason, force, companyId });
+    if (res.success) {
+      updateData((prev) => ({
+        ...prev,
+        customers: (prev.customers || []).filter((c) => Number(c.id) !== Number(customerId)),
+      }));
+    }
+    return res;
+  };
+
+  const softDeleteShipment = async (shipmentId, reason = '', force = false) => {
+    const res = await d1Api.softDeleteRecord('shipments', shipmentId, { reason, force, companyId });
+    if (res.success) {
+      updateData((prev) => ({
+        ...prev,
+        shipments: (prev.shipments || []).filter((s) => Number(s.id) !== Number(shipmentId)),
+      }));
+    }
+    return res;
+  };
+
+  const restoreTrashItem = async (entity, backupId) => {
+    const res = await d1Api.restoreTrashRecord(entity, backupId, companyId);
+    if (res.success) {
+      await refreshData();
+    }
+    return res;
+  };
+
+  const permanentDeleteTrashItem = async (entity, backupId) => {
+    return await d1Api.permanentDeleteTrashRecord(entity, backupId, companyId);
+  };
+
   const refreshData = useCallback(async () => {
     if (!companyId) return;
     try {
@@ -3040,6 +3099,12 @@ export function CompanyProvider({ children }) {
         addVendorOrder,
         updateVendorOrder,
         deleteVendorOrder,
+        softDeleteBranch,
+        softDeleteCourier,
+        softDeleteCustomer,
+        softDeleteShipment,
+        restoreTrashItem,
+        permanentDeleteTrashItem,
         resetCompanyData,
         refreshData,
         themeColor: d1Theme?.theme_color || company?.theme_color || '#dc2626',

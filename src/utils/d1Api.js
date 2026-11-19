@@ -2857,6 +2857,114 @@ export const d1Api = {
       return { success: false, error: e.message };
     }
   },
+
+  // =========================================================================
+  // Trash, Soft-Delete, Restore & Permanent Purge APIs (Cloudflare D1)
+  // =========================================================================
+  softDeleteRecord: async (entity, id, { reason = '', adminId = '1', force = false, companyId = 1 } = {}) => {
+    try {
+      const res = await fetch(`/api/admin/${entity}/${id}/soft-delete?company_id=${companyId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason, admin_id: adminId, force }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return {
+          success: false,
+          blocked: Boolean(data.blocked),
+          error: data.error || `Failed to move ${entity} to trash (Status: ${res.status})`,
+          dependencies: data.dependencies,
+        };
+      }
+      return data;
+    } catch (e) {
+      console.error(`Error soft-deleting ${entity}:`, e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  getTrashRecords: async (entity, { search = '', page = 1, limit = 50, companyId = 1 } = {}) => {
+    try {
+      const params = new URLSearchParams({
+        company_id: String(companyId),
+        page: String(page),
+        limit: String(limit),
+      });
+      if (search && search.trim()) {
+        params.append('search', search.trim());
+      }
+      const res = await fetch(`/api/admin/trash/${entity}?${params.toString()}`);
+      if (!res.ok) {
+        return { success: false, total: 0, records: [] };
+      }
+      return await res.json();
+    } catch (e) {
+      console.error(`Error fetching trash for ${entity}:`, e);
+      return { success: false, total: 0, records: [], error: e.message };
+    }
+  },
+
+  getTrashStats: async (companyId = 1) => {
+    try {
+      const res = await fetch(`/api/admin/trash/stats?company_id=${companyId}`);
+      if (!res.ok) return { success: false, counts: { branches: 0, riders: 0, vendors: 0, shipments: 0, orders: 0, total: 0 } };
+      return await res.json();
+    } catch (e) {
+      console.error('Error fetching trash stats:', e);
+      return { success: false, counts: { branches: 0, riders: 0, vendors: 0, shipments: 0, orders: 0, total: 0 } };
+    }
+  },
+
+  restoreTrashRecord: async (entity, backupId, companyId = 1) => {
+    try {
+      const res = await fetch(`/api/admin/trash/${entity}/${backupId}/restore?company_id=${companyId}`, {
+        method: 'POST',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Failed to restore record from trash' };
+      }
+      return data;
+    } catch (e) {
+      console.error(`Error restoring ${entity} #${backupId}:`, e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  permanentDeleteTrashRecord: async (entity, backupId, companyId = 1) => {
+    try {
+      const res = await fetch(`/api/admin/trash/${entity}/${backupId}/permanent?company_id=${companyId}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Failed to permanently delete record' };
+      }
+      return data;
+    } catch (e) {
+      console.error(`Error permanently deleting ${entity} #${backupId}:`, e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  bulkTrashAction: async (entity, action, backupIds, companyId = 1) => {
+    try {
+      const res = await fetch(`/api/admin/trash/${entity}/bulk-action?company_id=${companyId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, backup_ids: backupIds }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Failed to execute bulk trash action' };
+      }
+      return data;
+    } catch (e) {
+      console.error(`Error executing bulk trash action on ${entity}:`, e);
+      return { success: false, error: e.message };
+    }
+  },
 };
 
 export default d1Api;

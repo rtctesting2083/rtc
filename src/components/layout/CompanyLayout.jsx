@@ -48,6 +48,7 @@ import {
   Globe,
   Coins,
   Percent,
+  Trash2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCompany } from '../../context/CompanyContext';
@@ -260,6 +261,12 @@ export function CompanyLayout() {
         { key: 'gps-reports', label: 'GPS Reports & Route Playback', Icon: Navigation, path: '/company/gps/reports' },
       ],
     },
+    {
+      title: 'Data & Archives',
+      items: [
+        { key: 'trash', label: 'Trash / Recycle Bin', Icon: Trash2, path: '/company/trash' },
+      ],
+    },
   ];
 
   const settingsNavItems = [
@@ -280,6 +287,7 @@ export function CompanyLayout() {
     { key: 'portal-menu-settings', label: 'Portal Menu Setting', Icon: Menu, path: '/company/settings/portal-menus' },
     { key: 'vendor-types-categories', label: 'Vendor Types & Categories', Icon: ShoppingBag, path: '/company/settings/vendor-types-categories' },
     { key: 'user-management', label: 'User Management', Icon: Users, path: '/company/settings/users' },
+    { key: 'trash-settings', label: 'Trash / Backup & Restore', Icon: Trash2, path: '/company/trash' },
     { key: 'sms-settings', label: 'SMS Gateway Settings', Icon: MessageSquare, path: '/company/settings/sms' },
     { key: 'security-settings', label: 'Security & Auto-Logout', Icon: ShieldCheck, path: '/company/settings/security' },
   ];

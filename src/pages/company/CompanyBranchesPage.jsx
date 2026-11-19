@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   ShieldAlert,
   Network,
+  Trash2,
 } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { useAuth } from '../../context/AuthContext';
@@ -23,6 +24,7 @@ import { useModal } from '../../context/ModalContext';
 import { BranchFormModal } from '../../components/company/BranchFormModal';
 import { BranchHierarchyModal } from '../../components/company/BranchHierarchyModal';
 import { BranchHierarchyQuickModal } from '../../components/company/BranchHierarchyQuickModal';
+import { ConfirmSoftDeleteModal } from '../../components/common/ConfirmSoftDeleteModal';
 import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { addressSummary } from '../../utils/helpers';
 
@@ -73,6 +75,7 @@ export function CompanyBranchesPage() {
     updateBranch,
     toggleBranchActive,
     bulkUpdateBranchStatus,
+    softDeleteBranch,
   } = useCompany();
   const rawBranches = (allBranches && allBranches.length > 0) ? allBranches : branches;
   const { viewBranchAsAdmin } = useAuth();
@@ -394,6 +397,27 @@ export function CompanyBranchesPage() {
         onDone={() => {
           showFeedback('success', `Hierarchy and ownership model for "${branch.name}" updated successfully.`);
         }}
+      />
+    );
+  };
+
+  const handleOpenSoftDelete = (branch) => {
+    openModal(
+      `Move Branch to Trash — ${branch.name}`,
+      <ConfirmSoftDeleteModal
+        entity="branches"
+        entityLabel="Branch"
+        itemId={branch.id}
+        itemTitle={branch.name}
+        itemSubtitle={`Code: ${branch.branch_code || '—'} · Phone: ${branch.phone || '—'} · Tier: ${formatTierName(branch.tier, branch.branch_type)}`}
+        onConfirm={async ({ reason, force }) => {
+          const res = await softDeleteBranch(branch.id, reason, force);
+          if (res && res.success) {
+            showFeedback('success', `Branch "${branch.name}" moved to Trash / Recycle Bin.`);
+          }
+          return res;
+        }}
+        onClose={closeModal}
       />
     );
   };
@@ -1256,6 +1280,27 @@ export function CompanyBranchesPage() {
                           onClick={() => handleResetPw(b)}
                         >
                           PW
+                        </button>
+
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          style={{
+                            fontSize: '11px',
+                            padding: '4px 7px',
+                            borderRadius: '4px',
+                            color: '#b91c1c',
+                            background: '#fef2f2',
+                            borderColor: '#fecaca',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                          }}
+                          onClick={() => handleOpenSoftDelete(b)}
+                          title="Move branch to Trash / Recycle Bin"
+                        >
+                          <Trash2 size={12} />
+                          Trash
                         </button>
                       </div>
                     </td>

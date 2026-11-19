@@ -26,10 +26,12 @@ import {
   Key,
   Edit,
   UserCheck,
+  Trash2,
 } from 'lucide-react';
+import { ConfirmSoftDeleteModal } from '../../components/common/ConfirmSoftDeleteModal';
 
 export function CompanyCouriersPage() {
-  const { couriers = [], branches = [], findBranch, toggleCourierActive, updateCourier, refreshData } = useCompany();
+  const { couriers = [], branches = [], findBranch, toggleCourierActive, updateCourier, softDeleteCourier, refreshData } = useCompany();
   const { openModal, closeModal } = useModal();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -278,6 +280,27 @@ export function CompanyCouriersPage() {
     openModal(
       `Reset Password — ${rider.name}`,
       <ResetRiderPwModal rider={rider} onReset={updateCourier} onClose={closeModal} />
+    );
+  };
+
+  const handleOpenSoftDelete = (rider) => {
+    openModal(
+      `Move Rider to Trash — ${rider.name}`,
+      <ConfirmSoftDeleteModal
+        entity="riders"
+        entityLabel="Rider"
+        itemId={rider.id}
+        itemTitle={rider.name}
+        itemSubtitle={`Rider Code: ${rider.rider_code || rider.rider_id || '—'} · Phone: ${rider.phone || '—'} · Vehicle: ${rider.vehicle_type || 'Bike'}`}
+        onConfirm={async ({ reason, force }) => {
+          const res = await softDeleteCourier(rider.id, reason, force);
+          if (res && res.success) {
+            if (typeof refreshData === 'function') refreshData();
+          }
+          return res;
+        }}
+        onClose={closeModal}
+      />
     );
   };
 
@@ -1221,6 +1244,27 @@ export function CompanyCouriersPage() {
                             }}
                           >
                             <Key size={12} /> PW
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSoftDelete(c)}
+                            title="Move rider to Trash / Recycle Bin"
+                            style={{
+                              padding: '4px 8px',
+                              borderRadius: '5px',
+                              border: '1px solid #fecaca',
+                              background: '#fef2f2',
+                              color: '#b91c1c',
+                              fontSize: '11.5px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                            }}
+                          >
+                            <Trash2 size={12} /> Trash
                           </button>
                         </div>
                       </td>

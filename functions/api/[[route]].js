@@ -10954,6 +10954,605 @@ export async function onRequest(context) {
           }
         }
       }
+
+      // =========================================================================
+      // 13. ADMIN TRASH, SOFT-DELETE, RESTORE & PERMANENT PURGE API (Cloudflare D1)
+      // =========================================================================
+      if (
+        path.startsWith('admin/trash') ||
+        path.match(/^admin\/(?:branches|riders|couriers|vendors|customers|shipments|orders)\/\d+\/soft-delete$/)
+      ) {
+        const companyId = Number(url.searchParams.get('company_id') || 1);
+
+        // Auto-ensure backup tables exist in D1
+        const ensureTrashTables = async () => {
+          try {
+            await db.prepare(`
+              CREATE TABLE IF NOT EXISTS branches_backups (
+                backup_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                original_id INTEGER NOT NULL,
+                company_id INTEGER NOT NULL DEFAULT 1,
+                name TEXT NOT NULL,
+                phone TEXT,
+                email TEXT,
+                contact_person TEXT,
+                branch_code TEXT,
+                tier TEXT,
+                branch_type TEXT,
+                model_type TEXT,
+                status TEXT,
+                record_json TEXT NOT NULL,
+                deleted_by_admin_id TEXT DEFAULT '1',
+                delete_reason TEXT,
+                deleted_at DATETIME DEFAULT (datetime('now')),
+                is_permanently_deleted INTEGER DEFAULT 0
+              )
+            `).run();
+            await db.prepare(`CREATE INDEX IF NOT EXISTS idx_branches_backups_orig_id ON branches_backups(original_id)`).run();
+            await db.prepare(`CREATE INDEX IF NOT EXISTS idx_branches_backups_deleted_at ON branches_backups(deleted_at)`).run();
+
+            await db.prepare(`
+              CREATE TABLE IF NOT EXISTS riders_backups (
+                backup_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                original_id INTEGER NOT NULL,
+                company_id INTEGER NOT NULL DEFAULT 1,
+                rider_code TEXT,
+                name TEXT NOT NULL,
+                phone TEXT,
+                email TEXT,
+                vehicle_type TEXT,
+                vehicle_plate_number TEXT,
+                branch_id INTEGER,
+                status TEXT,
+                record_json TEXT NOT NULL,
+                deleted_by_admin_id TEXT DEFAULT '1',
+                delete_reason TEXT,
+                deleted_at DATETIME DEFAULT (datetime('now')),
+                is_permanently_deleted INTEGER DEFAULT 0
+              )
+            `).run();
+            await db.prepare(`CREATE INDEX IF NOT EXISTS idx_riders_backups_orig_id ON riders_backups(original_id)`).run();
+            await db.prepare(`CREATE INDEX IF NOT EXISTS idx_riders_backups_deleted_at ON riders_backups(deleted_at)`).run();
+
+            await db.prepare(`
+              CREATE TABLE IF NOT EXISTS vendors_backups (
+                backup_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                original_id INTEGER NOT NULL,
+                company_id INTEGER NOT NULL DEFAULT 1,
+                vendor_code TEXT,
+                name TEXT NOT NULL,
+                phone TEXT,
+                email TEXT,
+                contact_person TEXT,
+                branch_id INTEGER,
+                status TEXT,
+                record_json TEXT NOT NULL,
+                deleted_by_admin_id TEXT DEFAULT '1',
+                delete_reason TEXT,
+                deleted_at DATETIME DEFAULT (datetime('now')),
+                is_permanently_deleted INTEGER DEFAULT 0
+              )
+            `).run();
+            await db.prepare(`CREATE INDEX IF NOT EXISTS idx_vendors_backups_orig_id ON vendors_backups(original_id)`).run();
+            await db.prepare(`CREATE INDEX IF NOT EXISTS idx_vendors_backups_deleted_at ON vendors_backups(deleted_at)`).run();
+
+            await db.prepare(`
+              CREATE TABLE IF NOT EXISTS shipments_backups (
+                backup_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                original_id INTEGER NOT NULL,
+                company_id INTEGER NOT NULL DEFAULT 1,
+                tracking_number TEXT NOT NULL,
+                customer_id INTEGER,
+                branch_id INTEGER,
+                destination_branch_id INTEGER,
+                sender_name TEXT,
+                sender_phone TEXT,
+                receiver_name TEXT,
+                receiver_phone TEXT,
+                order_type TEXT,
+                status TEXT,
+                cod_amount REAL DEFAULT 0,
+                delivery_fee REAL DEFAULT 0,
+                record_json TEXT NOT NULL,
+                deleted_by_admin_id TEXT DEFAULT '1',
+                delete_reason TEXT,
+                deleted_at DATETIME DEFAULT (datetime('now')),
+                is_permanently_deleted INTEGER DEFAULT 0
+              )
+            `).run();
+            await db.prepare(`CREATE INDEX IF NOT EXISTS idx_shipments_backups_orig_id ON shipments_backups(original_id)`).run();
+            await db.prepare(`CREATE INDEX IF NOT EXISTS idx_shipments_backups_tracking ON shipments_backups(tracking_number)`).run();
+            await db.prepare(`CREATE INDEX IF NOT EXISTS idx_shipments_backups_deleted_at ON shipments_backups(deleted_at)`).run();
+          } catch (e) {}
+        };
+        await ensureTrashTables();
+
+        // Helper to normalize entity name
+        const resolveEntityConfig = (entityParam) => {
+          const raw = String(entityParam || '').toLowerCase();
+          if (raw === 'branches' || raw === 'branch') {
+            return {
+              entity: 'branches',
+              table: 'branches',
+              backupTable: 'branches_backups',
+              label: 'Branch',
+            };
+          }
+          if (raw === 'riders' || raw === 'rider' || raw === 'couriers' || raw === 'courier') {
+            return {
+              entity: 'riders',
+              table: 'riders',
+              mirrorTable: 'couriers',
+              backupTable: 'riders_backups',
+              label: 'Rider',
+            };
+          }
+          if (raw === 'vendors' || raw === 'vendor' || raw === 'customers' || raw === 'customer') {
+            return {
+              entity: 'vendors',
+              table: 'vendors',
+              mirrorTable: 'customers',
+              backupTable: 'vendors_backups',
+              label: 'Vendor',
+            };
+          }
+          if (raw === 'shipments' || raw === 'shipment' || raw === 'orders' || raw === 'order') {
+            return {
+              entity: 'shipments',
+              table: 'shipments',
+              mirrorTable: 'vendor_order',
+              backupTable: 'shipments_backups',
+              label: 'Shipment Order',
+            };
+          }
+          return null;
+        };
+
+        // 13a. GET /api/admin/trash/stats (Counts across all trash entities)
+        if (path === 'admin/trash/stats' && method === 'GET') {
+          const [bCnt, rCnt, vCnt, sCnt] = await Promise.all([
+            db.prepare('SELECT COUNT(*) as cnt FROM branches_backups WHERE company_id = ? AND is_permanently_deleted = 0').bind(companyId).first().catch(() => ({ cnt: 0 })),
+            db.prepare('SELECT COUNT(*) as cnt FROM riders_backups WHERE company_id = ? AND is_permanently_deleted = 0').bind(companyId).first().catch(() => ({ cnt: 0 })),
+            db.prepare('SELECT COUNT(*) as cnt FROM vendors_backups WHERE company_id = ? AND is_permanently_deleted = 0').bind(companyId).first().catch(() => ({ cnt: 0 })),
+            db.prepare('SELECT COUNT(*) as cnt FROM shipments_backups WHERE company_id = ? AND is_permanently_deleted = 0').bind(companyId).first().catch(() => ({ cnt: 0 })),
+          ]);
+
+          const counts = {
+            branches: Number(bCnt?.cnt || 0),
+            riders: Number(rCnt?.cnt || 0),
+            vendors: Number(vCnt?.cnt || 0),
+            shipments: Number(sCnt?.cnt || 0),
+            orders: Number(sCnt?.cnt || 0),
+          };
+          counts.total = counts.branches + counts.riders + counts.vendors + counts.shipments;
+
+          return jsonResponse({ success: true, counts });
+        }
+
+        // 13b. POST /api/admin/:entity/:id/soft-delete (Move active record to trash)
+        const softDeleteMatch = path.match(/^admin\/([a-zA-Z_-]+)\/(\d+)\/soft-delete$/);
+        if (softDeleteMatch && method === 'POST') {
+          const cfg = resolveEntityConfig(softDeleteMatch[1]);
+          if (!cfg) return jsonResponse({ error: 'Invalid entity type for soft-delete' }, 400);
+
+          const id = Number(softDeleteMatch[2]);
+          const body = await request.json().catch(() => ({}));
+          const reason = body.reason ? String(body.reason).trim() : null;
+          const adminId = body.admin_id ? String(body.admin_id) : '1';
+          const force = Boolean(body.force);
+
+          // 1. Dependency checks per entity type
+          if (cfg.entity === 'branches') {
+            const [activeShipments, subBranches, assignedRiders] = await Promise.all([
+              db.prepare(`
+                SELECT COUNT(*) as cnt FROM shipments
+                WHERE company_id = ? AND (branch_id = ? OR destination_branch_id = ?)
+                AND status NOT IN ('delivered', 'cancelled', 'returned')
+              `).bind(companyId, id, id).first().catch(() => ({ cnt: 0 })),
+              db.prepare(`
+                SELECT COUNT(*) as cnt FROM branches
+                WHERE company_id = ? AND parent_branch_id = ?
+              `).bind(companyId, id).first().catch(() => ({ cnt: 0 })),
+              db.prepare(`
+                SELECT COUNT(*) as cnt FROM riders
+                WHERE company_id = ? AND branch_id = ? AND active = 1
+              `).bind(companyId, id).first().catch(() => ({ cnt: 0 })),
+            ]);
+
+            const shipCount = Number(activeShipments?.cnt || 0);
+            const subCount = Number(subBranches?.cnt || 0);
+            const riderCount = Number(assignedRiders?.cnt || 0);
+
+            if (!force && (shipCount > 0 || subCount > 0 || riderCount > 0)) {
+              const issues = [];
+              if (shipCount > 0) issues.push(`${shipCount} active shipment(s) currently routed through this branch`);
+              if (subCount > 0) issues.push(`${subCount} subordinate branch(es) reporting to this parent hub`);
+              if (riderCount > 0) issues.push(`${riderCount} active rider(s) assigned to this branch`);
+
+              return jsonResponse({
+                success: false,
+                blocked: true,
+                error: `Cannot move branch to trash. Dependencies detected: ${issues.join('; ')}. Reassign these dependencies first, or confirm to force delete.`,
+                dependencies: {
+                  active_shipments: shipCount,
+                  sub_branches: subCount,
+                  assigned_riders: riderCount,
+                },
+              }, 400);
+            }
+          } else if (cfg.entity === 'riders') {
+            const activeDeliveries = await db.prepare(`
+              SELECT COUNT(*) as cnt FROM shipments
+              WHERE company_id = ? AND courier_id = ?
+              AND status NOT IN ('delivered', 'cancelled', 'returned')
+            `).bind(companyId, id).first().catch(() => ({ cnt: 0 }));
+
+            const deliveryCount = Number(activeDeliveries?.cnt || 0);
+            if (!force && deliveryCount > 0) {
+              return jsonResponse({
+                success: false,
+                blocked: true,
+                error: `Cannot move rider to trash. ${deliveryCount} active shipment(s) are currently assigned to this rider for delivery. Reassign them first.`,
+                dependencies: {
+                  active_shipments: deliveryCount,
+                },
+              }, 400);
+            }
+          } else if (cfg.entity === 'vendors') {
+            const activeVendorShipments = await db.prepare(`
+              SELECT COUNT(*) as cnt FROM shipments
+              WHERE company_id = ? AND customer_id = ?
+              AND status NOT IN ('delivered', 'cancelled', 'returned')
+            `).bind(companyId, id).first().catch(() => ({ cnt: 0 }));
+
+            const vendorShipCount = Number(activeVendorShipments?.cnt || 0);
+            if (!force && vendorShipCount > 0) {
+              return jsonResponse({
+                success: false,
+                blocked: true,
+                error: `Cannot move vendor to trash. ${vendorShipCount} active shipment(s) are ongoing for this vendor.`,
+                dependencies: {
+                  active_shipments: vendorShipCount,
+                },
+              }, 400);
+            }
+          }
+
+          // 2. Fetch active record
+          let currentRecord = await db.prepare(`SELECT * FROM ${cfg.table} WHERE id = ?`).bind(id).first().catch(() => null);
+          if (!currentRecord && cfg.mirrorTable) {
+            currentRecord = await db.prepare(`SELECT * FROM ${cfg.mirrorTable} WHERE id = ?`).bind(id).first().catch(() => null);
+          }
+          if (!currentRecord) {
+            return jsonResponse({ error: `${cfg.label} record #${id} not found in active records` }, 404);
+          }
+
+          const recordJson = JSON.stringify(currentRecord);
+          const now = new Date().toISOString();
+
+          // 3. Prepare atomic batch statements
+          const batchStatements = [];
+
+          if (cfg.entity === 'branches') {
+            batchStatements.push(
+              db.prepare(`
+                INSERT INTO branches_backups (
+                  original_id, company_id, name, phone, email, contact_person,
+                  branch_code, tier, branch_type, model_type, status,
+                  record_json, deleted_by_admin_id, delete_reason, deleted_at, is_permanently_deleted
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+              `).bind(
+                id, currentRecord.company_id || companyId, currentRecord.name || 'Branch',
+                currentRecord.phone || null, currentRecord.email || null, currentRecord.contact_person || null,
+                currentRecord.branch_code || null, currentRecord.tier || null, currentRecord.branch_type || null,
+                currentRecord.model_type || null, currentRecord.status || null,
+                recordJson, adminId, reason, now
+              )
+            );
+            batchStatements.push(db.prepare(`DELETE FROM branches WHERE id = ?`).bind(id));
+          } else if (cfg.entity === 'riders') {
+            batchStatements.push(
+              db.prepare(`
+                INSERT INTO riders_backups (
+                  original_id, company_id, rider_code, name, phone, email,
+                  vehicle_type, vehicle_plate_number, branch_id, status,
+                  record_json, deleted_by_admin_id, delete_reason, deleted_at, is_permanently_deleted
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+              `).bind(
+                id, currentRecord.company_id || companyId, currentRecord.rider_code || currentRecord.rider_id || null,
+                currentRecord.name || 'Rider', currentRecord.phone || null, currentRecord.email || null,
+                currentRecord.vehicle_type || null, currentRecord.vehicle_plate_number || null,
+                currentRecord.branch_id || null, currentRecord.status || null,
+                recordJson, adminId, reason, now
+              )
+            );
+            batchStatements.push(db.prepare(`DELETE FROM riders WHERE id = ?`).bind(id));
+            batchStatements.push(db.prepare(`DELETE FROM couriers WHERE id = ?`).bind(id));
+          } else if (cfg.entity === 'vendors') {
+            batchStatements.push(
+              db.prepare(`
+                INSERT INTO vendors_backups (
+                  original_id, company_id, vendor_code, name, phone, email,
+                  contact_person, branch_id, status,
+                  record_json, deleted_by_admin_id, delete_reason, deleted_at, is_permanently_deleted
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+              `).bind(
+                id, currentRecord.company_id || companyId, currentRecord.vendor_code || null,
+                currentRecord.name || 'Vendor', currentRecord.phone || null, currentRecord.email || null,
+                currentRecord.contact_person || null, currentRecord.branch_id || null, currentRecord.status || null,
+                recordJson, adminId, reason, now
+              )
+            );
+            batchStatements.push(db.prepare(`DELETE FROM vendors WHERE id = ?`).bind(id));
+            batchStatements.push(db.prepare(`DELETE FROM customers WHERE id = ?`).bind(id));
+          } else if (cfg.entity === 'shipments') {
+            const trk = currentRecord.tracking_number || `ORD-${id}`;
+            batchStatements.push(
+              db.prepare(`
+                INSERT INTO shipments_backups (
+                  original_id, company_id, tracking_number, customer_id, branch_id,
+                  destination_branch_id, sender_name, sender_phone, receiver_name,
+                  receiver_phone, order_type, status, cod_amount, delivery_fee,
+                  record_json, deleted_by_admin_id, delete_reason, deleted_at, is_permanently_deleted
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+              `).bind(
+                id, currentRecord.company_id || companyId, trk,
+                currentRecord.customer_id || currentRecord.vendor_id || null,
+                currentRecord.branch_id || null, currentRecord.destination_branch_id || null,
+                currentRecord.sender_name || null, currentRecord.sender_phone || null,
+                currentRecord.receiver_name || null, currentRecord.receiver_phone || null,
+                currentRecord.order_type || null, currentRecord.status || null,
+                parseFloat(currentRecord.cod_amount) || 0, parseFloat(currentRecord.delivery_fee) || 0,
+                recordJson, adminId, reason, now
+              )
+            );
+            batchStatements.push(db.prepare(`DELETE FROM shipments WHERE id = ?`).bind(id));
+            if (currentRecord.tracking_number) {
+              batchStatements.push(db.prepare(`DELETE FROM vendor_order WHERE tracking_number = ?`).bind(currentRecord.tracking_number));
+            }
+          }
+
+          // Execute atomically inside D1 transaction batch
+          await db.batch(batchStatements);
+
+          return jsonResponse({
+            success: true,
+            entity: cfg.entity,
+            original_id: id,
+            message: `${cfg.label} #${id} moved to Trash / Backups successfully`,
+          });
+        }
+
+        // 13c. GET /api/admin/trash/:entity (List paginated records from trash)
+        const listTrashMatch = path.match(/^admin\/trash\/([a-zA-Z_-]+)$/);
+        if (listTrashMatch && method === 'GET') {
+          const cfg = resolveEntityConfig(listTrashMatch[1]);
+          if (!cfg) return jsonResponse({ error: 'Invalid trash entity type' }, 400);
+
+          const page = Math.max(1, Number(url.searchParams.get('page') || 1));
+          const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit') || 50)));
+          const offset = (page - 1) * limit;
+          const search = (url.searchParams.get('search') || '').trim();
+
+          let countQuery = `SELECT COUNT(*) as total FROM ${cfg.backupTable} WHERE company_id = ? AND is_permanently_deleted = 0`;
+          let dataQuery = `SELECT * FROM ${cfg.backupTable} WHERE company_id = ? AND is_permanently_deleted = 0`;
+          const params = [companyId];
+
+          if (search) {
+            if (cfg.entity === 'shipments') {
+              countQuery += ` AND (tracking_number LIKE ? OR receiver_name LIKE ? OR receiver_phone LIKE ? OR sender_name LIKE ? OR delete_reason LIKE ?)`;
+              dataQuery += ` AND (tracking_number LIKE ? OR receiver_name LIKE ? OR receiver_phone LIKE ? OR sender_name LIKE ? OR delete_reason LIKE ?)`;
+              params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+            } else if (cfg.entity === 'branches') {
+              countQuery += ` AND (name LIKE ? OR phone LIKE ? OR branch_code LIKE ? OR delete_reason LIKE ?)`;
+              dataQuery += ` AND (name LIKE ? OR phone LIKE ? OR branch_code LIKE ? OR delete_reason LIKE ?)`;
+              params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+            } else {
+              countQuery += ` AND (name LIKE ? OR phone LIKE ? OR email LIKE ? OR delete_reason LIKE ?)`;
+              dataQuery += ` AND (name LIKE ? OR phone LIKE ? OR email LIKE ? OR delete_reason LIKE ?)`;
+              params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+            }
+          }
+
+          dataQuery += ` ORDER BY deleted_at DESC LIMIT ? OFFSET ?`;
+          const dataParams = [...params, limit, offset];
+
+          const [countRes, recordsRes] = await Promise.all([
+            db.prepare(countQuery).bind(...params).first().catch(() => ({ total: 0 })),
+            db.prepare(dataQuery).bind(...dataParams).all().catch(() => ({ results: [] })),
+          ]);
+
+          const total = Number(countRes?.total || 0);
+          const records = (recordsRes.results || []).map((row) => {
+            let parsed = null;
+            if (row.record_json) {
+              try { parsed = JSON.parse(row.record_json); } catch (e) {}
+            }
+            return {
+              ...row,
+              record_snapshot: parsed,
+            };
+          });
+
+          return jsonResponse({
+            success: true,
+            entity: cfg.entity,
+            total,
+            page,
+            limit,
+            total_pages: Math.ceil(total / limit) || 1,
+            records,
+          });
+        }
+
+        // Helper: Dynamic table re-insertion from record_json
+        const restoreRecordToActiveTable = async (targetTable, recData) => {
+          const tableInfo = await db.prepare(`PRAGMA table_info(${targetTable})`).all().catch(() => ({ results: [] }));
+          const validColumns = new Set((tableInfo.results || []).map((c) => c.name));
+          if (validColumns.size === 0) return null;
+
+          const insertCols = [];
+          const insertVals = [];
+          const placeholders = [];
+
+          for (const [key, val] of Object.entries(recData)) {
+            if (validColumns.has(key) && key !== 'backup_id') {
+              insertCols.push(key);
+              insertVals.push(val);
+              placeholders.push('?');
+            }
+          }
+
+          if (insertCols.length === 0) return null;
+          return db.prepare(`INSERT OR REPLACE INTO ${targetTable} (${insertCols.join(', ')}) VALUES (${placeholders.join(', ')})`).bind(...insertVals);
+        };
+
+        // 13d. POST /api/admin/trash/:entity/:backup_id/restore (Recover from trash)
+        const restoreMatch = path.match(/^admin\/trash\/([a-zA-Z_-]+)\/(\d+)\/restore$/);
+        if (restoreMatch && method === 'POST') {
+          const cfg = resolveEntityConfig(restoreMatch[1]);
+          if (!cfg) return jsonResponse({ error: 'Invalid entity type for restore' }, 400);
+
+          const backupId = Number(restoreMatch[2]);
+          const backupRow = await db.prepare(`SELECT * FROM ${cfg.backupTable} WHERE backup_id = ? AND company_id = ?`).bind(backupId, companyId).first().catch(() => null);
+
+          if (!backupRow) {
+            return jsonResponse({ error: `Trash record #${backupId} not found` }, 404);
+          }
+
+          let rec = {};
+          try {
+            rec = JSON.parse(backupRow.record_json);
+          } catch (e) {
+            return jsonResponse({ error: 'Failed to parse backed-up record snapshot' }, 500);
+          }
+
+          // Check unique constraint conflicts in active table
+          if (cfg.entity === 'shipments') {
+            const conflict = await db.prepare(`SELECT id, tracking_number FROM shipments WHERE tracking_number = ? AND company_id = ?`).bind(backupRow.tracking_number, companyId).first().catch(() => null);
+            if (conflict) {
+              return jsonResponse({
+                error: `Conflict: An active shipment with tracking number ${backupRow.tracking_number} already exists in D1 (Shipment #${conflict.id}). Cannot restore duplicate.`,
+              }, 409);
+            }
+          } else if (cfg.entity === 'branches') {
+            const conflict = await db.prepare(`SELECT id FROM branches WHERE id = ?`).bind(backupRow.original_id).first().catch(() => null);
+            if (conflict) {
+              return jsonResponse({
+                error: `Conflict: An active branch with ID #${backupRow.original_id} already exists in D1.`,
+              }, 409);
+            }
+          }
+
+          const batchStmts = [];
+
+          // Primary table restore statement
+          const primaryStmt = await restoreRecordToActiveTable(cfg.table, rec);
+          if (primaryStmt) batchStmts.push(primaryStmt);
+
+          // Mirror table restore statement if applicable
+          if (cfg.mirrorTable) {
+            const mirrorStmt = await restoreRecordToActiveTable(cfg.mirrorTable, rec);
+            if (mirrorStmt) batchStmts.push(mirrorStmt);
+          }
+
+          // Delete from backups table
+          batchStmts.push(db.prepare(`DELETE FROM ${cfg.backupTable} WHERE backup_id = ?`).bind(backupId));
+
+          // Execute restore transaction atomically
+          await db.batch(batchStmts);
+
+          return jsonResponse({
+            success: true,
+            entity: cfg.entity,
+            original_id: backupRow.original_id,
+            message: `${cfg.label} record restored successfully to active records`,
+          });
+        }
+
+        // 13e. DELETE /api/admin/trash/:entity/:backup_id/permanent (Purge permanently from backups)
+        const permanentDeleteMatch = path.match(/^admin\/trash\/([a-zA-Z_-]+)\/(\d+)\/permanent$/);
+        if (permanentDeleteMatch && (method === 'DELETE' || method === 'POST')) {
+          const cfg = resolveEntityConfig(permanentDeleteMatch[1]);
+          if (!cfg) return jsonResponse({ error: 'Invalid entity type for permanent purge' }, 400);
+
+          const backupId = Number(permanentDeleteMatch[2]);
+          await db.prepare(`DELETE FROM ${cfg.backupTable} WHERE backup_id = ? AND company_id = ?`).bind(backupId, companyId).run();
+
+          return jsonResponse({
+            success: true,
+            entity: cfg.entity,
+            backup_id: backupId,
+            message: `${cfg.label} record permanently purged from database`,
+          });
+        }
+
+        // 13f. POST /api/admin/trash/:entity/bulk-action (Bulk restore or bulk permanent delete)
+        const bulkMatch = path.match(/^admin\/trash\/([a-zA-Z_-]+)\/bulk-action$/);
+        if (bulkMatch && method === 'POST') {
+          const cfg = resolveEntityConfig(bulkMatch[1]);
+          if (!cfg) return jsonResponse({ error: 'Invalid entity type for bulk action' }, 400);
+
+          const body = await request.json().catch(() => ({}));
+          const action = body.action; // 'restore' | 'permanent_delete'
+          const backupIds = Array.isArray(body.backup_ids) ? body.backup_ids.map(Number).filter(Boolean) : [];
+
+          if (backupIds.length === 0) {
+            return jsonResponse({ error: 'No backup IDs provided for bulk action' }, 400);
+          }
+
+          if (action === 'permanent_delete') {
+            const placeholders = backupIds.map(() => '?').join(', ');
+            await db.prepare(`DELETE FROM ${cfg.backupTable} WHERE company_id = ? AND backup_id IN (${placeholders})`).bind(companyId, ...backupIds).run();
+            return jsonResponse({
+              success: true,
+              action,
+              count: backupIds.length,
+              message: `Successfully purged ${backupIds.length} ${cfg.label} record(s) permanently`,
+            });
+          }
+
+          if (action === 'restore') {
+            let restoredCount = 0;
+            const errors = [];
+
+            for (const bId of backupIds) {
+              const row = await db.prepare(`SELECT * FROM ${cfg.backupTable} WHERE backup_id = ? AND company_id = ?`).bind(bId, companyId).first().catch(() => null);
+              if (!row) continue;
+
+              let rec = {};
+              try { rec = JSON.parse(row.record_json); } catch (e) { continue; }
+
+              const batchStmts = [];
+              const primaryStmt = await restoreRecordToActiveTable(cfg.table, rec);
+              if (primaryStmt) batchStmts.push(primaryStmt);
+              if (cfg.mirrorTable) {
+                const mirrorStmt = await restoreRecordToActiveTable(cfg.mirrorTable, rec);
+                if (mirrorStmt) batchStmts.push(mirrorStmt);
+              }
+              batchStmts.push(db.prepare(`DELETE FROM ${cfg.backupTable} WHERE backup_id = ?`).bind(bId));
+
+              try {
+                await db.batch(batchStmts);
+                restoredCount++;
+              } catch (errRest) {
+                errors.push(`ID #${row.original_id}: ${errRest.message}`);
+              }
+            }
+
+            return jsonResponse({
+              success: true,
+              action,
+              restored_count: restoredCount,
+              total_requested: backupIds.length,
+              errors: errors.length > 0 ? errors : undefined,
+              message: `Successfully restored ${restoredCount} of ${backupIds.length} ${cfg.label} record(s)`,
+            });
+          }
+
+          return jsonResponse({ error: 'Invalid bulk action. Allowed: "restore", "permanent_delete"' }, 400);
+        }
+      }
 // 14. Fallback for unrecognized API routes
       return jsonResponse({ error: 'Endpoint not found', path }, 404);
     } catch (err) {

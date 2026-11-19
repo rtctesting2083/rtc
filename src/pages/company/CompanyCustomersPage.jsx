@@ -30,11 +30,13 @@ import {
   Settings,
   Building2,
   Package,
+  Trash2,
 } from 'lucide-react';
+import { ConfirmSoftDeleteModal } from '../../components/common/ConfirmSoftDeleteModal';
 
 export function CompanyCustomersPage() {
   const navigate = useNavigate();
-  const { customers = [], branches = [], vendorTypes = [], vendorCategories = [], findBranch, updateCustomer, verifyVendor, refreshData } = useCompany();
+  const { customers = [], branches = [], vendorTypes = [], vendorCategories = [], findBranch, updateCustomer, verifyVendor, softDeleteCustomer, refreshData } = useCompany();
   const { openModal, closeModal } = useModal();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -279,6 +281,27 @@ export function CompanyCustomersPage() {
 
   const handleOpenEdit = (customer) => {
     openModal(`Edit Vendor — ${customer.name}`, <VendorFormModal initialVendor={customer} />, 'wide');
+  };
+
+  const handleOpenSoftDelete = (customer) => {
+    openModal(
+      `Move Vendor to Trash — ${customer.name}`,
+      <ConfirmSoftDeleteModal
+        entity="vendors"
+        entityLabel="Vendor"
+        itemId={customer.id}
+        itemTitle={customer.name}
+        itemSubtitle={`Vendor Code: ${customer.vendor_code || customer.vendor_id || '—'} · Phone: ${customer.phone || '—'}`}
+        onConfirm={async ({ reason, force }) => {
+          const res = await softDeleteCustomer(customer.id, reason, force);
+          if (res && res.success) {
+            if (typeof refreshData === 'function') refreshData();
+          }
+          return res;
+        }}
+        onClose={closeModal}
+      />
+    );
   };
 
   const handleOpenView = (customer) => {
@@ -1375,6 +1398,28 @@ export function CompanyCustomersPage() {
                             }}
                           >
                             <Edit size={13} /> Edit
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSoftDelete(c)}
+                            title="Move vendor to Trash / Recycle Bin"
+                            style={{
+                              padding: '5px 10px',
+                              borderRadius: '5px',
+                              border: '1px solid #fecaca',
+                              background: '#fef2f2',
+                              color: '#b91c1c',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            <Trash2 size={13} /> Trash
                           </button>
                         </div>
                       </td>
