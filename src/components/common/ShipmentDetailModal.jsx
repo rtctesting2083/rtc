@@ -364,7 +364,7 @@ export function ShipmentDetailModal({ shipment, onClose, onEditOrder, isAdmin = 
   // Reason parser for Exchange and Reverse orders
   const notesText = String(shipment.notes || '');
   const pkgDescText = String(shipment.package_description || '');
-  const isExchange = String(shipment.order_type || '').toLowerCase().includes('exchange') || /\[EXCHANGE ORDER\]/i.test(notesText);
+  const isExchange = String(shipment.order_type || '').toLowerCase().includes('exchange') || /\[EXCHANGE ORDER\]/i.test(notesText) || Boolean(shipment.is_exchange);
   const isReturn = String(shipment.order_type || '').toLowerCase().includes('return') || String(shipment.order_type || '').toLowerCase().includes('reverse') || /\[REVERSE ORDER\]/i.test(notesText);
   const exchangeReasonMatch = notesText.match(/Reason:\s*([^|]+)/i) || pkgDescText.match(/Reason:\s*([^|)]+)/i);
   const exchangeReasonStr = exchangeReasonMatch ? exchangeReasonMatch[1].trim() : '';
@@ -853,6 +853,68 @@ export function ShipmentDetailModal({ shipment, onClose, onEditOrder, isAdmin = 
                 </div>
               </div>
             </div>
+
+            {/* Section 1b: Exchange Details (For Exchange Orders) */}
+            {Boolean(isExchange || shipment.return_product_category || shipment.return_product_name) && (
+              <div
+                className="order-detail-section-block"
+                style={{
+                  border: '1px solid #fed7aa',
+                  borderLeft: '4px solid #ea580c',
+                  background: 'linear-gradient(135deg, #fffaf5 0%, #fff7ed 100%)',
+                  borderRadius: '6px',
+                  padding: '14px 16px',
+                  marginTop: '12px',
+                }}
+              >
+                <h3
+                  className="order-detail-section-heading"
+                  style={{
+                    color: '#ea580c',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    marginBottom: '10px',
+                  }}
+                >
+                  <span style={{ fontSize: '15px' }}>⇆</span> Exchange Details
+                </h3>
+                <div className="order-detail-kv-table">
+                  {shipment.return_product_category && (
+                    <div className="kv-row">
+                      <span className="kv-label">Return Category:</span>
+                      <span className="kv-val" style={{ fontWeight: 600, color: '#9a3412' }}>{shipment.return_product_category}</span>
+                    </div>
+                  )}
+                  {shipment.return_product_name && (
+                    <div className="kv-row">
+                      <span className="kv-label">Return Item Name:</span>
+                      <span className="kv-val">{shipment.return_product_name}</span>
+                    </div>
+                  )}
+                  {shipment.return_item_value !== undefined && shipment.return_item_value !== null && shipment.return_item_value !== '' && (
+                    <div className="kv-row">
+                      <span className="kv-label">Return Item Value:</span>
+                      <span className="kv-val" style={{ fontWeight: 600 }}>Rs. {shipment.return_item_value}</span>
+                    </div>
+                  )}
+                  {shipment.return_product_weight !== undefined && shipment.return_product_weight !== null && shipment.return_product_weight !== '' && (
+                    <div className="kv-row">
+                      <span className="kv-label">Return Weight:</span>
+                      <span className="kv-val">{shipment.return_product_weight} Kg</span>
+                    </div>
+                  )}
+                  {shipment.return_product_description && (
+                    <div className="kv-row" style={{ alignItems: 'flex-start' }}>
+                      <span className="kv-label">Return Description:</span>
+                      <span className="kv-val">{shipment.return_product_description}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Section 2: Payment Details */}
             <div className="order-detail-section-block">

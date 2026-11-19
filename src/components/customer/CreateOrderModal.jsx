@@ -187,6 +187,43 @@ export function CreateOrderModal({
   const [itemValue, setItemValue] = useState('');
   const [packageDesc, setPackageDesc] = useState('');
 
+  // Exchange Details State (For Exchange Orders)
+  const [returnProductCategory, setReturnProductCategory] = useState(() => orderToEdit?.return_product_category || orderToEdit?.returnProductCategory || '');
+  const [returnProductName, setReturnProductName] = useState(() => orderToEdit?.return_product_name || orderToEdit?.returnProductName || '');
+  const [returnItemValue, setReturnItemValue] = useState(() => orderToEdit?.return_item_value ?? orderToEdit?.returnItemValue ?? '');
+  const [returnProductWeight, setReturnProductWeight] = useState(() => orderToEdit?.return_product_weight ?? orderToEdit?.returnProductWeight ?? '');
+  const [returnProductDescription, setReturnProductDescription] = useState(() => orderToEdit?.return_product_description || orderToEdit?.returnProductDescription || '');
+
+  const isExchangeOrder = useMemo(() => {
+    return String(orderType || '').toLowerCase().includes('exchange');
+  }, [orderType]);
+
+  // Synchronize state when orderToEdit is loaded or changed
+  useEffect(() => {
+    if (!orderToEdit) return;
+    if (orderToEdit.receiver_phone || orderToEdit.receiverPhone) setReceiverPhone(orderToEdit.receiver_phone || orderToEdit.receiverPhone || '');
+    if (orderToEdit.receiver_name || orderToEdit.receiverName) setReceiverName(orderToEdit.receiver_name || orderToEdit.receiverName || '');
+    if (orderToEdit.alt_phone || orderToEdit.altPhone) setAltPhone(orderToEdit.alt_phone || orderToEdit.altPhone || '');
+    if (orderToEdit.vendor_reference_id || orderToEdit.vendorReferenceId) setVendorRefId(orderToEdit.vendor_reference_id || orderToEdit.vendorReferenceId || '');
+    if (orderToEdit.order_type || orderToEdit.orderType) setOrderType(orderToEdit.order_type || orderToEdit.orderType || '');
+    if (orderToEdit.service_type || orderToEdit.serviceType) setServiceType(orderToEdit.service_type || orderToEdit.serviceType || '');
+    if (orderToEdit.weight_kg || orderToEdit.weightKg) setWeightKg(String(orderToEdit.weight_kg || orderToEdit.weightKg || ''));
+    if (orderToEdit.cod_amount !== undefined || orderToEdit.codAmount !== undefined) setCodAmount(String(orderToEdit.cod_amount ?? orderToEdit.codAmount ?? ''));
+    if (orderToEdit.delivery_address || orderToEdit.deliveryAddress) setDeliveryAddress(orderToEdit.delivery_address || orderToEdit.deliveryAddress || '');
+    if (orderToEdit.destination_branch_id || orderToEdit.destinationBranchId) setDestinationBranchId(String(orderToEdit.destination_branch_id || orderToEdit.destinationBranchId || ''));
+    if (orderToEdit.branch_id || orderToEdit.branchId) setSenderBranchId(String(orderToEdit.branch_id || orderToEdit.branchId || ''));
+    if (orderToEdit.product_category || orderToEdit.productCategory) setProductCategory(orderToEdit.product_category || orderToEdit.productCategory || '');
+    if (orderToEdit.item_value !== undefined || orderToEdit.itemValue !== undefined) setItemValue(String(orderToEdit.item_value ?? orderToEdit.itemValue ?? ''));
+    if (orderToEdit.package_description || orderToEdit.packageDescription) setPackageDesc(orderToEdit.package_description || orderToEdit.packageDescription || '');
+    if (orderToEdit.third_party_courier_name) setThirdPartyCourierName(orderToEdit.third_party_courier_name);
+    if (orderToEdit.third_party_order_id) setThirdPartyOrderId(orderToEdit.third_party_order_id);
+    if (orderToEdit.return_product_category || orderToEdit.returnProductCategory) setReturnProductCategory(orderToEdit.return_product_category || orderToEdit.returnProductCategory || '');
+    if (orderToEdit.return_product_name || orderToEdit.returnProductName) setReturnProductName(orderToEdit.return_product_name || orderToEdit.returnProductName || '');
+    if (orderToEdit.return_item_value !== undefined || orderToEdit.returnItemValue !== undefined) setReturnItemValue(String(orderToEdit.return_item_value ?? orderToEdit.returnItemValue ?? ''));
+    if (orderToEdit.return_product_weight !== undefined || orderToEdit.returnProductWeight !== undefined) setReturnProductWeight(String(orderToEdit.return_product_weight ?? orderToEdit.returnProductWeight ?? ''));
+    if (orderToEdit.return_product_description || orderToEdit.returnProductDescription) setReturnProductDescription(orderToEdit.return_product_description || orderToEdit.returnProductDescription || '');
+  }, [orderToEdit]);
+
   // Third-Party Courier Handover State (Admin Portal Only)
   const [thirdPartyCourierName, setThirdPartyCourierName] = useState(() => orderToEdit?.third_party_courier_name || '');
   const [thirdPartyOrderId, setThirdPartyOrderId] = useState(() => orderToEdit?.third_party_order_id || '');
@@ -544,6 +581,16 @@ export function CreateOrderModal({
       setFormError('Please select an Order Type.');
       return;
     }
+    if (isExchangeOrder) {
+      if (!returnProductCategory.trim()) {
+        setFormError('Please select a Return Product Category for the exchange order.');
+        return;
+      }
+      if (returnItemValue === '' || isNaN(parseFloat(returnItemValue)) || parseFloat(returnItemValue) < 0) {
+        setFormError('Please enter a valid Return Item Value (NPR) for the exchange order.');
+        return;
+      }
+    }
     if (!serviceType) {
       setFormError('Please select a Service Type.');
       return;
@@ -596,6 +643,12 @@ export function CreateOrderModal({
       notes: noteText,
       third_party_courier_name: isCompanyAdmin && thirdPartyCourierName.trim() ? thirdPartyCourierName.trim() : null,
       third_party_order_id: isCompanyAdmin && thirdPartyOrderId.trim() ? thirdPartyOrderId.trim() : null,
+      return_product_category: isExchangeOrder && returnProductCategory.trim() ? returnProductCategory.trim() : null,
+      return_product_name: isExchangeOrder && returnProductName.trim() ? returnProductName.trim() : null,
+      return_item_value: isExchangeOrder && returnItemValue !== '' ? (parseFloat(returnItemValue) || 0) : null,
+      return_product_weight: isExchangeOrder && returnProductWeight !== '' ? (parseFloat(returnProductWeight) || 0) : null,
+      return_product_description: isExchangeOrder && returnProductDescription.trim() ? returnProductDescription.trim() : null,
+      is_exchange: isExchangeOrder ? 1 : 0,
     };
 
     if (orderToEdit?.id) {
@@ -650,6 +703,11 @@ export function CreateOrderModal({
     setProductCategory('');
     setItemValue('');
     setPackageDesc('');
+    setReturnProductCategory('');
+    setReturnProductName('');
+    setReturnItemValue('');
+    setReturnProductWeight('');
+    setReturnProductDescription('');
     setFormError('');
   };
 
@@ -1567,6 +1625,131 @@ export function CreateOrderModal({
                     />
                   </div>
                 </div>
+
+                {/* ── Exchange Details (Dynamically shown when Order Type is 'Exchange Order') ── */}
+                {isExchangeOrder && (
+                  <div
+                    className="create-order-exchange-section"
+                    style={{
+                      borderTop: '1px solid #e2e8f0',
+                      paddingTop: '20px',
+                      marginTop: '20px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        marginBottom: '18px',
+                      }}
+                    >
+                      <span style={{ color: '#ea580c', fontSize: '18px', fontWeight: 700, lineHeight: 1 }}>⇆</span>
+                      <span style={{ color: '#ea580c', fontSize: '15px', fontWeight: 700 }}>Exchange Details</span>
+                    </div>
+
+                    {/* Return Product Category */}
+                    <div className="create-order-row">
+                      <label className="create-order-label">
+                        Return Product Category <span className="req">*</span>
+                      </label>
+                      <div className="create-order-input-wrap">
+                        <select
+                          className="create-order-select"
+                          value={returnProductCategory}
+                          onChange={(e) => setReturnProductCategory(e.target.value)}
+                          required={isExchangeOrder}
+                        >
+                          <option value="">Select Product Category</option>
+                          {activeProductCategories.length > 0 ? (
+                            activeProductCategories.map((pc) => (
+                              <option key={pc.id} value={pc.name}>
+                                {pc.name}
+                              </option>
+                            ))
+                          ) : (
+                            <>
+                              <option value="Clothing and Apparels">Clothing and Apparels</option>
+                              <option value="Electronics & Gadgets">Electronics & Gadgets</option>
+                              <option value="Documents & Paperwork">Documents & Paperwork</option>
+                              <option value="Food & Perishables">Food & Perishables</option>
+                              <option value="Fragile & Glassware">Fragile & Glassware</option>
+                            </>
+                          )}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Return Product Name */}
+                    <div className="create-order-row">
+                      <label className="create-order-label">
+                        Return Product Name
+                      </label>
+                      <div className="create-order-input-wrap">
+                        <input
+                          type="text"
+                          className="create-order-input"
+                          placeholder="Enter Return Product Name"
+                          value={returnProductName}
+                          onChange={(e) => setReturnProductName(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Return Item Value (NPR) */}
+                    <div className="create-order-row">
+                      <label className="create-order-label">
+                        Return Item Value (NPR) <span className="req">*</span>
+                      </label>
+                      <div className="create-order-input-wrap">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          className="create-order-input"
+                          placeholder="Enter Return Item Value"
+                          value={returnItemValue}
+                          onChange={(e) => setReturnItemValue(e.target.value)}
+                          required={isExchangeOrder}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Return Product Weight (KG) */}
+                    <div className="create-order-row">
+                      <label className="create-order-label">
+                        Return Product Weight (KG)
+                      </label>
+                      <div className="create-order-input-wrap">
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          className="create-order-input"
+                          placeholder="Enter Weight"
+                          value={returnProductWeight}
+                          onChange={(e) => setReturnProductWeight(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Return Product Description */}
+                    <div className="create-order-row">
+                      <label className="create-order-label">
+                        Return Product Description
+                      </label>
+                      <div className="create-order-input-wrap">
+                        <textarea
+                          rows={3}
+                          className="create-order-textarea"
+                          placeholder="Enter Return Product Description"
+                          value={returnProductDescription}
+                          onChange={(e) => setReturnProductDescription(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

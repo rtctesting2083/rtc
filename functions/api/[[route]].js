@@ -6769,15 +6769,30 @@ export async function onRequest(context) {
         const trackingNumber = url.searchParams.get('tracking_number');
         const clientType = url.searchParams.get('client_type');
 
-        // Auto-ensure third_party columns on D1 tables
+        // Auto-ensure third_party & exchange columns on D1 tables
         try {
           await db.prepare('ALTER TABLE shipments ADD COLUMN third_party_courier_name TEXT').run().catch(() => {});
           await db.prepare('ALTER TABLE shipments ADD COLUMN third_party_order_id TEXT').run().catch(() => {});
           await db.prepare('CREATE INDEX IF NOT EXISTS idx_shipments_third_party_order_id ON shipments(third_party_order_id)').run().catch(() => {});
           await db.prepare('CREATE INDEX IF NOT EXISTS idx_shipments_third_party_courier ON shipments(third_party_courier_name)').run().catch(() => {});
+          await db.prepare('ALTER TABLE shipments ADD COLUMN return_product_category TEXT').run().catch(() => {});
+          await db.prepare('ALTER TABLE shipments ADD COLUMN return_product_name TEXT').run().catch(() => {});
+          await db.prepare('ALTER TABLE shipments ADD COLUMN return_item_value REAL').run().catch(() => {});
+          await db.prepare('ALTER TABLE shipments ADD COLUMN return_product_weight REAL').run().catch(() => {});
+          await db.prepare('ALTER TABLE shipments ADD COLUMN return_product_description TEXT').run().catch(() => {});
+          await db.prepare('ALTER TABLE shipments ADD COLUMN is_exchange INTEGER DEFAULT 0').run().catch(() => {});
+          await db.prepare('CREATE INDEX IF NOT EXISTS idx_shipments_is_exchange ON shipments(is_exchange)').run().catch(() => {});
+
           await db.prepare('ALTER TABLE vendor_order ADD COLUMN third_party_courier_name TEXT').run().catch(() => {});
           await db.prepare('ALTER TABLE vendor_order ADD COLUMN third_party_order_id TEXT').run().catch(() => {});
           await db.prepare('CREATE INDEX IF NOT EXISTS idx_vendor_order_third_party_order_id ON vendor_order(third_party_order_id)').run().catch(() => {});
+          await db.prepare('ALTER TABLE vendor_order ADD COLUMN return_product_category TEXT').run().catch(() => {});
+          await db.prepare('ALTER TABLE vendor_order ADD COLUMN return_product_name TEXT').run().catch(() => {});
+          await db.prepare('ALTER TABLE vendor_order ADD COLUMN return_item_value REAL').run().catch(() => {});
+          await db.prepare('ALTER TABLE vendor_order ADD COLUMN return_product_weight REAL').run().catch(() => {});
+          await db.prepare('ALTER TABLE vendor_order ADD COLUMN return_product_description TEXT').run().catch(() => {});
+          await db.prepare('ALTER TABLE vendor_order ADD COLUMN is_exchange INTEGER DEFAULT 0').run().catch(() => {});
+          await db.prepare('CREATE INDEX IF NOT EXISTS idx_vendor_order_is_exchange ON vendor_order(is_exchange)').run().catch(() => {});
         } catch (e) {}
 
         // Lightweight quick-update endpoint: PATCH /api/admin/orders/:id/third-party-link or /api/shipments/:id/third-party-link
@@ -7032,6 +7047,12 @@ export async function onRequest(context) {
           const notes = body.notes || '';
           const third_party_courier_name = body.third_party_courier_name ? String(body.third_party_courier_name).trim() || null : null;
           const third_party_order_id = body.third_party_order_id ? String(body.third_party_order_id).trim() || null : null;
+          const return_product_category = body.return_product_category ? String(body.return_product_category).trim() || null : null;
+          const return_product_name = body.return_product_name ? String(body.return_product_name).trim() || null : null;
+          const return_item_value = body.return_item_value !== undefined && body.return_item_value !== '' && body.return_item_value !== null ? parseFloat(body.return_item_value) : null;
+          const return_product_weight = body.return_product_weight !== undefined && body.return_product_weight !== '' && body.return_product_weight !== null ? parseFloat(body.return_product_weight) : null;
+          const return_product_description = body.return_product_description ? String(body.return_product_description).trim() || null : null;
+          const is_exchange = body.is_exchange !== undefined ? (body.is_exchange ? 1 : 0) : (/exchange/i.test(order_type || '') ? 1 : 0);
 
           const now = new Date().toISOString();
           let events = body.tracking_events;
@@ -7067,6 +7088,8 @@ export async function onRequest(context) {
                 item_value, promo_code, priority, status, custom_status,
                 cod_amount, distance_km, delivery_fee, notes, tracking_events_json,
                 third_party_courier_name, third_party_order_id,
+                return_product_category, return_product_name, return_item_value,
+                return_product_weight, return_product_description, is_exchange,
                 status_updated_at, created_at, updated_at
               ) VALUES (
                 ?, ?, ?, ?, ?, ?,
@@ -7077,6 +7100,8 @@ export async function onRequest(context) {
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?,
+                ?, ?, ?,
+                ?, ?, ?,
                 ?, ?, datetime('now')
               )
             `)
@@ -7089,6 +7114,8 @@ export async function onRequest(context) {
               item_value, promo_code, priority, status, custom_status,
               cod_amount, distance_km, delivery_fee, notes, tracking_events_json,
               third_party_courier_name, third_party_order_id,
+              return_product_category, return_product_name, return_item_value,
+              return_product_weight, return_product_description, is_exchange,
               now, now
             )
             .run();
@@ -7106,6 +7133,8 @@ export async function onRequest(context) {
                     package_description, product_category, item_value, promo_code,
                     priority, status, cod_amount, delivery_fee, notes,
                     tracking_events_json, third_party_courier_name, third_party_order_id,
+                    return_product_category, return_product_name, return_item_value,
+                    return_product_weight, return_product_description, is_exchange,
                     status_updated_at, created_at, updated_at
                   ) VALUES (
                     ?, ?, ?, ?,
@@ -7114,6 +7143,8 @@ export async function onRequest(context) {
                     ?, ?, ?, ?,
                     ?, ?, ?, ?,
                     ?, ?, ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?, ?,
                     ?, ?, ?,
                     ?, datetime('now'), datetime('now')
                   )
@@ -7126,6 +7157,8 @@ export async function onRequest(context) {
                   package_description, product_category, item_value, promo_code,
                   priority, status, cod_amount, delivery_fee, notes,
                   tracking_events_json, third_party_courier_name, third_party_order_id,
+                  return_product_category, return_product_name, return_item_value,
+                  return_product_weight, return_product_description, is_exchange,
                   now
                 )
                 .run();
@@ -7242,6 +7275,24 @@ export async function onRequest(context) {
           const third_party_order_id = body.third_party_order_id !== undefined
             ? (body.third_party_order_id ? String(body.third_party_order_id).trim() || null : null)
             : current.third_party_order_id;
+          const return_product_category = body.return_product_category !== undefined
+            ? (body.return_product_category ? String(body.return_product_category).trim() || null : null)
+            : current.return_product_category;
+          const return_product_name = body.return_product_name !== undefined
+            ? (body.return_product_name ? String(body.return_product_name).trim() || null : null)
+            : current.return_product_name;
+          const return_item_value = body.return_item_value !== undefined
+            ? (body.return_item_value !== '' && body.return_item_value !== null ? parseFloat(body.return_item_value) : null)
+            : current.return_item_value;
+          const return_product_weight = body.return_product_weight !== undefined
+            ? (body.return_product_weight !== '' && body.return_product_weight !== null ? parseFloat(body.return_product_weight) : null)
+            : current.return_product_weight;
+          const return_product_description = body.return_product_description !== undefined
+            ? (body.return_product_description ? String(body.return_product_description).trim() || null : null)
+            : current.return_product_description;
+          const is_exchange = body.is_exchange !== undefined
+            ? (body.is_exchange ? 1 : 0)
+            : (/exchange/i.test(order_type || '') ? 1 : (current.is_exchange || 0));
 
           await db
             .prepare(`
@@ -7254,6 +7305,8 @@ export async function onRequest(context) {
                 status = ?, custom_status = ?, cod_amount = ?, delivery_fee = ?,
                 notes = ?, invoice_id = ?, delivered_at = ?, tracking_events_json = ?,
                 third_party_courier_name = ?, third_party_order_id = ?,
+                return_product_category = ?, return_product_name = ?, return_item_value = ?,
+                return_product_weight = ?, return_product_description = ?, is_exchange = ?,
                 status_updated_at = (CASE WHEN ? != status THEN datetime('now') ELSE status_updated_at END),
                 updated_at = datetime('now')
               WHERE id = ?
@@ -7267,6 +7320,8 @@ export async function onRequest(context) {
               newStatus, custom_status, cod_amount, delivery_fee,
               notes, invoice_id, deliveredAt, JSON.stringify(currentEvents),
               third_party_courier_name, third_party_order_id,
+              return_product_category, return_product_name, return_item_value,
+              return_product_weight, return_product_description, is_exchange,
               newStatus,
               sId
             )
@@ -7295,6 +7350,12 @@ export async function onRequest(context) {
               if (branch_id !== undefined) { syncFields.push('branch_id = ?'); syncVals.push(branch_id); }
               if (third_party_courier_name !== undefined) { syncFields.push('third_party_courier_name = ?'); syncVals.push(third_party_courier_name); }
               if (third_party_order_id !== undefined) { syncFields.push('third_party_order_id = ?'); syncVals.push(third_party_order_id); }
+              if (return_product_category !== undefined) { syncFields.push('return_product_category = ?'); syncVals.push(return_product_category); }
+              if (return_product_name !== undefined) { syncFields.push('return_product_name = ?'); syncVals.push(return_product_name); }
+              if (return_item_value !== undefined) { syncFields.push('return_item_value = ?'); syncVals.push(return_item_value); }
+              if (return_product_weight !== undefined) { syncFields.push('return_product_weight = ?'); syncVals.push(return_product_weight); }
+              if (return_product_description !== undefined) { syncFields.push('return_product_description = ?'); syncVals.push(return_product_description); }
+              if (is_exchange !== undefined) { syncFields.push('is_exchange = ?'); syncVals.push(is_exchange); }
               if (currentEvents && currentEvents.length > 0) { syncFields.push('tracking_events_json = ?'); syncVals.push(JSON.stringify(currentEvents)); }
               if (syncFields.length > 0) {
                 syncFields.push("updated_at = datetime('now')");
@@ -7936,6 +7997,12 @@ export async function onRequest(context) {
           const codAmt = parseFloat(body.cod_amount) || 0.0;
           const delivFee = parseFloat(body.delivery_fee) || 0.0;
           const notes = (body.notes || '').trim();
+          const returnProdCat = (body.return_product_category || '').trim() || null;
+          const returnProdName = (body.return_product_name || '').trim() || null;
+          const returnItemVal = body.return_item_value !== undefined && body.return_item_value !== '' && body.return_item_value !== null ? parseFloat(body.return_item_value) : null;
+          const returnProdWt = body.return_product_weight !== undefined && body.return_product_weight !== '' && body.return_product_weight !== null ? parseFloat(body.return_product_weight) : null;
+          const returnProdDesc = (body.return_product_description || '').trim() || null;
+          const isExchange = body.is_exchange !== undefined ? (body.is_exchange ? 1 : 0) : (/exchange/i.test(orderType || '') ? 1 : 0);
 
           const now = new Date().toISOString();
           let eventsJson = '[]';
@@ -7963,7 +8030,10 @@ export async function onRequest(context) {
                 delivery_address, city, order_type, service_type,
                 weight_kg, package_description, product_category, item_value,
                 promo_code, priority, status, cod_amount,
-                delivery_fee, notes, tracking_events_json, status_updated_at, created_at,
+                delivery_fee, notes, tracking_events_json,
+                return_product_category, return_product_name, return_item_value,
+                return_product_weight, return_product_description, is_exchange,
+                status_updated_at, created_at,
                 updated_at, delivered_at
               ) VALUES (
                 ?, ?, ?, ?,
@@ -7972,7 +8042,10 @@ export async function onRequest(context) {
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
+                ?, ?, ?,
+                ?, ?, ?,
+                ?, ?, ?,
+                ?, ?,
                 datetime('now'), null
               )
             `)
@@ -7983,7 +8056,10 @@ export async function onRequest(context) {
               delivAddr, city, orderType, serviceType,
               weightKg, pkgDesc, prodCat, itemVal,
               promoCode, priority, ordStatus, codAmt,
-              delivFee, notes, eventsJson, now, now
+              delivFee, notes, eventsJson,
+              returnProdCat, returnProdName, returnItemVal,
+              returnProdWt, returnProdDesc, isExchange,
+              now, now
             )
             .run();
 
@@ -8001,7 +8077,10 @@ export async function onRequest(context) {
                   delivery_address, order_type, service_type, weight_kg,
                   package_description, product_category, item_value, promo_code,
                   priority, status, cod_amount, delivery_fee, notes,
-                  tracking_events_json, status_updated_at, created_at, updated_at
+                  tracking_events_json,
+                  return_product_category, return_product_name, return_item_value,
+                  return_product_weight, return_product_description, is_exchange,
+                  status_updated_at, created_at, updated_at
                 ) VALUES (
                   ?, ?, ?, ?,
                   ?, ?, ?,
@@ -8010,7 +8089,10 @@ export async function onRequest(context) {
                   ?, ?, ?, ?,
                   ?, ?, ?, ?,
                   ?, ?, ?, ?, ?,
-                  ?, ?, ?, datetime('now')
+                  ?,
+                  ?, ?, ?,
+                  ?, ?, ?,
+                  ?, ?, datetime('now')
                 )
               `)
               .bind(
@@ -8021,7 +8103,10 @@ export async function onRequest(context) {
                 delivAddr, orderType, serviceType, weightKg,
                 pkgDesc, prodCat, itemVal, promoCode,
                 priority, ordStatus, codAmt, delivFee, notes,
-                eventsJson, now, now
+                eventsJson,
+                returnProdCat, returnProdName, returnItemVal,
+                returnProdWt, returnProdDesc, isExchange,
+                now, now
               )
               .run();
           } catch (e) {
@@ -8094,7 +8179,9 @@ export async function onRequest(context) {
             'receiver_name', 'receiver_phone', 'alt_phone', 'delivery_address',
             'city', 'order_type', 'service_type', 'weight_kg', 'package_description',
             'product_category', 'item_value', 'priority', 'status', 'cod_amount',
-            'delivery_fee', 'notes', 'delivered_at'
+            'delivery_fee', 'notes', 'delivered_at',
+            'return_product_category', 'return_product_name', 'return_item_value',
+            'return_product_weight', 'return_product_description', 'is_exchange'
           ];
 
           for (const key of allowedKeys) {
@@ -8134,7 +8221,9 @@ export async function onRequest(context) {
                 'receiver_name', 'receiver_phone', 'alt_phone', 'vendor_reference_id',
                 'delivery_address', 'branch_id', 'destination_branch_id', 'order_type',
                 'service_type', 'weight_kg', 'package_description', 'product_category',
-                'item_value', 'priority', 'cod_amount', 'delivery_fee', 'notes'
+                'item_value', 'priority', 'cod_amount', 'delivery_fee', 'notes',
+                'return_product_category', 'return_product_name', 'return_item_value',
+                'return_product_weight', 'return_product_description', 'is_exchange'
               ];
               for (const k of syncKeys) {
                 if (body[k] !== undefined) {
