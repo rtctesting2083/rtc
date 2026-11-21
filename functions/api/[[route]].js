@@ -265,6 +265,18 @@ export async function onRequest(context) {
           }
         }
 
+        // 4. Trigger dynamic delivery charge commission calculation & hierarchy wallet credits
+        try {
+          await calculateAndRecordCommission(dbInstance, {
+            shipmentId: orderId,
+            trackingNumber: trk,
+            companyId: cid,
+            actor: 'WALLET_DELIVERED_TRIGGER',
+          });
+        } catch (errComm) {
+          console.warn('Silent commission calculation in wallet sync notice:', errComm);
+        }
+
         return {
           wallet_id: wallet.id,
           final_balance: currentBalance,
@@ -278,6 +290,727 @@ export async function onRequest(context) {
     // Backward-compatibility alias
     async function creditCodCollectedAmountToVendorWallet(dbInstance, params) {
       return processDeliveredShipmentWalletTransactions(dbInstance, params);
+    }
+
+    // Helper to auto-ensure commission distribution & ledger tables in Cloudflare D1
+    async function ensureCommissionSchema(dbInstance) {
+      try {
+        await dbInstance.prepare(`
+          CREATE TABLE IF NOT EXISTS commission_distribution_settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id INTEGER NOT NULL DEFAULT 1,
+            rule_name TEXT NOT NULL DEFAULT 'Default Global Commission Split',
+            scope_type TEXT NOT NULL DEFAULT 'GLOBAL',
+            branch_id INTEGER NULLABLE,
+            calculation_mode TEXT NOT NULL DEFAULT 'PERCENTAGE',
+            central_office_share REAL NOT NULL DEFAULT 20.0,
+            origin_branch_share REAL NOT NULL DEFAULT 25.0,
+            destination_branch_share REAL NOT NULL DEFAULT 25.0,
+            pickup_rider_share REAL NOT NULL DEFAULT 0.0,
+            delivery_rider_share REAL NOT NULL DEFAULT 30.0,
+            province_hub_rate REAL NOT NULL DEFAULT 10.0,
+            district_hub_rate REAL NOT NULL DEFAULT 10.0,
+            municipality_branch_rate REAL NOT NULL DEFAULT 15.0,
+            ward_branch_rate REAL NOT NULL DEFAULT 15.0,
+            rider_rate REAL NOT NULL DEFAULT 30.0,
+            company_retention_rate REAL NOT NULL DEFAULT 20.0,
+            salary_rider_routing TEXT NOT NULL DEFAULT 'CENTRAL_OFFICE',
+            auto_credit_on_delivered INTEGER NOT NULL DEFAULT 1,
+            allow_rider_override INTEGER NOT NULL DEFAULT 1,
+            min_payout_amount REAL NOT NULL DEFAULT 500.0,
+            is_enabled INTEGER NOT NULL DEFAULT 1,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            updated_by TEXT DEFAULT 'ADMIN',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+          )
+        `).run();
+
+        // Check columns to ensure all required fields exist
+        const cols = await dbInstance.prepare("PRAGMA table_info(commission_distribution_settings)").all().catch(() => ({ results: [] }));
+        const colNames = new Set((cols.results || []).map(c => c.name));
+        
+        if (!colNames.has('rule_name')) await dbInstance.prepare("ALTER TABLE commission_distribution_settings ADD COLUMN rule_name TEXT DEFAULT 'Default Global Commission Split'").run().catch(() => {});
+        if (!colNames.has('scope_type')) await dbInstance.prepare("ALTER TABLE commission_distribution_settings ADD COLUMN scope_type TEXT DEFAULT 'GLOBAL'").run().catch(() => {});
+        if (!colNames.has('branch_id')) await dbInstance.prepare("ALTER TABLE commission_distribution_settings ADD COLUMN branch_id INTEGER NULLABLE").run().catch(() => {});
+        if (!colNames.has('calculation_mode')) await dbInstance.prepare("ALTER TABLE commission_distribution_settings ADD COLUMN calculation_mode TEXT DEFAULT 'PERCENTAGE'").run().catch(() => {});
+        if (!colNames.has('central_office_share')) await dbInstance.prepare("ALTER TABLE commission_distribution_settings ADD COLUMN central_office_share REAL DEFAULT 20.0").run().catch(() => {});
+        if (!colNames.has('origin_branch_share')) await dbInstance.prepare("ALTER TABLE commission_distribution_settings ADD COLUMN origin_branch_share REAL DEFAULT 25.0").run().catch(() => {});
+        if (!colNames.has('destination_branch_share')) await dbInstance.prepare("ALTER TABLE commission_distribution_settings ADD COLUMN destination_branch_share REAL DEFAULT 25.0").run().catch(() => {});
+        if (!colNames.has('pickup_rider_share')) await dbInstance.prepare("ALTER TABLE commission_distribution_settings ADD COLUMN pickup_rider_share REAL DEFAULT 0.0").run().catch(() => {});
+        if (!colNames.has('delivery_rider_share')) await dbInstance.prepare("ALTER TABLE commission_distribution_settings ADD COLUMN delivery_rider_share REAL DEFAULT 30.0").run().catch(() => {});
+        if (!colNames.has('salary_rider_routing')) await dbInstance.prepare("ALTER TABLE commission_distribution_settings ADD COLUMN salary_rider_routing TEXT DEFAULT 'CENTRAL_OFFICE'").run().catch(() => {});
+        if (!colNames.has('is_active')) await dbInstance.prepare("ALTER TABLE commission_distribution_settings ADD COLUMN is_active INTEGER DEFAULT 1").run().catch(() => {});
+        if (!colNames.has('updated_by')) await dbInstance.prepare("ALTER TABLE commission_distribution_settings ADD COLUMN updated_by TEXT DEFAULT 'ADMIN'").run().catch(() => {});
+
+        // Seed default rule if table is empty
+        const existing = await dbInstance.prepare("SELECT id FROM commission_distribution_settings WHERE id = 1").first().catch(() => null);
+        if (!existing) {
+          await dbInstance.prepare(`
+            INSERT OR IGNORE INTO commission_distribution_settings (
+              id, company_id, rule_name, scope_type, branch_id, calculation_mode,
+              central_office_share, origin_branch_share, destination_branch_share, pickup_rider_share, delivery_rider_share,
+              province_hub_rate, district_hub_rate, municipality_branch_rate, ward_branch_rate, rider_rate, company_retention_rate,
+              salary_rider_routing, auto_credit_on_delivered, allow_rider_override, min_payout_amount, is_enabled, is_active, updated_by
+            ) VALUES (
+              1, 1, 'Default Global Commission Split', 'GLOBAL', NULL, 'PERCENTAGE',
+              20.0, 25.0, 25.0, 0.0, 30.0,
+              10.0, 10.0, 15.0, 15.0, 30.0, 20.0,
+              'CENTRAL_OFFICE', 1, 1, 500.0, 1, 1, 'SYSTEM'
+            )
+          `).run().catch(() => {});
+        }
+
+        // 2. Shipment Commission Ledger
+        await dbInstance.prepare(`
+          CREATE TABLE IF NOT EXISTS shipment_commission_ledger (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id INTEGER NOT NULL DEFAULT 1,
+            shipment_id TEXT NOT NULL UNIQUE,
+            tracking_number TEXT,
+            total_delivery_charge REAL NOT NULL DEFAULT 0.0,
+            rule_id_applied INTEGER,
+            rule_name_applied TEXT,
+            calculation_mode TEXT NOT NULL DEFAULT 'PERCENTAGE',
+            central_office_amount REAL NOT NULL DEFAULT 0.0,
+            origin_branch_id INTEGER,
+            origin_branch_amount REAL NOT NULL DEFAULT 0.0,
+            destination_branch_id INTEGER,
+            destination_branch_amount REAL NOT NULL DEFAULT 0.0,
+            pickup_rider_id INTEGER,
+            pickup_rider_amount REAL NOT NULL DEFAULT 0.0,
+            delivery_rider_id INTEGER,
+            delivery_rider_amount REAL NOT NULL DEFAULT 0.0,
+            province_hub_id INTEGER,
+            province_hub_amount REAL NOT NULL DEFAULT 0.0,
+            district_hub_id INTEGER,
+            district_hub_amount REAL NOT NULL DEFAULT 0.0,
+            municipality_branch_id INTEGER,
+            municipality_branch_amount REAL NOT NULL DEFAULT 0.0,
+            ward_branch_id INTEGER,
+            ward_branch_amount REAL NOT NULL DEFAULT 0.0,
+            rider_unallocated_rerouted_to TEXT,
+            breakdown_json TEXT,
+            settlement_status TEXT NOT NULL DEFAULT 'SETTLED',
+            calculated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+          )
+        `).run();
+
+        // 3. Multi-tier Wallets
+        await dbInstance.prepare(`
+          CREATE TABLE IF NOT EXISTS commission_wallets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id INTEGER NOT NULL DEFAULT 1,
+            entity_type TEXT NOT NULL,
+            entity_id INTEGER NOT NULL,
+            tier TEXT NOT NULL,
+            entity_name TEXT NOT NULL,
+            entity_code TEXT,
+            entity_phone TEXT,
+            current_balance REAL NOT NULL DEFAULT 0.00,
+            total_earned REAL NOT NULL DEFAULT 0.00,
+            total_withdrawn REAL NOT NULL DEFAULT 0.00,
+            pending_balance REAL NOT NULL DEFAULT 0.00,
+            status TEXT NOT NULL DEFAULT 'ACTIVE',
+            bank_name TEXT,
+            bank_account_number TEXT,
+            bank_account_holder TEXT,
+            wallet_provider TEXT,
+            wallet_id_number TEXT,
+            last_payout_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(company_id, entity_type, entity_id)
+          )
+        `).run();
+
+        // 4. Commission Wallet Transactions
+        await dbInstance.prepare(`
+          CREATE TABLE IF NOT EXISTS commission_wallet_transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id INTEGER NOT NULL DEFAULT 1,
+            wallet_id INTEGER NOT NULL,
+            entity_type TEXT NOT NULL,
+            entity_id INTEGER NOT NULL,
+            tier TEXT NOT NULL,
+            transaction_type TEXT NOT NULL,
+            direction TEXT NOT NULL,
+            amount REAL NOT NULL,
+            balance_before REAL NOT NULL DEFAULT 0.00,
+            balance_after REAL NOT NULL,
+            shipment_id TEXT,
+            tracking_number TEXT,
+            delivery_charge REAL DEFAULT 0.00,
+            rate_applied REAL DEFAULT 0.00,
+            calc_mode TEXT DEFAULT 'PERCENTAGE',
+            reference_no TEXT UNIQUE,
+            description TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'COMPLETED',
+            metadata_json TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+          )
+        `).run();
+
+        // 5. Commission Payout Requests
+        await dbInstance.prepare(`
+          CREATE TABLE IF NOT EXISTS commission_payout_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id INTEGER NOT NULL DEFAULT 1,
+            wallet_id INTEGER NOT NULL,
+            entity_type TEXT NOT NULL,
+            entity_id INTEGER NOT NULL,
+            tier TEXT NOT NULL,
+            entity_name TEXT NOT NULL,
+            amount REAL NOT NULL,
+            payout_method TEXT NOT NULL DEFAULT 'BANK_TRANSFER',
+            account_details TEXT,
+            reference_number TEXT,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            requested_by TEXT,
+            processed_by TEXT,
+            admin_notes TEXT,
+            processed_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+          )
+        `).run();
+      } catch (err) {
+        console.warn('ensureCommissionSchema notice:', err);
+      }
+    }
+
+    // Helper to get or create wallet in commission_wallets
+    async function getOrCreateCommissionWallet(dbInstance, { companyId = 1, entityType, entityId, tier, entityName, entityCode, entityPhone }) {
+      let wallet = await dbInstance.prepare(`
+        SELECT * FROM commission_wallets WHERE company_id = ? AND entity_type = ? AND entity_id = ?
+      `).bind(companyId, entityType, entityId).first().catch(() => null);
+
+      if (!wallet) {
+        const nowIso = new Date().toISOString();
+        await dbInstance.prepare(`
+          INSERT OR IGNORE INTO commission_wallets (
+            company_id, entity_type, entity_id, tier, entity_name, entity_code, entity_phone,
+            current_balance, total_earned, total_withdrawn, pending_balance, status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 0.00, 0.00, 0.00, 0.00, 'ACTIVE', ?, ?)
+        `).bind(
+          companyId, entityType, entityId, tier || 'BRANCH',
+          entityName || `${entityType} #${entityId}`,
+          entityCode || null, entityPhone || null,
+          nowIso, nowIso
+        ).run().catch(() => {});
+
+        wallet = await dbInstance.prepare(`
+          SELECT * FROM commission_wallets WHERE company_id = ? AND entity_type = ? AND entity_id = ?
+        `).bind(companyId, entityType, entityId).first().catch(() => null);
+      }
+
+      return wallet;
+    }
+
+    // Dynamic Commission Calculation & Atomic Recording Service
+    async function calculateAndRecordCommission(dbInstance, {
+      shipmentId,
+      trackingNumber,
+      force = false,
+      companyId = 1,
+      actor = 'SYSTEM'
+    }) {
+      await ensureCommissionSchema(dbInstance);
+
+      const cid = Number(companyId || 1);
+      const sId = shipmentId != null ? String(shipmentId).trim() : null;
+      const trk = trackingNumber != null ? String(trackingNumber).trim() : null;
+
+      if (!sId && !trk) return null;
+
+      // 1. Check existing record in shipment_commission_ledger
+      let existingLedger = null;
+      if (sId) {
+        existingLedger = await dbInstance.prepare(`
+          SELECT * FROM shipment_commission_ledger WHERE shipment_id = ? OR tracking_number = ?
+        `).bind(sId, sId).first().catch(() => null);
+      }
+      if (!existingLedger && trk) {
+        existingLedger = await dbInstance.prepare(`
+          SELECT * FROM shipment_commission_ledger WHERE tracking_number = ?
+        `).bind(trk).first().catch(() => null);
+      }
+
+      if (existingLedger && !force) {
+        return existingLedger;
+      }
+
+      // 2. Fetch shipment details
+      let shipment = null;
+      if (sId) {
+        shipment = await dbInstance.prepare(`
+          SELECT * FROM shipments WHERE id = ? OR tracking_number = ?
+        `).bind(sId, sId).first().catch(() => null);
+      }
+      if (!shipment && trk) {
+        shipment = await dbInstance.prepare(`
+          SELECT * FROM shipments WHERE tracking_number = ?
+        `).bind(trk).first().catch(() => null);
+      }
+      if (!shipment && sId) {
+        shipment = await dbInstance.prepare(`
+          SELECT * FROM vendor_order WHERE id = ? OR tracking_number = ?
+        `).bind(sId, sId).first().catch(() => null);
+      }
+
+      if (!shipment) return null;
+
+      const targetShipmentId = String(shipment.id || sId);
+      const targetTracking = shipment.tracking_number || trk || `RTC-${targetShipmentId}`;
+      const totalDeliveryFee = Math.max(0, parseFloat(shipment.delivery_fee !== undefined ? shipment.delivery_fee : (shipment.delivery_charge || shipment.total_charge || 0)) || 0);
+
+      const originBranchId = shipment.branch_id ? Number(shipment.branch_id) : null;
+      const destBranchId = shipment.destination_branch_id ? Number(shipment.destination_branch_id) : (shipment.current_branch_id ? Number(shipment.current_branch_id) : null);
+      const deliveryRiderId = shipment.courier_id ? Number(shipment.courier_id) : null;
+      const pickupRiderId = shipment.pickup_rider_id ? Number(shipment.pickup_rider_id) : null;
+
+      // Fetch Destination Branch info
+      let destBranch = null;
+      if (destBranchId) {
+        destBranch = await dbInstance.prepare('SELECT * FROM branches WHERE id = ?').bind(destBranchId).first().catch(() => null);
+      }
+      let originBranch = null;
+      if (originBranchId) {
+        originBranch = await dbInstance.prepare('SELECT * FROM branches WHERE id = ?').bind(originBranchId).first().catch(() => null);
+      }
+
+      // 3. Resolve active rule from commission_distribution_settings
+      // Priority: SPECIFIC_BRANCH -> FRANCHISE_BRANCH/OWNED_BRANCH -> GLOBAL
+      let rule = null;
+      if (destBranchId) {
+        rule = await dbInstance.prepare(`
+          SELECT * FROM commission_distribution_settings 
+          WHERE is_active = 1 AND scope_type = 'SPECIFIC_BRANCH' AND branch_id = ?
+          ORDER BY id DESC LIMIT 1
+        `).bind(destBranchId).first().catch(() => null);
+      }
+
+      if (!rule && destBranch && destBranch.branch_type) {
+        const isFranchise = /franchise/i.test(destBranch.branch_type || '');
+        const scopeToLookup = isFranchise ? 'FRANCHISE_BRANCH' : 'OWNED_BRANCH';
+        rule = await dbInstance.prepare(`
+          SELECT * FROM commission_distribution_settings 
+          WHERE is_active = 1 AND scope_type = ?
+          ORDER BY id DESC LIMIT 1
+        `).bind(scopeToLookup).first().catch(() => null);
+      }
+
+      if (!rule) {
+        rule = await dbInstance.prepare(`
+          SELECT * FROM commission_distribution_settings 
+          WHERE is_active = 1 AND scope_type = 'GLOBAL'
+          ORDER BY id ASC LIMIT 1
+        `).bind().first().catch(() => null);
+      }
+
+      if (!rule) {
+        rule = {
+          id: 1,
+          rule_name: 'Default Global Commission Split',
+          scope_type: 'GLOBAL',
+          calculation_mode: 'PERCENTAGE',
+          central_office_share: 20.0,
+          origin_branch_share: 25.0,
+          destination_branch_share: 25.0,
+          pickup_rider_share: 0.0,
+          delivery_rider_share: 30.0,
+          province_hub_rate: 10.0,
+          district_hub_rate: 10.0,
+          municipality_branch_rate: 15.0,
+          ward_branch_rate: 15.0,
+          rider_rate: 30.0,
+          company_retention_rate: 20.0,
+          salary_rider_routing: 'CENTRAL_OFFICE',
+          auto_credit_on_delivered: 1,
+          allow_rider_override: 1,
+        };
+      }
+
+      // 4. Check Rider Compensation Type
+      let deliveryRider = null;
+      if (deliveryRiderId) {
+        deliveryRider = await dbInstance.prepare(`
+          SELECT id, name, phone, compensation_type, commission_rate FROM couriers WHERE id = ?
+        `).bind(deliveryRiderId).first().catch(() => null);
+        if (!deliveryRider) {
+          deliveryRider = await dbInstance.prepare(`
+            SELECT id, name, phone, compensation_type, commission_rate FROM riders WHERE id = ?
+          `).bind(deliveryRiderId).first().catch(() => null);
+        }
+      }
+
+      const isCommissionRider = deliveryRider && (
+        String(deliveryRider.compensation_type || '').toUpperCase() === 'COMMISSION' ||
+        (Number(deliveryRider.commission_rate) > 0 && String(deliveryRider.compensation_type || '').toUpperCase() !== 'SALARY')
+      );
+
+      let effectiveRiderShare = Number(rule.delivery_rider_share) || 30.0;
+      if (isCommissionRider && Boolean(rule.allow_rider_override) && Number(deliveryRider?.commission_rate) > 0) {
+        effectiveRiderShare = Number(deliveryRider.commission_rate);
+      }
+
+      // 5. Calculate Revenue Sharing Amounts
+      const calcMode = rule.calculation_mode === 'FIXED_AMOUNT' ? 'FIXED_AMOUNT' : 'PERCENTAGE';
+      let centralOfficeAmount = 0;
+      let originBranchAmount = 0;
+      let destinationBranchAmount = 0;
+      let pickupRiderAmount = 0;
+      let deliveryRiderAmount = 0;
+      let reroutedTo = null;
+
+      if (calcMode === 'PERCENTAGE') {
+        originBranchAmount = Math.round((totalDeliveryFee * (Number(rule.origin_branch_share || 0) / 100)) * 100) / 100;
+        destinationBranchAmount = Math.round((totalDeliveryFee * (Number(rule.destination_branch_share || 0) / 100)) * 100) / 100;
+        pickupRiderAmount = Math.round((totalDeliveryFee * (Number(rule.pickup_rider_share || 0) / 100)) * 100) / 100;
+
+        if (isCommissionRider) {
+          deliveryRiderAmount = Math.round((totalDeliveryFee * (effectiveRiderShare / 100)) * 100) / 100;
+        } else {
+          deliveryRiderAmount = 0;
+          const unallocatedRiderAmt = Math.round((totalDeliveryFee * (effectiveRiderShare / 100)) * 100) / 100;
+          reroutedTo = rule.salary_rider_routing === 'BRANCH' ? 'BRANCH' : 'CENTRAL_OFFICE';
+          if (reroutedTo === 'BRANCH') {
+            destinationBranchAmount = Math.round((destinationBranchAmount + unallocatedRiderAmt) * 100) / 100;
+          }
+        }
+
+        // Central Office takes remaining so 100% is exact
+        centralOfficeAmount = Math.max(0, Math.round((totalDeliveryFee - (originBranchAmount + destinationBranchAmount + pickupRiderAmount + deliveryRiderAmount)) * 100) / 100);
+      } else {
+        // FIXED_AMOUNT mode
+        originBranchAmount = Math.min(totalDeliveryFee, Number(rule.origin_branch_share || 0));
+        destinationBranchAmount = Math.min(totalDeliveryFee, Number(rule.destination_branch_share || 0));
+        pickupRiderAmount = Math.min(totalDeliveryFee, Number(rule.pickup_rider_share || 0));
+        if (isCommissionRider) {
+          deliveryRiderAmount = Math.min(totalDeliveryFee, effectiveRiderShare);
+        } else {
+          deliveryRiderAmount = 0;
+          reroutedTo = rule.salary_rider_routing === 'BRANCH' ? 'BRANCH' : 'CENTRAL_OFFICE';
+          if (reroutedTo === 'BRANCH') {
+            destinationBranchAmount = destinationBranchAmount + effectiveRiderShare;
+          }
+        }
+        centralOfficeAmount = Math.max(0, Math.round((totalDeliveryFee - (originBranchAmount + destinationBranchAmount + pickupRiderAmount + deliveryRiderAmount)) * 100) / 100);
+      }
+
+      // Hierarchy tier calculations (Province / District / Municipality / Ward)
+      const provAmount = Math.round((totalDeliveryFee * (Number(rule.province_hub_rate || 10) / 100)) * 100) / 100;
+      const distAmount = Math.round((totalDeliveryFee * (Number(rule.district_hub_rate || 10) / 100)) * 100) / 100;
+      const muniAmount = Math.round((totalDeliveryFee * (Number(rule.municipality_branch_rate || 15) / 100)) * 100) / 100;
+      const wardAmount = Math.round((totalDeliveryFee * (Number(rule.ward_branch_rate || 15) / 100)) * 100) / 100;
+
+      const breakdown = {
+        calculation_mode: calcMode,
+        rule_id: rule.id,
+        rule_name: rule.rule_name,
+        total_delivery_charge: totalDeliveryFee,
+        shares_percentage: {
+          central_office: Number(rule.central_office_share),
+          origin_branch: Number(rule.origin_branch_share),
+          destination_branch: Number(rule.destination_branch_share),
+          pickup_rider: Number(rule.pickup_rider_share),
+          delivery_rider: effectiveRiderShare,
+        },
+        hierarchy_tier_amounts: {
+          province_hub: provAmount,
+          district_hub: distAmount,
+          municipality_branch: muniAmount,
+          ward_branch: wardAmount,
+        },
+        rider_info: deliveryRider ? {
+          id: deliveryRider.id,
+          name: deliveryRider.name,
+          compensation_type: deliveryRider.compensation_type || 'SALARY',
+          is_commission: isCommissionRider,
+          commission_rate: effectiveRiderShare,
+          rerouted_to: reroutedTo,
+        } : { unassigned: true, rerouted_to: reroutedTo },
+        calculated_by: actor,
+        calculated_at: new Date().toISOString(),
+      };
+
+      const nowIso = new Date().toISOString();
+      const batchStatements = [];
+
+      // Upsert shipment_commission_ledger
+      batchStatements.push(
+        dbInstance.prepare(`
+          INSERT INTO shipment_commission_ledger (
+            company_id, shipment_id, tracking_number, total_delivery_charge,
+            rule_id_applied, rule_name_applied, calculation_mode,
+            central_office_amount, origin_branch_id, origin_branch_amount,
+            destination_branch_id, destination_branch_amount,
+            pickup_rider_id, pickup_rider_amount,
+            delivery_rider_id, delivery_rider_amount,
+            province_hub_id, province_hub_amount,
+            district_hub_id, district_hub_amount,
+            municipality_branch_id, municipality_branch_amount,
+            ward_branch_id, ward_branch_amount,
+            rider_unallocated_rerouted_to, breakdown_json, settlement_status,
+            calculated_at, updated_at
+          ) VALUES (
+            ?, ?, ?, ?,
+            ?, ?, ?,
+            ?, ?, ?,
+            ?, ?,
+            ?, ?,
+            ?, ?,
+            ?, ?,
+            ?, ?,
+            ?, ?,
+            ?, ?,
+            ?, ?, 'SETTLED',
+            ?, ?
+          )
+          ON CONFLICT(shipment_id) DO UPDATE SET
+            tracking_number = excluded.tracking_number,
+            total_delivery_charge = excluded.total_delivery_charge,
+            rule_id_applied = excluded.rule_id_applied,
+            rule_name_applied = excluded.rule_name_applied,
+            calculation_mode = excluded.calculation_mode,
+            central_office_amount = excluded.central_office_amount,
+            origin_branch_id = excluded.origin_branch_id,
+            origin_branch_amount = excluded.origin_branch_amount,
+            destination_branch_id = excluded.destination_branch_id,
+            destination_branch_amount = excluded.destination_branch_amount,
+            pickup_rider_id = excluded.pickup_rider_id,
+            pickup_rider_amount = excluded.pickup_rider_amount,
+            delivery_rider_id = excluded.delivery_rider_id,
+            delivery_rider_amount = excluded.delivery_rider_amount,
+            province_hub_id = excluded.province_hub_id,
+            province_hub_amount = excluded.province_hub_amount,
+            district_hub_id = excluded.district_hub_id,
+            district_hub_amount = excluded.district_hub_amount,
+            municipality_branch_id = excluded.municipality_branch_id,
+            municipality_branch_amount = excluded.municipality_branch_amount,
+            ward_branch_id = excluded.ward_branch_id,
+            ward_branch_amount = excluded.ward_branch_amount,
+            rider_unallocated_rerouted_to = excluded.rider_unallocated_rerouted_to,
+            breakdown_json = excluded.breakdown_json,
+            settlement_status = excluded.settlement_status,
+            updated_at = excluded.updated_at
+        `).bind(
+          cid, targetShipmentId, targetTracking, totalDeliveryFee,
+          rule.id, rule.rule_name, calcMode,
+          centralOfficeAmount, originBranchId, originBranchAmount,
+          destBranchId, destinationBranchAmount,
+          pickupRiderId, pickupRiderAmount,
+          deliveryRiderId, deliveryRiderAmount,
+          destBranch?.parent_branch_id || null, provAmount,
+          destBranchId, distAmount,
+          destBranchId, muniAmount,
+          destBranchId, wardAmount,
+          reroutedTo, JSON.stringify(breakdown),
+          nowIso, nowIso
+        )
+      );
+
+      // If auto_credit_on_delivered is enabled and fee > 0, credit wallets
+      if (Boolean(rule.auto_credit_on_delivered) && totalDeliveryFee > 0) {
+        // 1. Central Office Wallet
+        if (centralOfficeAmount > 0) {
+          const hqWallet = await getOrCreateCommissionWallet(dbInstance, {
+            companyId: cid,
+            entityType: 'CENTRAL',
+            entityId: 1,
+            tier: 'CENTRAL_HQ',
+            entityName: 'R.T.C. Central Office HQ',
+            entityCode: 'HQ-CENTRAL',
+          });
+          if (hqWallet) {
+            const balBefore = Number(hqWallet.current_balance || 0);
+            const balAfter = Math.round((balBefore + centralOfficeAmount) * 100) / 100;
+            batchStatements.push(
+              dbInstance.prepare(`
+                UPDATE commission_wallets SET current_balance = ?, total_earned = total_earned + ?, updated_at = ? WHERE id = ?
+              `).bind(balAfter, centralOfficeAmount, nowIso, hqWallet.id),
+              dbInstance.prepare(`
+                INSERT INTO commission_wallet_transactions (
+                  company_id, wallet_id, entity_type, entity_id, tier,
+                  transaction_type, direction, amount, balance_before, balance_after,
+                  shipment_id, tracking_number, delivery_charge, rate_applied, calc_mode,
+                  reference_no, description, status, metadata_json, created_at
+                ) VALUES (
+                  ?, ?, 'CENTRAL', 1, 'CENTRAL_HQ',
+                  'COMMISSION_EARNED', 'CREDIT', ?, ?, ?,
+                  ?, ?, ?, ?, ?,
+                  ?, ?, 'COMPLETED', ?, ?
+                )
+              `).bind(
+                cid, hqWallet.id, centralOfficeAmount, balBefore, balAfter,
+                targetShipmentId, targetTracking, totalDeliveryFee, Number(rule.central_office_share || 20), calcMode,
+                `COMM-HQ-${targetTracking}-${Date.now().toString().slice(-4)}`,
+                `HQ net retention for delivered parcel ${targetTracking}`,
+                JSON.stringify({ centralOfficeAmount }), nowIso
+              )
+            );
+          }
+        }
+
+        // 2. Destination Branch Wallet
+        if (destinationBranchAmount > 0 && destBranchId && destBranch) {
+          const bTier = destBranch.branch_type ? String(destBranch.branch_type).toUpperCase().replace(/\s+/g, '_') : 'MUNICIPALITY_BRANCH';
+          const destWallet = await getOrCreateCommissionWallet(dbInstance, {
+            companyId: cid,
+            entityType: 'BRANCH',
+            entityId: destBranchId,
+            tier: bTier,
+            entityName: destBranch.name || `Branch #${destBranchId}`,
+            entityCode: destBranch.code,
+            entityPhone: destBranch.phone,
+          });
+          if (destWallet) {
+            const balBefore = Number(destWallet.current_balance || 0);
+            const balAfter = Math.round((balBefore + destinationBranchAmount) * 100) / 100;
+            batchStatements.push(
+              dbInstance.prepare(`
+                UPDATE commission_wallets SET current_balance = ?, total_earned = total_earned + ?, updated_at = ? WHERE id = ?
+              `).bind(balAfter, destinationBranchAmount, nowIso, destWallet.id),
+              dbInstance.prepare(`
+                INSERT INTO commission_wallet_transactions (
+                  company_id, wallet_id, entity_type, entity_id, tier,
+                  transaction_type, direction, amount, balance_before, balance_after,
+                  shipment_id, tracking_number, delivery_charge, rate_applied, calc_mode,
+                  reference_no, description, status, metadata_json, created_at
+                ) VALUES (
+                  ?, ?, 'BRANCH', ?, ?,
+                  'COMMISSION_EARNED', 'CREDIT', ?, ?, ?,
+                  ?, ?, ?, ?, ?,
+                  ?, ?, 'COMPLETED', ?, ?
+                )
+              `).bind(
+                cid, destWallet.id, destBranchId, bTier,
+                destinationBranchAmount, balBefore, balAfter,
+                targetShipmentId, targetTracking, totalDeliveryFee, Number(rule.destination_branch_share || 25), calcMode,
+                `COMM-DEST-${destBranchId}-${targetTracking}-${Date.now().toString().slice(-4)}`,
+                `Delivery branch commission for order ${targetTracking}${reroutedTo === 'BRANCH' ? ' (includes unallocated rider share)' : ''}`,
+                JSON.stringify({ destinationBranchAmount, reroutedTo }), nowIso
+              )
+            );
+          }
+        }
+
+        // 3. Origin Branch Wallet
+        if (originBranchAmount > 0 && originBranchId && originBranch) {
+          const oTier = originBranch.branch_type ? String(originBranch.branch_type).toUpperCase().replace(/\s+/g, '_') : 'DISTRICT_HUB';
+          const origWallet = await getOrCreateCommissionWallet(dbInstance, {
+            companyId: cid,
+            entityType: 'BRANCH',
+            entityId: originBranchId,
+            tier: oTier,
+            entityName: originBranch.name || `Origin Branch #${originBranchId}`,
+            entityCode: originBranch.code,
+            entityPhone: originBranch.phone,
+          });
+          if (origWallet) {
+            const balBefore = Number(origWallet.current_balance || 0);
+            const balAfter = Math.round((balBefore + originBranchAmount) * 100) / 100;
+            batchStatements.push(
+              dbInstance.prepare(`
+                UPDATE commission_wallets SET current_balance = ?, total_earned = total_earned + ?, updated_at = ? WHERE id = ?
+              `).bind(balAfter, originBranchAmount, nowIso, origWallet.id),
+              dbInstance.prepare(`
+                INSERT INTO commission_wallet_transactions (
+                  company_id, wallet_id, entity_type, entity_id, tier,
+                  transaction_type, direction, amount, balance_before, balance_after,
+                  shipment_id, tracking_number, delivery_charge, rate_applied, calc_mode,
+                  reference_no, description, status, metadata_json, created_at
+                ) VALUES (
+                  ?, ?, 'BRANCH', ?, ?,
+                  'COMMISSION_EARNED', 'CREDIT', ?, ?, ?,
+                  ?, ?, ?, ?, ?,
+                  ?, ?, 'COMPLETED', ?, ?
+                )
+              `).bind(
+                cid, origWallet.id, originBranchId, oTier,
+                originBranchAmount, balBefore, balAfter,
+                targetShipmentId, targetTracking, totalDeliveryFee, Number(rule.origin_branch_share || 25), calcMode,
+                `COMM-ORIG-${originBranchId}-${targetTracking}-${Date.now().toString().slice(-4)}`,
+                `Origin booking branch commission for order ${targetTracking}`,
+                JSON.stringify({ originBranchAmount }), nowIso
+              )
+            );
+          }
+        }
+
+        // 4. Delivering Rider Wallet (if commission-based)
+        if (deliveryRiderAmount > 0 && deliveryRiderId && deliveryRider) {
+          const riderWallet = await getOrCreateCommissionWallet(dbInstance, {
+            companyId: cid,
+            entityType: 'RIDER',
+            entityId: deliveryRiderId,
+            tier: 'RIDER',
+            entityName: deliveryRider.name || `Rider #${deliveryRiderId}`,
+            entityPhone: deliveryRider.phone,
+          });
+          if (riderWallet) {
+            const balBefore = Number(riderWallet.current_balance || 0);
+            const balAfter = Math.round((balBefore + deliveryRiderAmount) * 100) / 100;
+            batchStatements.push(
+              dbInstance.prepare(`
+                UPDATE commission_wallets SET current_balance = ?, total_earned = total_earned + ?, updated_at = ? WHERE id = ?
+              `).bind(balAfter, deliveryRiderAmount, nowIso, riderWallet.id),
+              dbInstance.prepare(`
+                INSERT INTO commission_wallet_transactions (
+                  company_id, wallet_id, entity_type, entity_id, tier,
+                  transaction_type, direction, amount, balance_before, balance_after,
+                  shipment_id, tracking_number, delivery_charge, rate_applied, calc_mode,
+                  reference_no, description, status, metadata_json, created_at
+                ) VALUES (
+                  ?, ?, 'RIDER', ?, 'RIDER',
+                  'COMMISSION_EARNED', 'CREDIT', ?, ?, ?,
+                  ?, ?, ?, ?, ?,
+                  ?, ?, 'COMPLETED', ?, ?
+                )
+              `).bind(
+                cid, riderWallet.id, deliveryRiderId,
+                deliveryRiderAmount, balBefore, balAfter,
+                targetShipmentId, targetTracking, totalDeliveryFee, effectiveRiderShare, calcMode,
+                `COMM-RIDER-${deliveryRiderId}-${targetTracking}-${Date.now().toString().slice(-4)}`,
+                `Delivering rider commission payout for parcel ${targetTracking}`,
+                JSON.stringify({ deliveryRiderAmount, effectiveRiderShare }), nowIso
+              )
+            );
+          }
+        }
+      }
+
+      // Execute atomic batch
+      if (batchStatements.length > 0) {
+        await dbInstance.batch(batchStatements);
+      }
+
+      return {
+        success: true,
+        shipment_id: targetShipmentId,
+        tracking_number: targetTracking,
+        total_delivery_charge: totalDeliveryFee,
+        rule_id_applied: rule.id,
+        rule_name_applied: rule.rule_name,
+        calculation_mode: calcMode,
+        central_office_amount: centralOfficeAmount,
+        origin_branch_id: originBranchId,
+        origin_branch_amount: originBranchAmount,
+        destination_branch_id: destBranchId,
+        destination_branch_amount: destinationBranchAmount,
+        delivery_rider_id: deliveryRiderId,
+        delivery_rider_amount: deliveryRiderAmount,
+        pickup_rider_id: pickupRiderId,
+        pickup_rider_amount: pickupRiderAmount,
+        province_hub_amount: provAmount,
+        district_hub_amount: distAmount,
+        municipality_branch_amount: muniAmount,
+        ward_branch_amount: wardAmount,
+        rider_unallocated_rerouted_to: reroutedTo,
+        settlement_status: 'SETTLED',
+        breakdown,
+      };
     }
 
     // 1. Health check & D1 info
@@ -6878,6 +7611,19 @@ export async function onRequest(context) {
             } catch (e) {}
           }
 
+          if (newStatus === 'delivered') {
+            try {
+              await calculateAndRecordCommission(db, {
+                shipmentId: sId,
+                trackingNumber: current.tracking_number,
+                companyId: current.company_id || 1,
+                actor: '3PL_QUICK_LINK_DELIVERED',
+              });
+            } catch (errComm) {
+              console.warn('Commission trigger notice in 3PL update:', errComm);
+            }
+          }
+
           const updated = await db.prepare('SELECT * FROM shipments WHERE id = ?').bind(sId).first();
           let trackingEvents = [];
           if (updated?.tracking_events_json) {
@@ -7366,21 +8112,35 @@ export async function onRequest(context) {
           }
 
           // Process COD credit and Delivery Charge deduction on wallet when status is delivered
-          if (newStatus === 'delivered' && customer_id) {
-            try {
-              const codAmt = parseFloat(cod_amount !== undefined ? cod_amount : (current.cod_amount || 0));
-              const feeAmt = parseFloat(delivery_fee !== undefined ? delivery_fee : (current.delivery_fee || current.delivery_charge || current.total_charge || 0));
-              await processDeliveredShipmentWalletTransactions(db, {
-                companyId: current.company_id || 1,
-                vendorId: customer_id,
-                orderId: sId,
-                trackingNumber: current.tracking_number,
-                referenceNo: vendor_reference_id || current.vendor_reference_id,
-                codAmount: codAmt,
-                deliveryCharge: feeAmt,
-              });
-            } catch (errCredit) {
-              console.warn('Silent wallet delivered sync notice:', errCredit);
+          if (newStatus === 'delivered') {
+            if (customer_id) {
+              try {
+                const codAmt = parseFloat(cod_amount !== undefined ? cod_amount : (current.cod_amount || 0));
+                const feeAmt = parseFloat(delivery_fee !== undefined ? delivery_fee : (current.delivery_fee || current.delivery_charge || current.total_charge || 0));
+                await processDeliveredShipmentWalletTransactions(db, {
+                  companyId: current.company_id || 1,
+                  vendorId: customer_id,
+                  orderId: sId,
+                  trackingNumber: current.tracking_number,
+                  referenceNo: vendor_reference_id || current.vendor_reference_id,
+                  codAmount: codAmt,
+                  deliveryCharge: feeAmt,
+                });
+              } catch (errCredit) {
+                console.warn('Silent wallet delivered sync notice:', errCredit);
+              }
+            } else {
+              // Direct commission calculation if no vendor wallet attached
+              try {
+                await calculateAndRecordCommission(db, {
+                  shipmentId: sId,
+                  trackingNumber: current.tracking_number,
+                  companyId: current.company_id || 1,
+                  actor: 'SHIPMENT_DIRECT_DELIVERED',
+                });
+              } catch (errComm) {
+                console.warn('Commission trigger notice in direct delivery:', errComm);
+              }
             }
           }
 
@@ -11552,6 +12312,482 @@ export async function onRequest(context) {
 
           return jsonResponse({ error: 'Invalid bulk action. Allowed: "restore", "permanent_delete"' }, 400);
         }
+      }
+
+      // ═════════════════════════════════════════════════════════════════════════
+      // 13. COMMISSION DISTRIBUTION SETTINGS & AUTOMATED LEDGER SYSTEM
+      // ═════════════════════════════════════════════════════════════════════════
+
+      // 13a. GET /api/admin/settings/commission-distribution & /api/admin/commission/settings
+      if ((path === 'admin/settings/commission-distribution' || path === 'admin/commission/settings') && method === 'GET') {
+        await ensureCommissionSchema(db);
+        const companyId = Number(url.searchParams.get('company_id') || 1);
+
+        // Fetch active global rule or first rule
+        let activeRule = await db.prepare(`
+          SELECT * FROM commission_distribution_settings 
+          WHERE company_id = ? AND scope_type = 'GLOBAL' AND is_active = 1
+          ORDER BY id ASC LIMIT 1
+        `).bind(companyId).first().catch(() => null);
+
+        if (!activeRule) {
+          activeRule = await db.prepare(`
+            SELECT * FROM commission_distribution_settings 
+            WHERE company_id = ? ORDER BY id ASC LIMIT 1
+          `).bind(companyId).first().catch(() => null);
+        }
+
+        // Fetch all rules (for branch overrides listing)
+        const { results: allRules } = await db.prepare(`
+          SELECT cds.*, b.name as branch_name, b.code as branch_code, b.branch_type
+          FROM commission_distribution_settings cds
+          LEFT JOIN branches b ON cds.branch_id = b.id
+          WHERE cds.company_id = ?
+          ORDER BY cds.id ASC
+        `).bind(companyId).all().catch(() => ({ results: [] }));
+
+        return jsonResponse({
+          success: true,
+          settings: activeRule || {
+            id: 1,
+            company_id: companyId,
+            rule_name: 'Default Global Commission Split',
+            scope_type: 'GLOBAL',
+            calculation_mode: 'PERCENTAGE',
+            central_office_share: 20.0,
+            origin_branch_share: 25.0,
+            destination_branch_share: 25.0,
+            pickup_rider_share: 0.0,
+            delivery_rider_share: 30.0,
+            province_hub_rate: 10.0,
+            district_hub_rate: 10.0,
+            municipality_branch_rate: 15.0,
+            ward_branch_rate: 15.0,
+            rider_rate: 30.0,
+            company_retention_rate: 20.0,
+            salary_rider_routing: 'CENTRAL_OFFICE',
+            auto_credit_on_delivered: 1,
+            allow_rider_override: 1,
+            min_payout_amount: 500.0,
+            is_enabled: 1,
+            is_active: 1,
+          },
+          rules: allRules || [],
+        });
+      }
+
+      // 13b. POST / PUT /api/admin/settings/commission-distribution & /api/admin/commission/settings
+      if (
+        (path === 'admin/settings/commission-distribution' || path === 'admin/commission/settings') &&
+        (method === 'POST' || method === 'PUT')
+      ) {
+        await ensureCommissionSchema(db);
+        const body = await request.json().catch(() => ({}));
+        const companyId = Number(body.company_id || url.searchParams.get('company_id') || 1);
+
+        const rule_name = (body.rule_name || 'Default Global Commission Split').trim();
+        const scope_type = ['GLOBAL', 'OWNED_BRANCH', 'FRANCHISE_BRANCH', 'SPECIFIC_BRANCH'].includes(body.scope_type)
+          ? body.scope_type
+          : 'GLOBAL';
+        const branch_id = body.branch_id && String(body.branch_id).trim() !== '' ? Number(body.branch_id) : null;
+        const calculation_mode = body.calc_mode === 'FLAT' || body.calculation_mode === 'FIXED_AMOUNT'
+          ? 'FIXED_AMOUNT'
+          : 'PERCENTAGE';
+
+        // Rates
+        const central_office_share = body.central_office_share !== undefined
+          ? parseFloat(body.central_office_share) || 0
+          : (body.company_retention_rate !== undefined ? parseFloat(body.company_retention_rate) || 0 : 20.0);
+        const origin_branch_share = body.origin_branch_share !== undefined
+          ? parseFloat(body.origin_branch_share) || 0
+          : 25.0;
+        const destination_branch_share = body.destination_branch_share !== undefined
+          ? parseFloat(body.destination_branch_share) || 0
+          : 25.0;
+        const pickup_rider_share = body.pickup_rider_share !== undefined
+          ? parseFloat(body.pickup_rider_share) || 0
+          : 0.0;
+        const delivery_rider_share = body.delivery_rider_share !== undefined
+          ? parseFloat(body.delivery_rider_share) || 0
+          : (body.rider_rate !== undefined ? parseFloat(body.rider_rate) || 0 : 30.0);
+
+        // Hierarchy Rates
+        const province_hub_rate = parseFloat(body.province_hub_rate !== undefined ? body.province_hub_rate : 10.0) || 0;
+        const district_hub_rate = parseFloat(body.district_hub_rate !== undefined ? body.district_hub_rate : 10.0) || 0;
+        const municipality_branch_rate = parseFloat(body.municipality_branch_rate !== undefined ? body.municipality_branch_rate : 15.0) || 0;
+        const ward_branch_rate = parseFloat(body.ward_branch_rate !== undefined ? body.ward_branch_rate : 15.0) || 0;
+        const rider_rate = parseFloat(body.rider_rate !== undefined ? body.rider_rate : delivery_rider_share) || 0;
+
+        const totalHierarchy = province_hub_rate + district_hub_rate + municipality_branch_rate + ward_branch_rate + rider_rate;
+        const company_retention_rate = calculation_mode === 'PERCENTAGE'
+          ? Math.max(0, Math.round((100 - totalHierarchy) * 100) / 100)
+          : Math.max(0, parseFloat(body.company_retention_rate) || 0);
+
+        // Strict Validation
+        if (calculation_mode === 'PERCENTAGE') {
+          const coreSum = central_office_share + origin_branch_share + destination_branch_share + pickup_rider_share + delivery_rider_share;
+          if (body.central_office_share !== undefined && Math.abs(coreSum - 100) > 0.05) {
+            return jsonResponse({
+              error: `Core shares must equal exactly 100%. Current sum: ${coreSum.toFixed(2)}%`,
+            }, 400);
+          }
+          if (totalHierarchy > 100.05) {
+            return jsonResponse({
+              error: `Total tier commission percentages (${totalHierarchy.toFixed(2)}%) exceed 100%. Please adjust so sum is 100% or less.`,
+            }, 400);
+          }
+        } else {
+          if (central_office_share < 0 || origin_branch_share < 0 || destination_branch_share < 0 || delivery_rider_share < 0) {
+            return jsonResponse({ error: 'Commission amounts must be non-negative numbers.' }, 400);
+          }
+        }
+
+        const salary_rider_routing = body.salary_rider_routing === 'BRANCH' ? 'BRANCH' : 'CENTRAL_OFFICE';
+        const auto_credit_on_delivered = body.auto_credit_on_delivered ? 1 : 0;
+        const allow_rider_override = body.allow_rider_override ? 1 : 0;
+        const min_payout_amount = Math.max(0, parseFloat(body.min_payout_amount) || 500);
+        const is_enabled = body.is_enabled ? 1 : 0;
+        const is_active = body.is_active !== undefined ? (body.is_active ? 1 : 0) : 1;
+        const updated_by = body.updated_by || 'ADMIN';
+        const nowIso = new Date().toISOString();
+
+        const ruleId = body.id ? Number(body.id) : 1;
+
+        await db.prepare(`
+          INSERT INTO commission_distribution_settings (
+            id, company_id, rule_name, scope_type, branch_id, calculation_mode,
+            central_office_share, origin_branch_share, destination_branch_share, pickup_rider_share, delivery_rider_share,
+            province_hub_rate, district_hub_rate, municipality_branch_rate, ward_branch_rate, rider_rate, company_retention_rate,
+            salary_rider_routing, auto_credit_on_delivered, allow_rider_override, min_payout_amount, is_enabled, is_active, updated_by,
+            updated_at
+          ) VALUES (
+            ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?, ?, ?,
+            ?
+          )
+          ON CONFLICT(id) DO UPDATE SET
+            rule_name = excluded.rule_name,
+            scope_type = excluded.scope_type,
+            branch_id = excluded.branch_id,
+            calculation_mode = excluded.calculation_mode,
+            central_office_share = excluded.central_office_share,
+            origin_branch_share = excluded.origin_branch_share,
+            destination_branch_share = excluded.destination_branch_share,
+            pickup_rider_share = excluded.pickup_rider_share,
+            delivery_rider_share = excluded.delivery_rider_share,
+            province_hub_rate = excluded.province_hub_rate,
+            district_hub_rate = excluded.district_hub_rate,
+            municipality_branch_rate = excluded.municipality_branch_rate,
+            ward_branch_rate = excluded.ward_branch_rate,
+            rider_rate = excluded.rider_rate,
+            company_retention_rate = excluded.company_retention_rate,
+            salary_rider_routing = excluded.salary_rider_routing,
+            auto_credit_on_delivered = excluded.auto_credit_on_delivered,
+            allow_rider_override = excluded.allow_rider_override,
+            min_payout_amount = excluded.min_payout_amount,
+            is_enabled = excluded.is_enabled,
+            is_active = excluded.is_active,
+            updated_by = excluded.updated_by,
+            updated_at = excluded.updated_at
+        `).bind(
+          ruleId, companyId, rule_name, scope_type, branch_id, calculation_mode,
+          central_office_share, origin_branch_share, destination_branch_share, pickup_rider_share, delivery_rider_share,
+          province_hub_rate, district_hub_rate, municipality_branch_rate, ward_branch_rate, rider_rate, company_retention_rate,
+          salary_rider_routing, auto_credit_on_delivered, allow_rider_override, min_payout_amount, is_enabled, is_active, updated_by,
+          nowIso
+        ).run();
+
+        const updated = await db.prepare('SELECT * FROM commission_distribution_settings WHERE id = ?').bind(ruleId).first().catch(() => null);
+
+        return jsonResponse({
+          success: true,
+          message: 'Delivery Charge Commission Distribution Settings saved successfully to Cloudflare D1!',
+          settings: updated,
+        });
+      }
+
+      // 13c. GET /api/admin/shipments/:id/commission-ledger & /api/admin/commission/ledger/:id
+      const ledgerMatch = path.match(/^(?:admin\/shipments\/([^\/]+)\/commission-ledger|admin\/commission\/ledger\/([^\/]+))$/);
+      if (ledgerMatch && method === 'GET') {
+        await ensureCommissionSchema(db);
+        const sId = ledgerMatch[1] || ledgerMatch[2];
+        const ledger = await db.prepare(`
+          SELECT scl.*, 
+                 ob.name as origin_branch_name, ob.code as origin_branch_code,
+                 db.name as destination_branch_name, db.code as destination_branch_code,
+                 r.name as delivery_rider_name, r.phone as delivery_rider_phone, r.compensation_type as delivery_rider_comp_type
+          FROM shipment_commission_ledger scl
+          LEFT JOIN branches ob ON scl.origin_branch_id = ob.id
+          LEFT JOIN branches db ON scl.destination_branch_id = db.id
+          LEFT JOIN couriers r ON scl.delivery_rider_id = r.id
+          WHERE scl.shipment_id = ? OR scl.tracking_number = ?
+        `).bind(sId, sId).first().catch(() => null);
+
+        return jsonResponse({
+          success: true,
+          ledger: ledger || null,
+        });
+      }
+
+      // 13d. POST /api/admin/shipments/:id/calculate-commission & /api/admin/commission/recalculate/:id
+      const recalcMatch = path.match(/^(?:admin\/shipments\/([^\/]+)\/calculate-commission|admin\/commission\/recalculate\/([^\/]+))$/);
+      if (recalcMatch && method === 'POST') {
+        await ensureCommissionSchema(db);
+        const sId = recalcMatch[1] || recalcMatch[2];
+        const companyId = Number(url.searchParams.get('company_id') || 1);
+
+        const resCalc = await calculateAndRecordCommission(db, {
+          shipmentId: sId,
+          force: true,
+          companyId,
+          actor: 'ADMIN_MANUAL_RECALC',
+        });
+
+        if (!resCalc) {
+          return jsonResponse({ error: 'Shipment not found or could not be processed' }, 404);
+        }
+
+        return jsonResponse({
+          success: true,
+          message: 'Commission recalculated and updated atomically in D1 ledger',
+          ledger: resCalc,
+        });
+      }
+
+      // 13e. GET /api/admin/commission/wallets
+      if (path === 'admin/commission/wallets' && method === 'GET') {
+        await ensureCommissionSchema(db);
+        const companyId = Number(url.searchParams.get('company_id') || 1);
+        const tier = url.searchParams.get('tier');
+        const search = url.searchParams.get('search');
+
+        let query = 'SELECT * FROM commission_wallets WHERE company_id = ?';
+        const params = [companyId];
+
+        if (tier && tier !== 'ALL' && tier !== 'all') {
+          query += ' AND tier = ?';
+          params.push(tier.toUpperCase());
+        }
+        if (search && search.trim()) {
+          query += ' AND (entity_name LIKE ? OR entity_code LIKE ? OR entity_phone LIKE ?)';
+          const s = `%${search.trim()}%`;
+          params.push(s, s, s);
+        }
+
+        query += ' ORDER BY current_balance DESC, total_earned DESC';
+
+        const { results: wallets } = await db.prepare(query).bind(...params).all().catch(() => ({ results: [] }));
+
+        const summary = await db.prepare(`
+          SELECT 
+            COUNT(*) as total_wallets,
+            COALESCE(SUM(current_balance), 0) as total_balance,
+            COALESCE(SUM(total_earned), 0) as total_earned,
+            COALESCE(SUM(total_withdrawn), 0) as total_withdrawn,
+            COALESCE(SUM(pending_balance), 0) as total_pending
+          FROM commission_wallets WHERE company_id = ?
+        `).bind(companyId).first().catch(() => ({}));
+
+        return jsonResponse({
+          success: true,
+          wallets: wallets || [],
+          summary: summary || {},
+        });
+      }
+
+      // 13f. GET /api/admin/commission/wallet/:walletId/transactions
+      const walletTxMatch = path.match(/^admin\/commission\/wallet\/(\d+)\/transactions$/);
+      if (walletTxMatch && method === 'GET') {
+        await ensureCommissionSchema(db);
+        const walletId = Number(walletTxMatch[1]);
+        const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') || '50', 10)));
+
+        const { results: transactions } = await db.prepare(`
+          SELECT * FROM commission_wallet_transactions
+          WHERE wallet_id = ?
+          ORDER BY id DESC LIMIT ?
+        `).bind(walletId, limit).all().catch(() => ({ results: [] }));
+
+        return jsonResponse({
+          success: true,
+          transactions: transactions || [],
+        });
+      }
+
+      // 13g. POST /api/admin/commission/wallet/payout
+      if (path === 'admin/commission/wallet/payout' && method === 'POST') {
+        await ensureCommissionSchema(db);
+        const body = await request.json().catch(() => ({}));
+        const walletId = Number(body.wallet_id);
+        const amount = Math.max(0, parseFloat(body.amount) || 0);
+        const payoutMethod = body.payout_method || 'BANK_TRANSFER';
+        const referenceNo = body.reference_no || `PAY-${Date.now().toString().slice(-6)}`;
+        const adminNotes = body.admin_notes || '';
+        const processedBy = body.processed_by || 'Admin';
+
+        if (!walletId || amount <= 0) {
+          return jsonResponse({ error: 'Valid wallet ID and payout amount > 0 are required' }, 400);
+        }
+
+        const wallet = await db.prepare('SELECT * FROM commission_wallets WHERE id = ?').bind(walletId).first().catch(() => null);
+        if (!wallet) return jsonResponse({ error: 'Wallet not found' }, 404);
+
+        const currentBal = Number(wallet.current_balance || 0);
+        if (amount > currentBal) {
+          return jsonResponse({ error: `Payout amount (Rs. ${amount}) exceeds current balance (Rs. ${currentBal})` }, 400);
+        }
+
+        const balAfter = Math.round((currentBal - amount) * 100) / 100;
+        const nowIso = new Date().toISOString();
+
+        await db.batch([
+          db.prepare(`
+            UPDATE commission_wallets SET
+              current_balance = ?,
+              total_withdrawn = total_withdrawn + ?,
+              last_payout_at = ?,
+              updated_at = ?
+            WHERE id = ?
+          `).bind(balAfter, amount, nowIso, nowIso, walletId),
+
+          db.prepare(`
+            INSERT INTO commission_wallet_transactions (
+              company_id, wallet_id, entity_type, entity_id, tier,
+              transaction_type, direction, amount, balance_before, balance_after,
+              reference_no, description, status, metadata_json, created_at
+            ) VALUES (
+              ?, ?, ?, ?, ?,
+              'PAYOUT_SETTLED', 'DEBIT', ?, ?, ?,
+              ?, ?, 'COMPLETED', ?, ?
+            )
+          `).bind(
+            wallet.company_id, walletId, wallet.entity_type, wallet.entity_id, wallet.tier,
+            amount, currentBal, balAfter,
+            referenceNo, `Payout settlement via ${payoutMethod}: Rs. ${amount}`,
+            JSON.stringify({ payoutMethod, adminNotes, processedBy }), nowIso
+          ),
+
+          db.prepare(`
+            INSERT INTO commission_payout_requests (
+              company_id, wallet_id, entity_type, entity_id, tier, entity_name,
+              amount, payout_method, reference_number, status, processed_by, admin_notes, processed_at, created_at, updated_at
+            ) VALUES (
+              ?, ?, ?, ?, ?, ?,
+              ?, ?, ?, 'PROCESSED', ?, ?, ?, ?, ?
+            )
+          `).bind(
+            wallet.company_id, walletId, wallet.entity_type, wallet.entity_id, wallet.tier, wallet.entity_name,
+            amount, payoutMethod, referenceNo, processedBy, adminNotes, nowIso, nowIso, nowIso
+          )
+        ]);
+
+        return jsonResponse({
+          success: true,
+          message: `Payout of NPR ${amount} processed successfully! New balance: NPR ${balAfter}`,
+          balance_after: balAfter,
+        });
+      }
+
+      // 13h. POST /api/admin/commission/sync-delivered
+      if (path === 'admin/commission/sync-delivered' && method === 'POST') {
+        await ensureCommissionSchema(db);
+        const companyId = Number(url.searchParams.get('company_id') || 1);
+
+        const { results: uncalcShipments } = await db.prepare(`
+          SELECT s.id, s.tracking_number, s.delivery_fee 
+          FROM shipments s
+          LEFT JOIN shipment_commission_ledger scl ON (s.id = scl.shipment_id OR s.tracking_number = scl.tracking_number)
+          WHERE s.company_id = ? AND LOWER(s.status) = 'delivered' AND scl.id IS NULL
+          LIMIT 100
+        `).bind(companyId).all().catch(() => ({ results: [] }));
+
+        let processedCount = 0;
+        let totalFees = 0;
+
+        for (const s of (uncalcShipments || [])) {
+          try {
+            await calculateAndRecordCommission(db, {
+              shipmentId: s.id,
+              trackingNumber: s.tracking_number,
+              companyId,
+              force: false,
+              actor: 'BULK_DELIVERED_SYNC',
+            });
+            processedCount++;
+            totalFees += parseFloat(s.delivery_fee) || 0;
+          } catch (e) {
+            console.warn(`Sync error for shipment ${s.id}:`, e);
+          }
+        }
+
+        return jsonResponse({
+          success: true,
+          processed_count: processedCount,
+          total_delivery_fees: totalFees,
+          message: `Processed commission calculations and wallet credits for ${processedCount} delivered shipment(s).`,
+        });
+      }
+
+      // 13i. Branch individual commission wallet endpoint
+      if (path === 'branch/commission/wallet' && method === 'GET') {
+        await ensureCommissionSchema(db);
+        const branchId = Number(url.searchParams.get('branch_id'));
+        const companyId = Number(url.searchParams.get('company_id') || 1);
+        if (!branchId) return jsonResponse({ error: 'branch_id required' }, 400);
+
+        const branch = await db.prepare('SELECT * FROM branches WHERE id = ?').bind(branchId).first().catch(() => null);
+        const wallet = await getOrCreateCommissionWallet(db, {
+          companyId,
+          entityType: 'BRANCH',
+          entityId: branchId,
+          tier: branch?.branch_type ? String(branch.branch_type).toUpperCase().replace(/\s+/g, '_') : 'MUNICIPALITY_BRANCH',
+          entityName: branch?.name || `Branch #${branchId}`,
+          entityCode: branch?.code,
+          entityPhone: branch?.phone,
+        });
+
+        const { results: recentTx } = await db.prepare(`
+          SELECT * FROM commission_wallet_transactions WHERE wallet_id = ? ORDER BY id DESC LIMIT 20
+        `).bind(wallet.id).all().catch(() => ({ results: [] }));
+
+        return jsonResponse({
+          success: true,
+          wallet,
+          transactions: recentTx || [],
+        });
+      }
+
+      // 13j. Rider individual commission wallet endpoint
+      if (path === 'rider/commission/wallet' && method === 'GET') {
+        await ensureCommissionSchema(db);
+        const riderId = Number(url.searchParams.get('rider_id'));
+        const companyId = Number(url.searchParams.get('company_id') || 1);
+        if (!riderId) return jsonResponse({ error: 'rider_id required' }, 400);
+
+        let rider = await db.prepare('SELECT * FROM couriers WHERE id = ?').bind(riderId).first().catch(() => null);
+        if (!rider) rider = await db.prepare('SELECT * FROM riders WHERE id = ?').bind(riderId).first().catch(() => null);
+
+        const wallet = await getOrCreateCommissionWallet(db, {
+          companyId,
+          entityType: 'RIDER',
+          entityId: riderId,
+          tier: 'RIDER',
+          entityName: rider?.name || `Rider #${riderId}`,
+          entityPhone: rider?.phone,
+        });
+
+        const { results: recentTx } = await db.prepare(`
+          SELECT * FROM commission_wallet_transactions WHERE wallet_id = ? ORDER BY id DESC LIMIT 20
+        `).bind(wallet.id).all().catch(() => ({ results: [] }));
+
+        return jsonResponse({
+          success: true,
+          wallet,
+          rider: rider || {},
+          transactions: recentTx || [],
+        });
       }
 // 14. Fallback for unrecognized API routes
       return jsonResponse({ error: 'Endpoint not found', path }, 404);

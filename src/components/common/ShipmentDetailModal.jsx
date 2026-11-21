@@ -22,6 +22,8 @@ import {
   Edit2,
   Database,
   RotateCcw,
+  Coins,
+  RotateCw,
 } from 'lucide-react';
 import '../../pages/customer/VendorDashboard.css';
 
@@ -67,6 +69,51 @@ export function ShipmentDetailModal({ shipment, onClose, onEditOrder, isAdmin = 
   const [saving3PL, setSaving3PL] = useState(false);
   const [tpCopied, setTpCopied] = useState(false);
   const [currentShipment, setCurrentShipment] = useState(shipment || {});
+
+  // Commission Ledger State (Admin Portal Only)
+  const [commLedger, setCommLedger] = useState(null);
+  const [loadingLedger, setLoadingLedger] = useState(false);
+  const [recalculatingComm, setRecalculatingComm] = useState(false);
+
+  const loadCommissionLedger = async () => {
+    const targetId = currentShipment?.id || shipment?.id;
+    if (!isAdminPortal || !targetId) return;
+    setLoadingLedger(true);
+    try {
+      const res = await d1Api.getShipmentCommissionLedger(targetId);
+      if (res && res.success && res.ledger) {
+        setCommLedger(res.ledger);
+      } else {
+        setCommLedger(null);
+      }
+    } catch (e) {
+      console.warn('Failed to load commission ledger:', e);
+    } finally {
+      setLoadingLedger(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAdminPortal && (shipment?.id || currentShipment?.id)) {
+      loadCommissionLedger();
+    }
+  }, [isAdminPortal, shipment?.id, currentShipment?.id]);
+
+  const handleRecalculateCommission = async () => {
+    const targetId = currentShipment?.id || shipment?.id;
+    if (!targetId) return;
+    setRecalculatingComm(true);
+    try {
+      const res = await d1Api.recalculateShipmentCommission(targetId, company?.id || 1);
+      if (res && res.success) {
+        await loadCommissionLedger();
+      }
+    } catch (e) {
+      alert('Failed to recalculate commission: ' + e.message);
+    } finally {
+      setRecalculatingComm(false);
+    }
+  };
 
   useEffect(() => {
     if (shipment) {
@@ -934,6 +981,108 @@ export function ShipmentDetailModal({ shipment, onClose, onEditOrder, isAdmin = 
                 </div>
               </div>
             </div>
+
+            {/* Section 2b: Delivery Charge Commission Ledger (Strictly Admin Portal Only) */}
+            {isAdminPortal && (
+              <div className="order-detail-section-block" style={{ borderLeft: '3px solid #dc2626', background: '#ffffff' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Coins size={15} color="#dc2626" />
+                    <h3 className="order-detail-section-heading" style={{ margin: 0, color: '#0f172a' }}>
+                      Commission Distribution Ledger
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRecalculateCommission}
+                    disabled={recalculatingComm}
+                    title="Recalculate revenue splits using active D1 rules"
+                    style={{
+                      background: '#f8fafc',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '4px',
+                      padding: '2px 8px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      color: '#475569',
+                      cursor: recalculatingComm ? 'not-allowed' : 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <RotateCw size={11} className={recalculatingComm ? 'animate-spin' : ''} />
+                    {recalculatingComm ? 'Recalculating...' : 'Recalculate'}
+                  </button>
+                </div>
+
+                {commLedger ? (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', background: '#f8fafc', borderRadius: '6px', marginBottom: '8px', fontSize: '11px' }}>
+                      <span style={{ color: '#64748b' }}>Rule: <b>{commLedger.rule_name_applied || 'Default Global'}</b></span>
+                      <span style={{ background: '#dcfce7', color: '#166534', padding: '1px 6px', borderRadius: '4px', fontWeight: 700, fontSize: '10px' }}>
+                        ● {commLedger.settlement_status || 'SETTLED'}
+                      </span>
+                    </div>
+
+                    <div className="order-detail-kv-table" style={{ fontSize: '12px' }}>
+                      <div className="kv-row">
+                        <span className="kv-label">Total Delivery Fee:</span>
+                        <span className="kv-val font-semibold">Rs. {commLedger.total_delivery_charge}</span>
+                      </div>
+                      <div className="kv-row">
+                        <span className="kv-label">Central Office (HQ):</span>
+                        <span className="kv-val font-bold" style={{ color: '#0f172a' }}>
+                          Rs. {commLedger.central_office_amount}
+                        </span>
+                      </div>
+                      <div className="kv-row">
+                        <span className="kv-label">Delivery Branch:</span>
+                        <span className="kv-val" style={{ color: '#0f766e', fontWeight: 600 }}>
+                          Rs. {commLedger.destination_branch_amount} {commLedger.destination_branch_name ? `(${commLedger.destination_branch_name})` : ''}
+                        </span>
+                      </div>
+                      <div className="kv-row">
+                        <span className="kv-label">Origin Branch:</span>
+                        <span className="kv-val" style={{ color: '#0369a1', fontWeight: 600 }}>
+                          Rs. {commLedger.origin_branch_amount} {commLedger.origin_branch_name ? `(${commLedger.origin_branch_name})` : ''}
+                        </span>
+                      </div>
+                      <div className="kv-row">
+                        <span className="kv-label">Delivering Rider:</span>
+                        <span className="kv-val" style={{ color: '#16a34a', fontWeight: 600 }}>
+                          Rs. {commLedger.delivery_rider_amount}
+                          {commLedger.delivery_rider_name ? ` (${commLedger.delivery_rider_name})` : ''}
+                          {commLedger.rider_unallocated_rerouted_to && (
+                            <span style={{ fontSize: '10px', color: '#64748b', display: 'block' }}>
+                              (Salaried rider • rerouted to {commLedger.rider_unallocated_rerouted_to})
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ padding: '8px 10px', background: '#f8fafc', borderRadius: '6px', fontSize: '11.5px', color: '#64748b' }}>
+                    {shipment.status === 'delivered' ? (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span>Delivered order pending ledger calculation.</span>
+                        <button
+                          type="button"
+                          onClick={handleRecalculateCommission}
+                          disabled={recalculatingComm}
+                          style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', padding: '2px 8px', fontSize: '11px', cursor: 'pointer' }}
+                        >
+                          Calculate Now
+                        </button>
+                      </div>
+                    ) : (
+                      <span>Pending Delivery — Commissions will be automatically calculated and credited upon status DELIVERED.</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* ════════ COLUMN 2: Order Tracking Timeline (Cloudflare D1 Database) ════════ */}

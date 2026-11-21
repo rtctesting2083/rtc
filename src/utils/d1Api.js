@@ -2762,7 +2762,12 @@ export const d1Api = {
   // ════════ COMMISSION DISTRIBUTION & MULTI-TIER WALLETS (D1) ════════
   getCommissionSettings: async (companyId = 1) => {
     try {
-      const res = await fetch(`/api/admin/commission/settings?company_id=${companyId}`);
+      const res = await fetch(`/api/admin/settings/commission-distribution?company_id=${companyId}`);
+      if (!res.ok) {
+        // Fallback to alias if needed
+        const fallbackRes = await fetch(`/api/admin/commission/settings?company_id=${companyId}`);
+        return await fallbackRes.json();
+      }
       return await res.json();
     } catch (e) {
       console.error('Error fetching commission settings:', e);
@@ -2772,14 +2777,37 @@ export const d1Api = {
 
   saveCommissionSettings: async (payload = {}) => {
     try {
-      const res = await fetch('/api/admin/commission/settings', {
-        method: 'PUT',
+      const res = await fetch('/api/admin/settings/commission-distribution', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       return await res.json();
     } catch (e) {
       console.error('Error saving commission settings:', e);
+      return { success: false, error: e.message };
+    }
+  },
+
+  getShipmentCommissionLedger: async (shipmentId) => {
+    try {
+      const res = await fetch(`/api/admin/shipments/${shipmentId}/commission-ledger`);
+      if (!res.ok) return { success: false, ledger: null };
+      return await res.json();
+    } catch (e) {
+      console.error('Error fetching shipment commission ledger:', e);
+      return { success: false, ledger: null, error: e.message };
+    }
+  },
+
+  recalculateShipmentCommission: async (shipmentId, companyId = 1) => {
+    try {
+      const res = await fetch(`/api/admin/shipments/${shipmentId}/calculate-commission?company_id=${companyId}`, {
+        method: 'POST',
+      });
+      return await res.json();
+    } catch (e) {
+      console.error('Error recalculating commission:', e);
       return { success: false, error: e.message };
     }
   },
