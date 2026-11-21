@@ -1050,6 +1050,7 @@ export async function onRequest(context) {
         if (!catColNames.has('requires_fragile_handling')) await dbInstance.prepare("ALTER TABLE product_categories ADD COLUMN requires_fragile_handling INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
         if (!catColNames.has('is_active')) await dbInstance.prepare("ALTER TABLE product_categories ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1").run().catch(() => {});
         if (!catColNames.has('status')) await dbInstance.prepare("ALTER TABLE product_categories ADD COLUMN status TEXT DEFAULT 'active'").run().catch(() => {});
+        if (!catColNames.has('display_order')) await dbInstance.prepare("ALTER TABLE product_categories ADD COLUMN display_order INTEGER DEFAULT 0").run().catch(() => {});
 
         // 2. Category Delivery Rates table
         await dbInstance.prepare(`
@@ -1144,6 +1145,33 @@ export async function onRequest(context) {
                 company_id, category_id, zone_type, pricing_model, base_charge_npr, base_weight_kg, extra_per_kg_npr, surcharge_value, min_charge_npr, is_active
               ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, 1)
             `).bind(cId, zType, model, bChg, bWt, eKg, sur, minC).run().catch(() => {});
+          }
+        }
+
+        // 5. Ensure all existing product categories have category_delivery_rates
+        const ratesCountRow = await dbInstance.prepare("SELECT COUNT(*) as cnt FROM category_delivery_rates").first().catch(() => ({ cnt: 0 }));
+        if (!ratesCountRow || ratesCountRow.cnt === 0) {
+          const { results: existingCats } = await dbInstance.prepare("SELECT id, name_en, name, requires_fragile_handling FROM product_categories").all().catch(() => ({ results: [] }));
+          for (const cat of (existingCats || [])) {
+            const isFragile = Boolean(cat.requires_fragile_handling) || /fragile|glass/i.test(cat.name_en || cat.name || '');
+            const isDocs = /document|letter|paper/i.test(cat.name_en || cat.name || '');
+            const isElec = /electronic|gadget/i.test(cat.name_en || cat.name || '');
+            const isHeavy = /heavy|cargo|industrial/i.test(cat.name_en || cat.name || '');
+
+            const rates = [
+              ['SAME_MUNICIPALITY', 'OVERRIDE_BASE_RATE', isDocs ? 70 : (isHeavy ? 250 : (isFragile ? 130 : (isElec ? 110 : 90))), isDocs ? 0.5 : (isHeavy ? 5.0 : 1.0), isDocs ? 30 : 40, isFragile ? 40 : (isElec ? 20 : 0)],
+              ['SAME_DISTRICT',     'OVERRIDE_BASE_RATE', isDocs ? 90 : (isHeavy ? 350 : (isFragile ? 160 : (isElec ? 140 : 120))), isDocs ? 0.5 : (isHeavy ? 5.0 : 1.0), isDocs ? 40 : 50, isFragile ? 50 : (isElec ? 25 : 0)],
+              ['SAME_PROVINCE',     'OVERRIDE_BASE_RATE', isDocs ? 110 : (isHeavy ? 450 : (isFragile ? 200 : (isElec ? 170 : 150))), isDocs ? 0.5 : (isHeavy ? 5.0 : 1.0), isDocs ? 45 : 60, isFragile ? 60 : (isElec ? 30 : 0)],
+              ['INTER_PROVINCE',    'OVERRIDE_BASE_RATE', isDocs ? 140 : (isHeavy ? 550 : (isFragile ? 250 : (isElec ? 210 : 180))), isDocs ? 0.5 : (isHeavy ? 5.0 : 1.0), isDocs ? 50 : 70, isFragile ? 75 : (isElec ? 40 : 0)],
+            ];
+
+            for (const [zType, model, bChg, bWt, eKg, sur] of rates) {
+              await dbInstance.prepare(`
+                INSERT OR IGNORE INTO category_delivery_rates (
+                  company_id, category_id, zone_type, pricing_model, base_charge_npr, base_weight_kg, extra_per_kg_npr, surcharge_value, min_charge_npr, is_active
+                ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+              `).bind(cat.id, zType, model, bChg, bWt, eKg, sur, bChg).run().catch(() => {});
+            }
           }
         }
       } catch (e) {
@@ -3975,10 +4003,14 @@ export async function onRequest(context) {
         if (activeOnly) {
           query += ' AND is_active = 1';
         }
-        query += ' ORDER BY display_order ASC, id ASC';
-
-        const { results } = await db.prepare(query).bind(Number(companyId)).all();
-        const categories = results || [];
+        let categories = [];
+        try {
+          const { results } = await db.prepare(query + ' ORDER BY display_order ASC, id ASC').bind(Number(companyId)).all();
+          categories = results || [];
+        } catch (e) {
+          const { results } = await db.prepare(query + ' ORDER BY id ASC').bind(Number(companyId)).all();
+          categories = results || [];
+        }
 
         // Attach rates to each category
         const allRatesRes = await db.prepare('SELECT * FROM category_delivery_rates WHERE company_id = ? ORDER BY id ASC').bind(Number(companyId)).all().catch(() => ({ results: [] }));

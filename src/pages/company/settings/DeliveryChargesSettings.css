@@ -409,8 +409,19 @@
   grid-template-columns: repeat(3, 1fr);
 }
 
+.cs-card-row.cs-four {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+@media (max-width: 1100px) {
+  .cs-card-row.cs-four {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 900px) {
-  .cs-card-row.cs-three {
+  .cs-card-row.cs-three,
+  .cs-card-row.cs-four {
     grid-template-columns: 1fr;
   }
 }
