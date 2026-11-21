@@ -1013,6 +1013,285 @@ export async function onRequest(context) {
       };
     }
 
+    // Helper to auto-ensure product category & category delivery rate tables in Cloudflare D1
+    async function ensureProductCategorySchema(dbInstance) {
+      try {
+        await dbInstance.prepare(`
+          CREATE TABLE IF NOT EXISTS product_categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id INTEGER NOT NULL DEFAULT 1,
+            name_en TEXT NOT NULL DEFAULT '',
+            name_np TEXT NULLABLE,
+            name TEXT NULLABLE,
+            code TEXT NULLABLE,
+            description TEXT NULLABLE,
+            requires_fragile_handling INTEGER NOT NULL DEFAULT 0,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            status TEXT DEFAULT 'active',
+            display_order INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+          )
+        `).run();
+
+        // Check columns to ensure all required fields exist
+        const catCols = await dbInstance.prepare("PRAGMA table_info(product_categories)").all().catch(() => ({ results: [] }));
+        const catColNames = new Set((catCols.results || []).map(c => c.name));
+
+        if (!catColNames.has('name_en')) {
+          await dbInstance.prepare("ALTER TABLE product_categories ADD COLUMN name_en TEXT DEFAULT ''").run().catch(() => {});
+          if (catColNames.has('name')) {
+            await dbInstance.prepare("UPDATE product_categories SET name_en = name WHERE name_en IS NULL OR name_en = ''").run().catch(() => {});
+          }
+        }
+        if (!catColNames.has('name_np')) await dbInstance.prepare("ALTER TABLE product_categories ADD COLUMN name_np TEXT NULLABLE").run().catch(() => {});
+        if (!catColNames.has('code')) await dbInstance.prepare("ALTER TABLE product_categories ADD COLUMN code TEXT NULLABLE").run().catch(() => {});
+        if (!catColNames.has('description')) await dbInstance.prepare("ALTER TABLE product_categories ADD COLUMN description TEXT NULLABLE").run().catch(() => {});
+        if (!catColNames.has('requires_fragile_handling')) await dbInstance.prepare("ALTER TABLE product_categories ADD COLUMN requires_fragile_handling INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
+        if (!catColNames.has('is_active')) await dbInstance.prepare("ALTER TABLE product_categories ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1").run().catch(() => {});
+        if (!catColNames.has('status')) await dbInstance.prepare("ALTER TABLE product_categories ADD COLUMN status TEXT DEFAULT 'active'").run().catch(() => {});
+
+        // 2. Category Delivery Rates table
+        await dbInstance.prepare(`
+          CREATE TABLE IF NOT EXISTS category_delivery_rates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id INTEGER NOT NULL DEFAULT 1,
+            category_id INTEGER NOT NULL,
+            zone_type TEXT NOT NULL DEFAULT 'ALL_ZONES',
+            pricing_model TEXT NOT NULL DEFAULT 'OVERRIDE_BASE_RATE',
+            base_charge_npr REAL NOT NULL DEFAULT 100.0,
+            base_weight_kg REAL NOT NULL DEFAULT 1.0,
+            extra_per_kg_npr REAL NOT NULL DEFAULT 50.0,
+            surcharge_value REAL NOT NULL DEFAULT 0.0,
+            min_charge_npr REAL NOT NULL DEFAULT 80.0,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+          )
+        `).run();
+
+        // 3. Ensure shipments & vendor_order columns
+        await dbInstance.prepare("ALTER TABLE shipments ADD COLUMN product_category_id INTEGER NULLABLE").run().catch(() => {});
+        await dbInstance.prepare("ALTER TABLE shipments ADD COLUMN calculated_delivery_charge REAL NULLABLE").run().catch(() => {});
+        await dbInstance.prepare("ALTER TABLE shipments ADD COLUMN category_pricing_breakdown_json TEXT NULLABLE").run().catch(() => {});
+
+        await dbInstance.prepare("ALTER TABLE vendor_order ADD COLUMN product_category_id INTEGER NULLABLE").run().catch(() => {});
+        await dbInstance.prepare("ALTER TABLE vendor_order ADD COLUMN calculated_delivery_charge REAL NULLABLE").run().catch(() => {});
+        await dbInstance.prepare("ALTER TABLE vendor_order ADD COLUMN category_pricing_breakdown_json TEXT NULLABLE").run().catch(() => {});
+
+        // 4. Seed default categories if empty
+        const countRow = await dbInstance.prepare("SELECT COUNT(*) as cnt FROM product_categories").first().catch(() => ({ cnt: 0 }));
+        if (!countRow || countRow.cnt === 0) {
+          const defaultCats = [
+            [1, 'Documents & Letters', 'कागजात तथा पत्रहरू', 'DOCS', 'Legal documents, passports, contracts, and letters', 0, 1],
+            [2, 'Apparel & Garments', 'लत्ताकपडा तथा फेसन', 'APPAREL', 'Clothing, shoes, textiles, and fashion wear', 0, 1],
+            [3, 'Electronics & Gadgets', 'इलेक्ट्रोनिक्स तथा ग्याजेट्स', 'ELEC', 'Smartphones, accessories, laptops, and consumer electronics', 0, 1],
+            [4, 'Fragile / Glassware', 'नाजुक / सिसाजन्य सामग्री', 'FRAGILE', 'Glassware, ceramics, mirrors, and delicate items requiring cushion packaging', 1, 1],
+            [5, 'Cosmetics & Personal Care', 'सौन्दर्य तथा व्यक्तिगत हेरचाह', 'COSMETICS', 'Skincare, perfumes, makeup, and personal care products', 0, 1],
+            [6, 'Food & Perishables', 'खाद्य तथा उपभोग्य वस्तुहरू', 'FOOD', 'Packaged food, dry fruits, sweets, and organic teas', 0, 1],
+            [7, 'Heavy Cargo / Industrial', 'भारी तथा औद्योगिक सामान', 'HEAVY', 'Machinery parts, bulk hardware, fitness equipment, and industrial parcels', 0, 1],
+          ];
+
+          for (const [id, nEn, nNp, code, desc, frag, act] of defaultCats) {
+            await dbInstance.prepare(`
+              INSERT OR REPLACE INTO product_categories (id, company_id, name_en, name, name_np, code, description, requires_fragile_handling, is_active, status)
+              VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, 'active')
+            `).bind(id, nEn, nEn, nNp, code, desc, frag, act).run().catch(() => {});
+          }
+
+          // Seed default zone rates
+          const defaultRates = [
+            // Documents
+            [1, 'SAME_MUNICIPALITY', 'OVERRIDE_BASE_RATE', 70.0, 0.5, 30.0, 0, 70.0],
+            [1, 'SAME_DISTRICT',     'OVERRIDE_BASE_RATE', 90.0, 0.5, 40.0, 0, 90.0],
+            [1, 'SAME_PROVINCE',     'OVERRIDE_BASE_RATE', 110.0, 0.5, 45.0, 0, 110.0],
+            [1, 'INTER_PROVINCE',    'OVERRIDE_BASE_RATE', 140.0, 0.5, 50.0, 0, 140.0],
+            // Apparel
+            [2, 'SAME_MUNICIPALITY', 'OVERRIDE_BASE_RATE', 90.0, 1.0, 40.0, 0, 90.0],
+            [2, 'SAME_DISTRICT',     'OVERRIDE_BASE_RATE', 120.0, 1.0, 50.0, 0, 120.0],
+            [2, 'SAME_PROVINCE',     'OVERRIDE_BASE_RATE', 150.0, 1.0, 60.0, 0, 150.0],
+            [2, 'INTER_PROVINCE',    'OVERRIDE_BASE_RATE', 180.0, 1.0, 70.0, 0, 180.0],
+            // Electronics
+            [3, 'SAME_MUNICIPALITY', 'OVERRIDE_BASE_RATE', 110.0, 1.0, 50.0, 20.0, 110.0],
+            [3, 'SAME_DISTRICT',     'OVERRIDE_BASE_RATE', 140.0, 1.0, 60.0, 25.0, 140.0],
+            [3, 'SAME_PROVINCE',     'OVERRIDE_BASE_RATE', 170.0, 1.0, 70.0, 30.0, 170.0],
+            [3, 'INTER_PROVINCE',    'OVERRIDE_BASE_RATE', 210.0, 1.0, 80.0, 40.0, 210.0],
+            // Fragile
+            [4, 'SAME_MUNICIPALITY', 'OVERRIDE_BASE_RATE', 130.0, 1.0, 60.0, 40.0, 130.0],
+            [4, 'SAME_DISTRICT',     'OVERRIDE_BASE_RATE', 160.0, 1.0, 70.0, 50.0, 160.0],
+            [4, 'SAME_PROVINCE',     'OVERRIDE_BASE_RATE', 200.0, 1.0, 80.0, 60.0, 200.0],
+            [4, 'INTER_PROVINCE',    'OVERRIDE_BASE_RATE', 250.0, 1.0, 90.0, 75.0, 250.0],
+            // Cosmetics
+            [5, 'SAME_MUNICIPALITY', 'OVERRIDE_BASE_RATE', 100.0, 1.0, 45.0, 0, 100.0],
+            [5, 'SAME_DISTRICT',     'OVERRIDE_BASE_RATE', 130.0, 1.0, 55.0, 0, 130.0],
+            [5, 'SAME_PROVINCE',     'OVERRIDE_BASE_RATE', 160.0, 1.0, 65.0, 0, 160.0],
+            [5, 'INTER_PROVINCE',    'OVERRIDE_BASE_RATE', 190.0, 1.0, 75.0, 0, 190.0],
+            // Food
+            [6, 'SAME_MUNICIPALITY', 'OVERRIDE_BASE_RATE', 120.0, 1.0, 50.0, 0, 120.0],
+            [6, 'SAME_DISTRICT',     'OVERRIDE_BASE_RATE', 150.0, 1.0, 60.0, 0, 150.0],
+            [6, 'SAME_PROVINCE',     'OVERRIDE_BASE_RATE', 180.0, 1.0, 70.0, 0, 180.0],
+            [6, 'INTER_PROVINCE',    'OVERRIDE_BASE_RATE', 220.0, 1.0, 80.0, 0, 220.0],
+            // Heavy
+            [7, 'SAME_MUNICIPALITY', 'OVERRIDE_BASE_RATE', 250.0, 5.0, 40.0, 0, 250.0],
+            [7, 'SAME_DISTRICT',     'OVERRIDE_BASE_RATE', 350.0, 5.0, 50.0, 0, 350.0],
+            [7, 'SAME_PROVINCE',     'OVERRIDE_BASE_RATE', 450.0, 5.0, 60.0, 0, 450.0],
+            [7, 'INTER_PROVINCE',    'OVERRIDE_BASE_RATE', 550.0, 5.0, 70.0, 0, 550.0],
+          ];
+
+          for (const [cId, zType, model, bChg, bWt, eKg, sur, minC] of defaultRates) {
+            await dbInstance.prepare(`
+              INSERT OR REPLACE INTO category_delivery_rates (
+                company_id, category_id, zone_type, pricing_model, base_charge_npr, base_weight_kg, extra_per_kg_npr, surcharge_value, min_charge_npr, is_active
+              ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            `).bind(cId, zType, model, bChg, bWt, eKg, sur, minC).run().catch(() => {});
+          }
+        }
+      } catch (e) {
+        console.warn('ensureProductCategorySchema notice:', e);
+      }
+    }
+
+    // Dynamic Category Delivery Rate Engine
+    async function calculateCategoryDeliveryRate(dbInstance, {
+      companyId = 1,
+      categoryId,
+      categoryName,
+      originBranchId,
+      destinationBranchId,
+      originLocation,
+      destinationLocation,
+      weightKg = 1.0,
+      codAmount = 0
+    }) {
+      await ensureProductCategorySchema(dbInstance);
+
+      const cid = Number(companyId || 1);
+      const wt = Math.max(0.1, Number(weightKg) || 1.0);
+
+      // 1. Resolve Category
+      let cat = null;
+      if (categoryId) {
+        cat = await dbInstance.prepare('SELECT * FROM product_categories WHERE id = ?').bind(Number(categoryId)).first().catch(() => null);
+      }
+      if (!cat && categoryName) {
+        cat = await dbInstance.prepare(`
+          SELECT * FROM product_categories 
+          WHERE company_id = ? AND (name_en LIKE ? OR name_np LIKE ? OR (CASE WHEN name IS NOT NULL THEN name LIKE ? ELSE 0 END))
+          LIMIT 1
+        `).bind(cid, `%${categoryName.trim()}%`, `%${categoryName.trim()}%`, `%${categoryName.trim()}%`).first().catch(() => null);
+      }
+      if (!cat) {
+        cat = await dbInstance.prepare('SELECT * FROM product_categories WHERE is_active = 1 ORDER BY id ASC LIMIT 1').first().catch(() => null);
+      }
+
+      // 2. Fetch Origin and Destination Branch details for Zone Resolution
+      let origBranch = null;
+      let destBranch = null;
+      if (originBranchId) {
+        origBranch = await dbInstance.prepare('SELECT id, name, province, district, municipality, ward_number FROM branches WHERE id = ?').bind(Number(originBranchId)).first().catch(() => null);
+      }
+      if (destinationBranchId) {
+        destBranch = await dbInstance.prepare('SELECT id, name, province, district, municipality, ward_number FROM branches WHERE id = ?').bind(Number(destinationBranchId)).first().catch(() => null);
+      }
+
+      const origMuni = (origBranch?.municipality || '').trim().toLowerCase();
+      const destMuni = (destBranch?.municipality || '').trim().toLowerCase();
+      const origDist = (origBranch?.district || '').trim().toLowerCase();
+      const destDist = (destBranch?.district || '').trim().toLowerCase();
+      const origProv = (origBranch?.province || '').trim().toLowerCase();
+      const destProv = (destBranch?.province || '').trim().toLowerCase();
+
+      let zoneDetected = 'INTER_PROVINCE';
+      let zoneLabel = 'Inter-Province Route';
+
+      if (origMuni && destMuni && origMuni === destMuni) {
+        zoneDetected = 'SAME_MUNICIPALITY';
+        zoneLabel = 'Same Municipality (Intra-City)';
+      } else if (origDist && destDist && origDist === destDist) {
+        zoneDetected = 'SAME_DISTRICT';
+        zoneLabel = 'Same District Route';
+      } else if (origProv && destProv && origProv === destProv) {
+        zoneDetected = 'SAME_PROVINCE';
+        zoneLabel = 'Same Province (Intra-Province)';
+      } else {
+        zoneDetected = 'INTER_PROVINCE';
+        zoneLabel = 'Inter-Province Delivery';
+      }
+
+      // 3. Resolve Rate Rule for category & zone
+      let matchedRate = null;
+      if (cat?.id) {
+        matchedRate = await dbInstance.prepare(`
+          SELECT * FROM category_delivery_rates 
+          WHERE category_id = ? AND is_active = 1 AND zone_type IN (?, 'ALL_ZONES')
+          ORDER BY CASE WHEN zone_type = ? THEN 1 ELSE 2 END ASC
+          LIMIT 1
+        `).bind(cat.id, zoneDetected, zoneDetected).first().catch(() => null);
+      }
+
+      // Default fallback rule if not specifically configured
+      if (!matchedRate) {
+        const fallbackBase = zoneDetected === 'SAME_MUNICIPALITY' ? 90 : zoneDetected === 'SAME_DISTRICT' ? 120 : zoneDetected === 'SAME_PROVINCE' ? 150 : 180;
+        matchedRate = {
+          category_id: cat?.id || 1,
+          zone_type: zoneDetected,
+          pricing_model: 'OVERRIDE_BASE_RATE',
+          base_charge_npr: fallbackBase,
+          base_weight_kg: 1.0,
+          extra_per_kg_npr: 50.0,
+          surcharge_value: 0.0,
+          min_charge_npr: fallbackBase,
+          is_active: 1
+        };
+      }
+
+      // 4. Rate Calculation Formula
+      const baseCharge = Number(matchedRate.base_charge_npr) || 0;
+      const baseWeight = Number(matchedRate.base_weight_kg) || 1.0;
+      const extraPerKg = Number(matchedRate.extra_per_kg_npr) || 0;
+      const extraWeight = Math.max(0, wt - baseWeight);
+      const extraWeightCharge = Math.ceil(extraWeight) * extraPerKg;
+
+      let surcharge = 0;
+      if (matchedRate.pricing_model === 'FLAT_ADDON') {
+        surcharge = Number(matchedRate.surcharge_value) || 0;
+      } else if (matchedRate.pricing_model === 'PERCENTAGE_MARKUP') {
+        const pct = Number(matchedRate.surcharge_value) || 0;
+        surcharge = Math.round((baseCharge + extraWeightCharge) * (pct / 100));
+      } else {
+        surcharge = Number(matchedRate.surcharge_value) || 0;
+      }
+
+      const minCharge = Number(matchedRate.min_charge_npr) || 0;
+      const calculatedTotal = Math.max(minCharge, Math.round(baseCharge + extraWeightCharge + surcharge));
+
+      const breakdown = {
+        category_id: cat?.id || null,
+        category_name: cat?.name_en || cat?.name || 'Standard Parcel',
+        category_name_np: cat?.name_np || null,
+        requires_fragile_handling: Boolean(cat?.requires_fragile_handling),
+        zone_detected: zoneDetected,
+        zone_label: zoneLabel,
+        pricing_model: matchedRate.pricing_model,
+        base_charge_npr: baseCharge,
+        base_weight_kg: baseWeight,
+        actual_weight_kg: wt,
+        extra_weight_kg: Math.round(extraWeight * 100) / 100,
+        extra_per_kg_npr: extraPerKg,
+        extra_weight_charge: extraWeightCharge,
+        surcharge_value: Number(matchedRate.surcharge_value) || 0,
+        surcharge_npr: surcharge,
+        min_charge_npr: minCharge,
+        total_delivery_charge: calculatedTotal,
+      };
+
+      return {
+        success: true,
+        ...breakdown,
+        rate_rule: matchedRate,
+      };
+    }
+
     // 1. Health check & D1 info
     if (path === 'health' || path === '') {
       const result = await db.prepare('SELECT count(*) as count FROM companies').first();
@@ -3628,46 +3907,167 @@ export async function onRequest(context) {
       }
     }
 
-    // 5d. Product Categories endpoint: CRUD on D1 table 'product_categories'
-    if (path === 'product-categories' || path.startsWith('product-categories/')) {
-      const companyId = url.searchParams.get('company_id') || 1;
-      const idMatch = path.match(/^product-categories\/(\d+)$/);
-      const paramId = idMatch ? Number(idMatch[1]) : (url.searchParams.get('id') ? Number(url.searchParams.get('id')) : null);
+    // 5c2. Live Rate Calculation Engine: /api/shipments/calculate-rate
+    if (path === 'shipments/calculate-rate' && method === 'POST') {
+      try {
+        const body = await request.json();
+        const cid = Number(body.company_id || url.searchParams.get('company_id') || 1);
+        const result = await calculateCategoryDeliveryRate(db, {
+          companyId: cid,
+          categoryId: body.category_id,
+          categoryName: body.category_name,
+          originBranchId: body.origin_branch_id,
+          destinationBranchId: body.destination_branch_id,
+          originLocation: body.origin_location,
+          destinationLocation: body.destination_location,
+          weightKg: body.weight_kg !== undefined ? body.weight_kg : (body.weight !== undefined ? body.weight : 1.0),
+          codAmount: body.cod_amount || 0,
+        });
+        return jsonResponse(result);
+      } catch (err) {
+        return jsonResponse({ error: 'Calculation failed: ' + err.message }, 500);
+      }
+    }
 
-      // GET: list product categories for company
-      if (method === 'GET') {
-        const { results } = await db
-          .prepare('SELECT * FROM product_categories WHERE company_id = ? ORDER BY id ASC')
-          .bind(Number(companyId))
-          .all();
-        return jsonResponse(results || []);
+    // 5d. Product Categories & Category-Wise Delivery Rates: CRUD on D1 tables
+    if (
+      path === 'product-categories' ||
+      path.startsWith('product-categories/') ||
+      path === 'admin/product-categories' ||
+      path.startsWith('admin/product-categories/')
+    ) {
+      await ensureProductCategorySchema(db);
+
+      const companyId = url.searchParams.get('company_id') || 1;
+      const cleanSubPath = path.replace(/^admin\//, '');
+      const idMatch = cleanSubPath.match(/^product-categories\/(\d+)(?:\/([a-zA-Z0-9_-]+))?$/);
+      const paramId = idMatch ? Number(idMatch[1]) : (url.searchParams.get('id') ? Number(url.searchParams.get('id')) : null);
+      const subAction = idMatch ? idMatch[2] : null;
+
+      // Fast toggle active/inactive: PATCH /api/admin/product-categories/:id/toggle
+      if ((method === 'PATCH' || method === 'POST') && subAction === 'toggle') {
+        const targetId = paramId;
+        if (!targetId) return jsonResponse({ error: 'Product category id is required' }, 400);
+
+        let body = {};
+        try { body = await request.json(); } catch (e) {}
+
+        const current = await db.prepare('SELECT id, is_active, status FROM product_categories WHERE id = ?').bind(targetId).first();
+        if (!current) return jsonResponse({ error: 'Category not found' }, 404);
+
+        const newActive = body.is_active !== undefined ? (body.is_active ? 1 : 0) : (current.is_active ? 0 : 1);
+        const newStatus = newActive ? 'active' : 'inactive';
+
+        await db.prepare(`
+          UPDATE product_categories 
+          SET is_active = ?, status = ?, updated_at = datetime('now')
+          WHERE id = ?
+        `).bind(newActive, newStatus, targetId).run();
+
+        const updated = await db.prepare('SELECT * FROM product_categories WHERE id = ?').bind(targetId).first();
+        return jsonResponse({ success: true, item: updated });
       }
 
-      // POST: insert new product category
+      // GET: list product categories with zone delivery rates
+      if (method === 'GET') {
+        let query = 'SELECT * FROM product_categories WHERE company_id = ?';
+        const activeOnly = url.searchParams.get('active_only') === '1' || url.searchParams.get('status') === 'active';
+        if (activeOnly) {
+          query += ' AND is_active = 1';
+        }
+        query += ' ORDER BY display_order ASC, id ASC';
+
+        const { results } = await db.prepare(query).bind(Number(companyId)).all();
+        const categories = results || [];
+
+        // Attach rates to each category
+        const allRatesRes = await db.prepare('SELECT * FROM category_delivery_rates WHERE company_id = ? ORDER BY id ASC').bind(Number(companyId)).all().catch(() => ({ results: [] }));
+        const allRates = allRatesRes.results || [];
+        const ratesByCat = {};
+        allRates.forEach((r) => {
+          if (!ratesByCat[r.category_id]) ratesByCat[r.category_id] = [];
+          ratesByCat[r.category_id].push(r);
+        });
+
+        const formatted = categories.map((cat) => ({
+          ...cat,
+          name: cat.name_en || cat.name || '',
+          name_en: cat.name_en || cat.name || '',
+          requires_fragile_handling: Boolean(cat.requires_fragile_handling),
+          is_active: Boolean(cat.is_active),
+          rates: ratesByCat[cat.id] || [],
+        }));
+
+        if (paramId) {
+          const single = formatted.find((c) => c.id === paramId);
+          if (!single) return jsonResponse({ error: 'Category not found' }, 404);
+          return jsonResponse(single);
+        }
+
+        return jsonResponse(formatted);
+      }
+
+      // POST: insert new product category + zone rates in D1
       if (method === 'POST') {
         const body = await request.json();
         const cid = Number(body.company_id || companyId);
-        const name = (body.name || '').trim();
-        const code = (body.code || '').trim() || name.substring(0, 10).toUpperCase();
-        const description = (body.description || '').trim();
-        const status = body.status || 'active';
+        const nameEn = (body.name_en || body.name || '').trim();
+        const nameNp = (body.name_np || '').trim() || null;
+        const code = (body.code || '').trim() || nameEn.substring(0, 10).toUpperCase();
+        const description = (body.description || '').trim() || null;
+        const fragile = body.requires_fragile_handling ? 1 : 0;
+        const isActive = body.is_active !== undefined ? (body.is_active ? 1 : 0) : 1;
+        const status = isActive ? 'active' : 'inactive';
+        const displayOrder = Number(body.display_order) || 0;
 
-        if (!name) {
-          return jsonResponse({ error: 'Product category name is required' }, 400);
+        if (!nameEn) {
+          return jsonResponse({ error: 'Category English name (name_en) is required' }, 400);
         }
 
         const res = await db.prepare(`
-          INSERT INTO product_categories (company_id, name, code, description, status, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-        `).bind(cid, name, code, description, status).run();
+          INSERT INTO product_categories (
+            company_id, name_en, name, name_np, code, description, requires_fragile_handling, is_active, status, display_order, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        `).bind(cid, nameEn, nameEn, nameNp, code, description, fragile, isActive, status, displayOrder).run();
 
         const createdId = res.meta?.last_row_id;
-        const newRow = await db.prepare('SELECT * FROM product_categories WHERE id = ?').bind(createdId).first();
 
-        return jsonResponse({ success: true, item: newRow || { id: createdId, company_id: cid, name, code, description, status } });
+        // Insert zone rates if provided
+        if (Array.isArray(body.rates) && body.rates.length > 0) {
+          for (const r of body.rates) {
+            const zType = r.zone_type || 'ALL_ZONES';
+            const model = r.pricing_model || 'OVERRIDE_BASE_RATE';
+            const bChg = Number(r.base_charge_npr) || 100.0;
+            const bWt = Number(r.base_weight_kg) || 1.0;
+            const eKg = Number(r.extra_per_kg_npr) || 50.0;
+            const sur = Number(r.surcharge_value) || 0.0;
+            const minC = Number(r.min_charge_npr) || 80.0;
+            const rActive = r.is_active !== undefined ? (r.is_active ? 1 : 0) : 1;
+
+            await db.prepare(`
+              INSERT OR REPLACE INTO category_delivery_rates (
+                company_id, category_id, zone_type, pricing_model, base_charge_npr, base_weight_kg, extra_per_kg_npr, surcharge_value, min_charge_npr, is_active, created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            `).bind(cid, createdId, zType, model, bChg, bWt, eKg, sur, minC, rActive).run().catch(() => {});
+          }
+        }
+
+        const newRow = await db.prepare('SELECT * FROM product_categories WHERE id = ?').bind(createdId).first();
+        const newRates = await db.prepare('SELECT * FROM category_delivery_rates WHERE category_id = ?').bind(createdId).all().catch(() => ({ results: [] }));
+
+        return jsonResponse({
+          success: true,
+          item: {
+            ...newRow,
+            name: newRow.name_en,
+            requires_fragile_handling: Boolean(newRow.requires_fragile_handling),
+            is_active: Boolean(newRow.is_active),
+            rates: newRates.results || [],
+          },
+        });
       }
 
-      // PUT: update existing product category
+      // PUT: update existing product category + update rates matrix
       if (method === 'PUT') {
         const body = await request.json();
         const targetId = paramId || Number(body.id);
@@ -3677,27 +4077,69 @@ export async function onRequest(context) {
           return jsonResponse({ error: 'Product category id is required' }, 400);
         }
 
-        const name = (body.name || '').trim();
+        const nameEn = (body.name_en || body.name || '').trim();
+        const nameNp = body.name_np !== undefined ? (String(body.name_np).trim() || null) : null;
         const code = (body.code || '').trim();
-        const description = (body.description !== undefined ? body.description : '').trim();
-        const status = body.status || 'active';
+        const description = body.description !== undefined ? (String(body.description).trim() || null) : null;
+        const fragile = body.requires_fragile_handling !== undefined ? (body.requires_fragile_handling ? 1 : 0) : 0;
+        const isActive = body.is_active !== undefined ? (body.is_active ? 1 : 0) : 1;
+        const status = isActive ? 'active' : 'inactive';
+        const displayOrder = Number(body.display_order) || 0;
 
-        if (!name) {
+        if (!nameEn) {
           return jsonResponse({ error: 'Product category name is required' }, 400);
         }
 
         await db.prepare(`
           UPDATE product_categories
-          SET name = ?, code = ?, description = ?, status = ?, updated_at = datetime('now')
+          SET name_en = ?, name = ?, name_np = ?, code = ?, description = ?, requires_fragile_handling = ?, is_active = ?, status = ?, display_order = ?, updated_at = datetime('now')
           WHERE id = ? AND company_id = ?
-        `).bind(name, code, description, status, targetId, cid).run();
+        `).bind(nameEn, nameEn, nameNp, code, description, fragile, isActive, status, displayOrder, targetId, cid).run();
+
+        // Update rates if provided in payload
+        if (Array.isArray(body.rates)) {
+          for (const r of body.rates) {
+            const zType = r.zone_type || 'ALL_ZONES';
+            const model = r.pricing_model || 'OVERRIDE_BASE_RATE';
+            const bChg = Number(r.base_charge_npr) || 100.0;
+            const bWt = Number(r.base_weight_kg) || 1.0;
+            const eKg = Number(r.extra_per_kg_npr) || 50.0;
+            const sur = Number(r.surcharge_value) || 0.0;
+            const minC = Number(r.min_charge_npr) || 80.0;
+            const rActive = r.is_active !== undefined ? (r.is_active ? 1 : 0) : 1;
+
+            if (r.id) {
+              await db.prepare(`
+                UPDATE category_delivery_rates
+                SET zone_type = ?, pricing_model = ?, base_charge_npr = ?, base_weight_kg = ?, extra_per_kg_npr = ?, surcharge_value = ?, min_charge_npr = ?, is_active = ?, updated_at = datetime('now')
+                WHERE id = ? AND category_id = ?
+              `).bind(zType, model, bChg, bWt, eKg, sur, minC, rActive, Number(r.id), targetId).run().catch(() => {});
+            } else {
+              await db.prepare(`
+                INSERT INTO category_delivery_rates (
+                  company_id, category_id, zone_type, pricing_model, base_charge_npr, base_weight_kg, extra_per_kg_npr, surcharge_value, min_charge_npr, is_active, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+              `).bind(cid, targetId, zType, model, bChg, bWt, eKg, sur, minC, rActive).run().catch(() => {});
+            }
+          }
+        }
 
         const updatedRow = await db.prepare('SELECT * FROM product_categories WHERE id = ?').bind(targetId).first();
+        const updatedRates = await db.prepare('SELECT * FROM category_delivery_rates WHERE category_id = ?').bind(targetId).all().catch(() => ({ results: [] }));
 
-        return jsonResponse({ success: true, item: updatedRow });
+        return jsonResponse({
+          success: true,
+          item: {
+            ...updatedRow,
+            name: updatedRow.name_en,
+            requires_fragile_handling: Boolean(updatedRow.requires_fragile_handling),
+            is_active: Boolean(updatedRow.is_active),
+            rates: updatedRates.results || [],
+          },
+        });
       }
 
-      // DELETE: delete product category
+      // DELETE: delete or soft-delete product category & cascade rates
       if (method === 'DELETE') {
         let targetId = paramId;
         if (!targetId) {
@@ -3714,9 +4156,10 @@ export async function onRequest(context) {
         }
 
         const cid = Number(companyId);
+        await db.prepare('DELETE FROM category_delivery_rates WHERE category_id = ?').bind(targetId).run().catch(() => {});
         await db.prepare('DELETE FROM product_categories WHERE id = ? AND company_id = ?').bind(targetId, cid).run();
 
-        return jsonResponse({ success: true, message: `Product category ${targetId} deleted successfully` });
+        return jsonResponse({ success: true, message: `Product category ${targetId} and associated rates deleted successfully` });
       }
     }
 

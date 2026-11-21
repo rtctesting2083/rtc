@@ -1024,10 +1024,15 @@ export const d1Api = {
   },
 
   // Read product categories from dedicated D1 table 'product_categories'
-  getProductCategories: async (companyId = 1) => {
+  getProductCategories: async (companyId = 1, activeOnly = false) => {
     try {
-      const res = await fetch(`/api/product-categories?company_id=${companyId}`);
-      if (!res.ok) return null;
+      const res = await fetch(`/api/admin/product-categories?company_id=${companyId}${activeOnly ? '&active_only=1' : ''}`);
+      if (!res.ok) {
+        // Fallback to /api/product-categories
+        const fallbackRes = await fetch(`/api/product-categories?company_id=${companyId}${activeOnly ? '&active_only=1' : ''}`);
+        if (!fallbackRes.ok) return null;
+        return await fallbackRes.json();
+      }
       return await res.json();
     } catch (e) {
       return null;
@@ -1037,10 +1042,10 @@ export const d1Api = {
   // Insert product category into D1 table 'product_categories'
   addProductCategory: async (payload) => {
     try {
-      const res = await fetch('/api/product-categories', {
+      const res = await fetch('/api/admin/product-categories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(typeof payload === 'string' ? { name: payload, company_id: 1 } : payload),
+        body: JSON.stringify(typeof payload === 'string' ? { name_en: payload, name: payload, company_id: 1 } : payload),
       });
       if (!res.ok) return null;
       return await res.json();
@@ -1052,7 +1057,7 @@ export const d1Api = {
   // Update product category in D1 table 'product_categories'
   updateProductCategory: async (id, payload, companyId = 1) => {
     try {
-      const res = await fetch(`/api/product-categories/${id}`, {
+      const res = await fetch(`/api/admin/product-categories/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: Number(id), company_id: Number(companyId), ...payload }),
@@ -1064,10 +1069,25 @@ export const d1Api = {
     }
   },
 
+  // Toggle product category active status
+  toggleProductCategoryStatus: async (id, isActive) => {
+    try {
+      const res = await fetch(`/api/admin/product-categories/${id}/toggle`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: isActive }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
   // Delete product category from D1 table 'product_categories'
   deleteProductCategory: async (id, companyId = 1) => {
     try {
-      const res = await fetch(`/api/product-categories/${id}?company_id=${companyId}`, {
+      const res = await fetch(`/api/admin/product-categories/${id}?company_id=${companyId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: Number(id), company_id: Number(companyId) }),
@@ -1075,6 +1095,22 @@ export const d1Api = {
       if (!res.ok) return null;
       return await res.json();
     } catch (e) {
+      return null;
+    }
+  },
+
+  // Dynamic Category-Wise Delivery Rate Calculator Engine
+  calculateShipmentRate: async (params) => {
+    try {
+      const res = await fetch('/api/shipments/calculate-rate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      console.warn('Error calculating shipment rate:', e);
       return null;
     }
   },

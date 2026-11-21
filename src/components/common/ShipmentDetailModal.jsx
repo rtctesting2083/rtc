@@ -39,7 +39,8 @@ export function ShipmentDetailModal({ shipment, onClose, onEditOrder, isAdmin = 
     session?.type === 'customer' ||
     location.pathname.startsWith('/customer') ||
     location.pathname.startsWith('/tracking') ||
-    location.pathname.startsWith('/track');
+    location.pathname.startsWith('/track') ||
+    isAdmin === false;
   const isAdminPortal =
     !isVendorPortal &&
     (isAdmin === true || portalType === 'company') &&
@@ -488,10 +489,12 @@ export function ShipmentDetailModal({ shipment, onClose, onEditOrder, isAdmin = 
     .filter((ev) => {
       if (isAdminPortal) return true;
       const notes = String(ev.notes || '');
-      // If event is solely a 3PL handover or 3PL link milestone, hide it completely from vendors
+      const title = String(ev.title || '');
+      // If event is a 3PL handover or mentions external courier, hide it completely from vendors
       if (
         ev.partner ||
-        /handed over.*(?:3PL|external|courier|partner)|linked to external|manual third-party/i.test(notes)
+        /3PL|third-party|third party|external courier|external waybill|waybill|handover|handed over|NCM|Upaya|Nepal Post|Aramex|Sundar|Tiger/i.test(notes) ||
+        /3PL|third-party|third party|external courier|handover/i.test(title)
       ) {
         return false;
       }

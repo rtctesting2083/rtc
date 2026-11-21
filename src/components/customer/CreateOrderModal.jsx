@@ -536,6 +536,43 @@ export function CreateOrderModal({
   const isFragileItem = /fragile|glass/i.test(productCategory || '');
   const currentSettings = typeof chargeSettings === 'function' ? chargeSettings() : (chargeSettings || null);
 
+  // Dynamic Category Delivery Charge Engine (Cloudflare D1 Rate Calculation)
+  const [categoryRateResult, setCategoryRateResult] = useState(null);
+  const [isCalculatingRate, setIsCalculatingRate] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const runLiveRateCalc = async () => {
+      if (!productCategory || !destinationBranchId) {
+        setCategoryRateResult(null);
+        return;
+      }
+      setIsCalculatingRate(true);
+      try {
+        const selectedCat = activeProductCategories.find(
+          (c) => (c.name_en || c.name || '').toLowerCase() === productCategory.toLowerCase() || String(c.id) === String(productCategory)
+        );
+        const res = await d1Api.calculateShipmentRate({
+          category_id: selectedCat?.id || null,
+          category_name: productCategory,
+          origin_branch_id: senderBranchId ? Number(senderBranchId) : null,
+          destination_branch_id: destinationBranchId ? Number(destinationBranchId) : null,
+          weight_kg: weight > 0 ? weight : 1.0,
+          cod_amount: parseFloat(codAmount) || 0,
+        });
+        if (isMounted && res && res.success) {
+          setCategoryRateResult(res);
+        }
+      } catch (err) {
+        // Fallback to standard charge settings
+      } finally {
+        if (isMounted) setIsCalculatingRate(false);
+      }
+    };
+    runLiveRateCalc();
+    return () => { isMounted = false; };
+  }, [productCategory, senderBranchId, destinationBranchId, weight, codAmount, activeProductCategories]);
+
   const feeCalc = calculateDeliveryCharge({
     destination: destinationText,
     origin: originText,
@@ -547,7 +584,7 @@ export function CreateOrderModal({
     settings: currentSettings,
   });
 
-  const rawFee = feeCalc ? feeCalc.deliveryFee : 0;
+  const rawFee = categoryRateResult ? categoryRateResult.total_delivery_charge : (feeCalc ? feeCalc.deliveryFee : 0);
   const discountAmount = appliedDiscount ? Math.round(rawFee * appliedDiscount * 100) / 100 : 0;
   const serviceCharge = Math.max(0, Math.round((rawFee - discountAmount) * 100) / 100);
   const totalPayable = serviceCharge;
@@ -635,6 +672,9 @@ export function CreateOrderModal({
       weight_kg: weight,
       package_description: packageDesc.trim() || '',
       product_category: productCategory || 'Clothing and Apparels',
+      product_category_id: categoryRateResult?.category_id || null,
+      calculated_delivery_charge: serviceCharge,
+      category_pricing_breakdown_json: categoryRateResult ? JSON.stringify(categoryRateResult) : null,
       item_value: parseFloat(itemValue) || 0,
       promo_code: appliedDiscount ? promoCode.trim().toUpperCase() : '',
       priority: /express|same/i.test(serviceType || '') ? 'express' : 'normal',
@@ -1574,8 +1614,8 @@ export function CreateOrderModal({
                       <option value="">Select Category</option>
                       {activeProductCategories.length > 0 ? (
                         activeProductCategories.map((pc) => (
-                          <option key={pc.id} value={pc.name}>
-                            {pc.name}
+                          <option key={pc.id} value={pc.name_en || pc.name}>
+                            {pc.name_en || pc.name} {pc.name_np ? `(${pc.name_np})` : ''} {pc.requires_fragile_handling ? '⚠️ (Fragile)' : ''}
                           </option>
                         ))
                       ) : (
@@ -1663,8 +1703,8 @@ export function CreateOrderModal({
                           <option value="">Select Product Category</option>
                           {activeProductCategories.length > 0 ? (
                             activeProductCategories.map((pc) => (
-                              <option key={pc.id} value={pc.name}>
-                                {pc.name}
+                              <option key={pc.id} value={pc.name_en || pc.name}>
+                                {pc.name_en || pc.name} {pc.name_np ? `(${pc.name_np})` : ''} {pc.requires_fragile_handling ? '⚠️ (Fragile)' : ''}
                               </option>
                             ))
                           ) : (
@@ -1833,6 +1873,45 @@ export function CreateOrderModal({
                     {serviceType || '—'}
                   </span>
                 </div>
+                {/* Category-Wise Dynamic Rate Breakdown */}
+                {categoryRateResult && (
+                  <div
+                    style={{
+                      background: '#f8fafc',
+                      borderRadius: '6px',
+                      padding: '8px 10px',
+                      margin: '6px 0',
+                      border: '1px solid #e2e8f0',
+                      fontSize: '11px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                      <span style={{ color: '#64748b', fontWeight: 600 }}>Route Zone:</span>
+                      <span style={{ fontWeight: 700, color: '#1e293b' }}>{categoryRateResult.zone_label}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                      <span style={{ color: '#64748b' }}>Base Fee ({categoryRateResult.base_weight_kg}kg):</span>
+                      <span style={{ fontWeight: 600 }}>Rs. {categoryRateResult.base_charge_npr}</span>
+                    </div>
+                    {categoryRateResult.extra_weight_charge > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                        <span style={{ color: '#64748b' }}>Extra Weight ({categoryRateResult.extra_weight_kg}kg):</span>
+                        <span style={{ fontWeight: 600 }}>+ Rs. {categoryRateResult.extra_weight_charge}</span>
+                      </div>
+                    )}
+                    {categoryRateResult.surcharge_npr > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', color: '#c2410c' }}>
+                        <span>Handling Surcharge:</span>
+                        <span style={{ fontWeight: 700 }}>+ Rs. {categoryRateResult.surcharge_npr}</span>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px', paddingTop: '4px', borderTop: '1px dashed #cbd5e1' }}>
+                      <span style={{ color: '#475569', fontWeight: 700 }}>Rate Applied:</span>
+                      <span style={{ color: '#16a34a', fontWeight: 800 }}>Rs. {categoryRateResult.total_delivery_charge}</span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="summary-data-row">
                   <span className="summary-data-label">Service Charge</span>
                   <span className="summary-data-val" style={{ fontWeight: 700, color: '#0f172a' }}>
