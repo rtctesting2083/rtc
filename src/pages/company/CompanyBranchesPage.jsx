@@ -17,6 +17,7 @@ import {
   ShieldAlert,
   Network,
   Trash2,
+  Eye,
 } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { useAuth } from '../../context/AuthContext';
@@ -24,6 +25,7 @@ import { useModal } from '../../context/ModalContext';
 import { BranchFormModal } from '../../components/company/BranchFormModal';
 import { BranchHierarchyModal } from '../../components/company/BranchHierarchyModal';
 import { BranchHierarchyQuickModal } from '../../components/company/BranchHierarchyQuickModal';
+import { BranchProfileDetailsModal } from '../../components/company/BranchProfileDetailsModal';
 import { ConfirmSoftDeleteModal } from '../../components/common/ConfirmSoftDeleteModal';
 import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { addressSummary } from '../../utils/helpers';
@@ -366,6 +368,19 @@ export function CompanyBranchesPage() {
   };
 
   // Modal actions
+  const handleOpenProfile = (branch) => {
+    openModal(
+      `Branch Profile — ${branch.name}`,
+      <BranchProfileDetailsModal
+        branch={branch}
+        onEdit={(b) => handleOpenEdit(b)}
+        onViewAsAdmin={(id) => handleViewAsAdmin(id)}
+        onClose={closeModal}
+      />,
+      'wide'
+    );
+  };
+
   const handleOpenAdd = () => {
     openModal(
       'Add Branch',
@@ -1006,16 +1021,24 @@ export function CompanyBranchesPage() {
                         />
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                            <span
+                            <button
+                              type="button"
+                              onClick={() => handleOpenProfile(b)}
                               style={{
-                                fontWeight: 600,
+                                background: 'none',
+                                border: 'none',
+                                padding: 0,
+                                textAlign: 'left',
+                                cursor: 'pointer',
+                                fontWeight: 700,
                                 fontSize: '13px',
                                 color: isActive ? '#0f172a' : '#64748b',
                                 textDecoration: !isActive ? 'line-through' : 'none',
                               }}
+                              title="Click to view branch profile, bank details & documents"
                             >
                               {b.name}
-                            </span>
+                            </button>
                             {b.name_np && (
                               <span style={{ fontSize: '11.5px', color: '#64748b' }}>
                                 ({b.name_np})
@@ -1262,6 +1285,27 @@ export function CompanyBranchesPage() {
                         >
                           <Network size={12} color="#dc2626" />
                           Hierarchy
+                        </button>
+
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          style={{
+                            fontSize: '11px',
+                            padding: '4px 7px',
+                            borderRadius: '4px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                            color: '#1d4ed8',
+                            background: '#eff6ff',
+                            borderColor: '#bfdbfe',
+                          }}
+                          onClick={() => handleOpenProfile(b)}
+                          title="View Branch Profile, Bank Details & Verification Documents"
+                        >
+                          <Eye size={12} />
+                          Profile
                         </button>
 
                         <button

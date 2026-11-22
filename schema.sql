@@ -42,6 +42,22 @@ CREATE TABLE IF NOT EXISTS branches (
   address_json TEXT,
   staff_roles_json TEXT,
   staff_users_json TEXT,
+
+  -- Bank Details (Optional)
+  bank_name TEXT,
+  bank_branch TEXT,
+  account_number TEXT,
+  account_holder_name TEXT,
+  bank_details_json TEXT,
+
+  -- Documents (Optional)
+  doc_citizenship TEXT,
+  doc_vat_pan TEXT,
+  doc_registration TEXT,
+  doc_kyc TEXT,
+  doc_agreement TEXT,
+  documents_json TEXT,
+
   FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
 );
 

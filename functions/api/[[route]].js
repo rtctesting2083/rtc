@@ -6130,6 +6130,52 @@ export async function onRequest(context) {
           if (b.staff_users_json) {
             try { staffUsers = JSON.parse(b.staff_users_json); } catch (e) {}
           }
+
+          // Bank Details (Optional)
+          let bankDetails = {};
+          if (b.bank_details_json) {
+            try { bankDetails = JSON.parse(b.bank_details_json); } catch (e) {}
+          }
+          if (!bankDetails.bank_name && (b.bank_name || b.bank_branch || b.account_number || b.account_holder_name)) {
+            bankDetails = {
+              bank_name: b.bank_name || '',
+              branch_name: b.bank_branch || '',
+              account_number: b.account_number || '',
+              account_holder_name: b.account_holder_name || '',
+            };
+          }
+
+          // Documents (Optional)
+          let documents = {};
+          if (b.documents_json) {
+            try { documents = JSON.parse(b.documents_json); } catch (e) {}
+          }
+          if (!documents.citizenship && b.doc_citizenship) {
+            documents.citizenship = typeof b.doc_citizenship === 'string' && b.doc_citizenship.startsWith('{')
+              ? JSON.parse(b.doc_citizenship)
+              : { file: b.doc_citizenship, file_name: 'ID/Citizenship' };
+          }
+          if (!documents.vat_pan && b.doc_vat_pan) {
+            documents.vat_pan = typeof b.doc_vat_pan === 'string' && b.doc_vat_pan.startsWith('{')
+              ? JSON.parse(b.doc_vat_pan)
+              : { file: b.doc_vat_pan, file_name: 'VAT/PAN Certificate' };
+          }
+          if (!documents.registration && b.doc_registration) {
+            documents.registration = typeof b.doc_registration === 'string' && b.doc_registration.startsWith('{')
+              ? JSON.parse(b.doc_registration)
+              : { file: b.doc_registration, file_name: 'Registration Document' };
+          }
+          if (!documents.kyc && b.doc_kyc) {
+            documents.kyc = typeof b.doc_kyc === 'string' && b.doc_kyc.startsWith('{')
+              ? JSON.parse(b.doc_kyc)
+              : { file: b.doc_kyc, file_name: 'KYC Document' };
+          }
+          if (!documents.agreement && b.doc_agreement) {
+            documents.agreement = typeof b.doc_agreement === 'string' && b.doc_agreement.startsWith('{')
+              ? JSON.parse(b.doc_agreement)
+              : { file: b.doc_agreement, file_name: 'Hub/Branch Agreement' };
+          }
+
           return {
             id: b.id,
             company_id: b.company_id,
@@ -6154,6 +6200,17 @@ export async function onRequest(context) {
             municipality: b.municipality || address.municipality || '',
             staffRoles,
             staffUsers,
+            bank_details: bankDetails,
+            bank_name: b.bank_name || bankDetails.bank_name || '',
+            bank_branch: b.bank_branch || bankDetails.branch_name || '',
+            account_number: b.account_number || bankDetails.account_number || '',
+            account_holder_name: b.account_holder_name || bankDetails.account_holder_name || '',
+            documents,
+            doc_citizenship: b.doc_citizenship || (typeof documents.citizenship === 'string' ? documents.citizenship : documents.citizenship?.file) || null,
+            doc_vat_pan: b.doc_vat_pan || (typeof documents.vat_pan === 'string' ? documents.vat_pan : documents.vat_pan?.file) || null,
+            doc_registration: b.doc_registration || (typeof documents.registration === 'string' ? documents.registration : documents.registration?.file) || null,
+            doc_kyc: b.doc_kyc || (typeof documents.kyc === 'string' ? documents.kyc : documents.kyc?.file) || null,
+            doc_agreement: b.doc_agreement || (typeof documents.agreement === 'string' ? documents.agreement : documents.agreement?.file) || null,
             status: b.status || 'active',
             verified: b.verification_status === 'rejected' ? false : (b.verified === 1 || b.verified === true || b.verified === 'true' || b.verification_status === 'verified' || b.status !== 'inactive'),
             verification_status: b.verification_status === 'rejected' ? 'rejected' : 'verified',
@@ -6294,6 +6351,28 @@ export async function onRequest(context) {
           const staff_roles_json = JSON.stringify(body.staffRoles || []);
           const staff_users_json = JSON.stringify(body.staffUsers || []);
 
+          // Bank Details (Optional)
+          const bank_details = body.bank_details || {};
+          const bank_name = (body.bank_name || bank_details.bank_name || '').trim() || null;
+          const bank_branch = (body.bank_branch || bank_details.branch_name || '').trim() || null;
+          const account_number = (body.account_number || bank_details.account_number || '').trim() || null;
+          const account_holder_name = (body.account_holder_name || bank_details.account_holder_name || '').trim() || null;
+          const bank_details_json = JSON.stringify({
+            bank_name: bank_name || '',
+            branch_name: bank_branch || '',
+            account_number: account_number || '',
+            account_holder_name: account_holder_name || '',
+          });
+
+          // Documents (Optional)
+          const documents = body.documents || {};
+          const doc_citizenship = typeof documents.citizenship === 'string' ? documents.citizenship : (documents.citizenship?.file || body.doc_citizenship || null);
+          const doc_vat_pan = typeof documents.vat_pan === 'string' ? documents.vat_pan : (documents.vat_pan?.file || body.doc_vat_pan || null);
+          const doc_registration = typeof documents.registration === 'string' ? documents.registration : (documents.registration?.file || body.doc_registration || null);
+          const doc_kyc = typeof documents.kyc === 'string' ? documents.kyc : (documents.kyc?.file || body.doc_kyc || null);
+          const doc_agreement = typeof documents.agreement === 'string' ? documents.agreement : (documents.agreement?.file || body.doc_agreement || null);
+          const documents_json = JSON.stringify(documents);
+
           let branch_code = (body.branch_code || '').trim().toUpperCase();
 
           if (branchId) {
@@ -6332,6 +6411,17 @@ export async function onRequest(context) {
                   address_json = ?,
                   staff_roles_json = ?,
                   staff_users_json = ?,
+                  bank_name = ?,
+                  bank_branch = ?,
+                  account_number = ?,
+                  account_holder_name = ?,
+                  bank_details_json = ?,
+                  doc_citizenship = ?,
+                  doc_vat_pan = ?,
+                  doc_registration = ?,
+                  doc_kyc = ?,
+                  doc_agreement = ?,
+                  documents_json = ?,
                   status = ?,
                   verified = ?,
                   verification_status = ?,
@@ -6361,6 +6451,17 @@ export async function onRequest(context) {
                 address_json,
                 staff_roles_json,
                 staff_users_json,
+                bank_name,
+                bank_branch,
+                account_number,
+                account_holder_name,
+                bank_details_json,
+                doc_citizenship,
+                doc_vat_pan,
+                doc_registration,
+                doc_kyc,
+                doc_agreement,
+                documents_json,
                 status,
                 verified,
                 verification_status,
@@ -6391,9 +6492,11 @@ export async function onRequest(context) {
                 province_id, district_id, local_level_id, ward_number,
                 province, district, municipality, ward, tole,
                 address_json, staff_roles_json, staff_users_json,
+                bank_name, bank_branch, account_number, account_holder_name, bank_details_json,
+                doc_citizenship, doc_vat_pan, doc_registration, doc_kyc, doc_agreement, documents_json,
                 status, verified, verification_status, branch_type,
                 created_at, updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
             `)
             .bind(
               cid,
@@ -6419,6 +6522,17 @@ export async function onRequest(context) {
               address_json,
               staff_roles_json,
               staff_users_json,
+              bank_name,
+              bank_branch,
+              account_number,
+              account_holder_name,
+              bank_details_json,
+              doc_citizenship,
+              doc_vat_pan,
+              doc_registration,
+              doc_kyc,
+              doc_agreement,
+              documents_json,
               status,
               verified,
               verification_status,

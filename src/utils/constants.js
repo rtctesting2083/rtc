@@ -402,6 +402,14 @@ export const VENDOR_DOCUMENTS = [
   { key: 'contact_photo', label: 'Contact Person Photo' },
 ];
 
+export const BRANCH_DOCUMENTS = [
+  { key: 'citizenship', label: 'ID/Citizenship', description: 'National ID or Nepali Citizenship of branch head / owner' },
+  { key: 'vat_pan', label: 'VAT/PAN Certificate', description: 'Branch / Franchise Business PAN or VAT Registration' },
+  { key: 'registration', label: 'Registration Document', description: 'Company / Business registration or local municipality license' },
+  { key: 'kyc', label: 'KYC', description: 'Branch / Franchise representative KYC verification form' },
+  { key: 'agreement', label: 'Hub/Branch Agreement', description: 'Official RTC Courier franchise / branch agreement contract' },
+];
+
 export const PROMO_CODES = {
   WELCOME10: 0.10,
 };

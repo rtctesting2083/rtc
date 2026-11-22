@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { addressSummary } from '../../utils/helpers';
 import { useCompany } from '../../context/CompanyContext';
+import { useModal } from '../../context/ModalContext';
+import { DocumentPreviewModal } from '../../components/common/DocumentPreviewModal';
+import { BRANCH_DOCUMENTS } from '../../utils/constants';
 import { d1Api } from '../../utils/d1Api';
 import {
   Key,
@@ -14,13 +17,57 @@ import {
   Building2,
   Save,
   ShieldCheck,
+  Landmark,
+  FileText,
+  Download,
+  Copy,
 } from 'lucide-react';
 
 export function BranchProfilePage() {
   const { currentBranch, staffUser } = useOutletContext();
   const { updateBranch } = useCompany();
+  const { openModal } = useModal();
 
   const [activeTab, setActiveTab] = useState('details'); // 'details' | 'password'
+  const [copiedBankField, setCopiedBankField] = useState('');
+
+  const copyText = (txt, field) => {
+    if (!txt) return;
+    navigator.clipboard.writeText(txt);
+    setCopiedBankField(field);
+    setTimeout(() => setCopiedBankField(''), 2500);
+  };
+
+  const bankDetails = currentBranch.bank_details || {
+    bank_name: currentBranch.bank_name || '',
+    branch_name: currentBranch.bank_branch || '',
+    account_number: currentBranch.account_number || '',
+    account_holder_name: currentBranch.account_holder_name || '',
+  };
+
+  const rawDocs = currentBranch.documents || {};
+  const normalizeDoc = (val, defName) => {
+    if (!val) return null;
+    if (typeof val === 'object' && val.file) return val;
+    if (typeof val === 'string' && val.trim()) {
+      if (val.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(val);
+          if (parsed && parsed.file) return parsed;
+        } catch (e) {}
+      }
+      return { file: val, file_name: defName, is_image: !val.toLowerCase().endsWith('.pdf') };
+    }
+    return null;
+  };
+
+  const branchDocs = {
+    citizenship: normalizeDoc(currentBranch.doc_citizenship, 'ID/Citizenship') || (rawDocs.citizenship?.file ? rawDocs.citizenship : null),
+    vat_pan: normalizeDoc(currentBranch.doc_vat_pan, 'VAT/PAN Certificate') || (rawDocs.vat_pan?.file ? rawDocs.vat_pan : null),
+    registration: normalizeDoc(currentBranch.doc_registration, 'Registration Document') || (rawDocs.registration?.file ? rawDocs.registration : null),
+    kyc: normalizeDoc(currentBranch.doc_kyc, 'KYC Document') || (rawDocs.kyc?.file ? rawDocs.kyc : null),
+    agreement: normalizeDoc(currentBranch.doc_agreement, 'Hub/Branch Agreement') || (rawDocs.agreement?.file ? rawDocs.agreement : null),
+  };
 
   // Change Password Form State
   const [currentPassword, setCurrentPassword] = useState('');
@@ -349,6 +396,194 @@ export function BranchProfilePage() {
               <strong>Service Coverage:</strong>{' '}
               {currentBranch.address?.district ? `${currentBranch.address.district} District, ` : ''}
               {currentBranch.address?.province ? `${currentBranch.address.province} Province` : 'Regional Coverage'}
+            </div>
+          </div>
+
+          {/* ════════ Bank Details (Optional) ════════ */}
+          <div className="panel" style={{ padding: '24px', marginTop: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Landmark size={18} color="#1d4ed8" />
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>
+                  Branch Bank Account Details
+                </h3>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', background: '#f1f5f9', padding: '1px 6px', borderRadius: '4px' }}>
+                  Optional
+                </span>
+              </div>
+              <span style={{ fontSize: '11.5px', color: '#059669', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <CheckCircle2 size={13} /> Synced with D1
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', fontSize: '13px' }}>
+              <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, marginBottom: '4px' }}>
+                  Bank Name :
+                </div>
+                <div style={{ fontWeight: 700, color: bankDetails.bank_name ? '#0f172a' : '#94a3b8' }}>
+                  {bankDetails.bank_name || 'Not provided'}
+                </div>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, marginBottom: '4px' }}>
+                  Branch Name :
+                </div>
+                <div style={{ fontWeight: 700, color: bankDetails.branch_name ? '#0f172a' : '#94a3b8' }}>
+                  {bankDetails.branch_name || 'Not provided'}
+                </div>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, marginBottom: '4px' }}>
+                  Account Number :
+                </div>
+                <div style={{ fontWeight: 800, color: bankDetails.account_number ? '#1e293b' : '#94a3b8', fontFamily: 'monospace', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>{bankDetails.account_number || 'Not provided'}</span>
+                  {bankDetails.account_number && (
+                    <button
+                      type="button"
+                      onClick={() => copyText(bankDetails.account_number, 'acct')}
+                      title="Copy account number"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2563eb' }}
+                    >
+                      {copiedBankField === 'acct' ? <span style={{ fontSize: '10.5px', color: '#16a34a' }}>Copied!</span> : <Copy size={13} />}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, marginBottom: '4px' }}>
+                  Account Holder Name :
+                </div>
+                <div style={{ fontWeight: 700, color: bankDetails.account_holder_name ? '#0f172a' : '#94a3b8' }}>
+                  {bankDetails.account_holder_name || 'Not provided'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ════════ Documents & Verification (Optional) ════════ */}
+          <div className="panel" style={{ padding: '24px', marginTop: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <FileText size={18} color="#059669" />
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>
+                  Branch Documents &amp; Legal Verification
+                </h3>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', background: '#f1f5f9', padding: '1px 6px', borderRadius: '4px' }}>
+                  Optional
+                </span>
+              </div>
+              <span style={{ fontSize: '11.5px', color: '#64748b' }}>
+                {Object.values(branchDocs).filter(Boolean).length} of 5 Available
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {BRANCH_DOCUMENTS.map((docDef) => {
+                const doc = branchDocs[docDef.key];
+                const isUploaded = Boolean(doc && doc.file);
+
+                return (
+                  <div
+                    key={docDef.key}
+                    style={{
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '8px',
+                      padding: '12px 16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '12px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '18px' }}>{isUploaded ? '📄' : '📁'}</span>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontWeight: 700, fontSize: '13px', color: '#0f172a' }}>
+                            {docDef.label} :
+                          </span>
+                          {isUploaded ? (
+                            <span style={{ fontSize: '10.5px', background: '#dcfce7', color: '#166534', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                              Available
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: '10.5px', background: '#f1f5f9', color: '#64748b', padding: '1px 6px', borderRadius: '4px' }}>
+                              Optional · Not uploaded
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
+                          {docDef.description}
+                        </div>
+                      </div>
+                    </div>
+
+                    {isUploaded && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            openModal(
+                              `${docDef.label} — ${currentBranch.name}`,
+                              <DocumentPreviewModal
+                                document={{
+                                  ...doc,
+                                  title: `${docDef.label} (${currentBranch.name})`,
+                                  file_name: doc.file_name || docDef.label,
+                                }}
+                              />,
+                              'wide'
+                            );
+                          }}
+                          style={{
+                            padding: '5px 12px',
+                            borderRadius: '5px',
+                            background: '#eff6ff',
+                            color: '#1d4ed8',
+                            border: '1px solid #bfdbfe',
+                            fontSize: '11.5px',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <Eye size={12} />
+                          Preview
+                        </button>
+                        <a
+                          href={doc.file}
+                          download={`${currentBranch.branch_code || 'branch'}_${docDef.key}`}
+                          style={{
+                            padding: '5px 12px',
+                            borderRadius: '5px',
+                            background: '#ffffff',
+                            color: '#334155',
+                            border: '1px solid #cbd5e1',
+                            fontSize: '11.5px',
+                            fontWeight: 600,
+                            textDecoration: 'none',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <Download size={12} />
+                          Download
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>

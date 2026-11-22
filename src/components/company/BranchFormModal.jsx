@@ -2,7 +2,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
 import { isValidEmail } from '../../utils/helpers';
-import { defaultBranchStaffRoles } from '../../utils/constants';
+import { defaultBranchStaffRoles, BRANCH_DOCUMENTS } from '../../utils/constants';
+import { DocumentUpload } from '../common/DocumentUpload';
 import {
   NEPAL_PROVINCES,
   getDistricts,
@@ -10,7 +11,7 @@ import {
   STANDARD_WARDS,
   getProvinceForDistrict,
 } from '../../utils/nepalAddressData';
-import { AlertCircle, Building2, CheckCircle2, ChevronRight, Network, ShieldCheck } from 'lucide-react';
+import { AlertCircle, Building2, CheckCircle2, ChevronRight, Network, ShieldCheck, Landmark, FileText } from 'lucide-react';
 
 const PROVINCE_META = [
   { id: 1, name: 'Koshi', nameNp: 'कोशी प्रदेश', code: 'P1' },
@@ -73,6 +74,49 @@ export function BranchFormModal({ initialBranch = null, onDone = null }) {
     initialBranch?.ward_number ? String(initialBranch.ward_number) : (initialAddr.ward || initialBranch?.ward || '')
   );
   const [tole, setTole] = useState(initialAddr.tole || initialBranch?.tole || '');
+
+  // Bank Details State (Optional)
+  const [bankDetails, setBankDetails] = useState(() => {
+    const b = initialBranch?.bank_details || {};
+    return {
+      bank_name: initialBranch?.bank_name || b.bank_name || '',
+      branch_name: initialBranch?.bank_branch || b.branch_name || '',
+      account_number: initialBranch?.account_number || b.account_number || '',
+      account_holder_name: initialBranch?.account_holder_name || b.account_holder_name || '',
+    };
+  });
+
+  const handleBankChange = (field, val) => {
+    setBankDetails((prev) => ({ ...prev, [field]: val }));
+  };
+
+  // Documents & KYC Verification State (Optional)
+  const [documents, setDocuments] = useState(() => {
+    const rawDocs = initialBranch?.documents || {};
+    const normalizeDoc = (val, defName) => {
+      if (!val) return {};
+      if (typeof val === 'object') return val;
+      if (typeof val === 'string' && val.trim()) {
+        if (val.startsWith('{')) {
+          try { return JSON.parse(val); } catch (e) {}
+        }
+        return { file: val, file_name: defName, is_image: !val.toLowerCase().endsWith('.pdf') };
+      }
+      return {};
+    };
+
+    return {
+      citizenship: normalizeDoc(initialBranch?.doc_citizenship, 'ID/Citizenship') || rawDocs.citizenship || {},
+      vat_pan: normalizeDoc(initialBranch?.doc_vat_pan, 'VAT/PAN Certificate') || rawDocs.vat_pan || {},
+      registration: normalizeDoc(initialBranch?.doc_registration, 'Registration Document') || rawDocs.registration || {},
+      kyc: normalizeDoc(initialBranch?.doc_kyc, 'KYC Document') || rawDocs.kyc || {},
+      agreement: normalizeDoc(initialBranch?.doc_agreement, 'Hub/Branch Agreement') || rawDocs.agreement || {},
+    };
+  });
+
+  const handleDocChange = (key, docObj) => {
+    setDocuments((prev) => ({ ...prev, [key]: docObj }));
+  };
 
   // Submission & UI feedback
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -272,6 +316,17 @@ export function BranchFormModal({ initialBranch = null, onDone = null }) {
         address: cleanAddress,
         staffRoles: initialBranch?.staffRoles || defaultBranchStaffRoles(),
         staffUsers: initialBranch?.staffUsers || [],
+        bank_details: bankDetails,
+        bank_name: bankDetails.bank_name?.trim() || null,
+        bank_branch: bankDetails.branch_name?.trim() || null,
+        account_number: bankDetails.account_number?.trim() || null,
+        account_holder_name: bankDetails.account_holder_name?.trim() || null,
+        documents,
+        doc_citizenship: typeof documents.citizenship === 'string' ? documents.citizenship : (documents.citizenship?.file || null),
+        doc_vat_pan: typeof documents.vat_pan === 'string' ? documents.vat_pan : (documents.vat_pan?.file || null),
+        doc_registration: typeof documents.registration === 'string' ? documents.registration : (documents.registration?.file || null),
+        doc_kyc: typeof documents.kyc === 'string' ? documents.kyc : (documents.kyc?.file || null),
+        doc_agreement: typeof documents.agreement === 'string' ? documents.agreement : (documents.agreement?.file || null),
         verified: true,
         verification_status: 'verified',
         status: initialBranch?.status || 'active',
@@ -632,6 +687,112 @@ export function BranchFormModal({ initialBranch = null, onDone = null }) {
             style={{ width: '100%', padding: '8px 10px', borderRadius: '5px', border: '1px solid #cbd5e1' }}
           />
         </label>
+      </div>
+
+      {/* ── Section 5: Bank Details (Optional) ── */}
+      <div
+        style={{
+          marginTop: '14px',
+          padding: '14px',
+          background: '#f8fafc',
+          borderRadius: '8px',
+          border: '1px solid #e2e8f0',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Landmark size={15} color="#1d4ed8" />
+            <strong style={{ fontSize: '13px', color: '#0f172a' }}>Bank Details</strong>
+            <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', background: '#f1f5f9', padding: '1px 6px', borderRadius: '4px' }}>
+              Optional
+            </span>
+          </div>
+          <span style={{ fontSize: '11px', color: '#64748b' }}>For branch settlements &amp; payouts</span>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+          <label style={{ display: 'block' }}>
+            <span style={{ fontWeight: 600, fontSize: '12px', display: 'block', marginBottom: '4px', color: '#334155' }}>
+              Bank Name :
+            </span>
+            <input
+              value={bankDetails.bank_name || ''}
+              onChange={(e) => handleBankChange('bank_name', e.target.value)}
+              placeholder="e.g. Nabil Bank Ltd., Global IME"
+              style={{ width: '100%', padding: '8px 10px', borderRadius: '5px', border: '1px solid #cbd5e1', background: '#ffffff', boxSizing: 'border-box' }}
+            />
+          </label>
+
+          <label style={{ display: 'block' }}>
+            <span style={{ fontWeight: 600, fontSize: '12px', display: 'block', marginBottom: '4px', color: '#334155' }}>
+              Branch Name :
+            </span>
+            <input
+              value={bankDetails.branch_name || ''}
+              onChange={(e) => handleBankChange('branch_name', e.target.value)}
+              placeholder="e.g. Butwal Branch, New Road Branch"
+              style={{ width: '100%', padding: '8px 10px', borderRadius: '5px', border: '1px solid #cbd5e1', background: '#ffffff', boxSizing: 'border-box' }}
+            />
+          </label>
+
+          <label style={{ display: 'block' }}>
+            <span style={{ fontWeight: 600, fontSize: '12px', display: 'block', marginBottom: '4px', color: '#334155' }}>
+              Account Number :
+            </span>
+            <input
+              value={bankDetails.account_number || ''}
+              onChange={(e) => handleBankChange('account_number', e.target.value)}
+              placeholder="e.g. 01201010001234"
+              style={{ width: '100%', padding: '8px 10px', borderRadius: '5px', border: '1px solid #cbd5e1', background: '#ffffff', boxSizing: 'border-box', fontFamily: 'monospace' }}
+            />
+          </label>
+
+          <label style={{ display: 'block' }}>
+            <span style={{ fontWeight: 600, fontSize: '12px', display: 'block', marginBottom: '4px', color: '#334155' }}>
+              Account Holder Name :
+            </span>
+            <input
+              value={bankDetails.account_holder_name || ''}
+              onChange={(e) => handleBankChange('account_holder_name', e.target.value)}
+              placeholder="e.g. R.T.C. Courier Pvt. Ltd."
+              style={{ width: '100%', padding: '8px 10px', borderRadius: '5px', border: '1px solid #cbd5e1', background: '#ffffff', boxSizing: 'border-box' }}
+            />
+          </label>
+        </div>
+      </div>
+
+      {/* ── Section 6: Documents & Verification (Optional) ── */}
+      <div
+        style={{
+          marginTop: '14px',
+          padding: '14px',
+          background: '#f8fafc',
+          borderRadius: '8px',
+          border: '1px solid #e2e8f0',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <FileText size={15} color="#059669" />
+            <strong style={{ fontSize: '13px', color: '#0f172a' }}>Branch Documents &amp; Verification</strong>
+            <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', background: '#f1f5f9', padding: '1px 6px', borderRadius: '4px' }}>
+              Optional
+            </span>
+          </div>
+          <span style={{ fontSize: '11px', color: '#64748b' }}>PDF, PNG, JPG accepted</span>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          {BRANCH_DOCUMENTS.map((doc) => (
+            <DocumentUpload
+              key={doc.key}
+              label={doc.label}
+              docKey={doc.key}
+              value={documents?.[doc.key] || {}}
+              onChange={(docObj) => handleDocChange(doc.key, docObj)}
+            />
+          ))}
+        </div>
       </div>
 
       {/* Row Actions */}

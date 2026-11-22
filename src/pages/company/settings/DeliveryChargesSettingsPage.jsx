@@ -170,7 +170,7 @@ export function DeliveryChargesSettingsPage() {
   // --------------------------------------------------------------------------
   // Product Category-Wise Delivery Charges State (Cloudflare D1 Database)
   // --------------------------------------------------------------------------
-  const [productCategories, setProductCategories] = useState([]);
+  const [productCategories, setProductCategories] = useState(() => (Array.isArray(contextCategories) && contextCategories.length > 0 ? contextCategories : []));
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [categoryModalData, setCategoryModalData] = useState(null); // { mode: 'add' | 'edit', initialData: ... }
   const [catSearch, setCatSearch] = useState('');
@@ -200,7 +200,13 @@ export function DeliveryChargesSettingsPage() {
 
   useEffect(() => {
     loadD1Categories();
-  }, [company?.id]);
+  }, [company?.id, contextCategories?.length]);
+
+  useEffect(() => {
+    if (productCategories.length === 0 && Array.isArray(contextCategories) && contextCategories.length > 0) {
+      setProductCategories(contextCategories);
+    }
+  }, [contextCategories, productCategories.length]);
 
   const filteredCategories = useMemo(() => {
     return productCategories.filter((cat) => {
