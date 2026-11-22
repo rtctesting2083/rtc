@@ -233,7 +233,7 @@ export function CustomerDashboardPage() {
 
   const handleOpenCODModal = () => {
     openModal(
-      'Request COD Settlement Payout',
+      'COD Request',
       <RequestCodModal
         currentCustomer={currentCustomer}
         onClose={closeModal}
@@ -242,7 +242,7 @@ export function CustomerDashboardPage() {
           if (typeof refreshData === 'function') refreshData();
         }}
       />,
-      'xxwide',
+      'medium',
       { hideHeader: true }
     );
   };

@@ -40,13 +40,14 @@ import { useModal } from '../../context/ModalContext';
 import { initialsFor, isVendorVerified } from '../../utils/helpers';
 import { CreateOrderModal } from '../customer/CreateOrderModal';
 import { VendorPickupRequestModal } from '../customer/VendorPickupRequestModal';
+import { RequestCodModal } from '../customer/RequestCodModal';
 import { ThemeToggleBtn } from '../common/ThemeToggleBtn';
 import logoImg from '../../assets/logo-transparent.png';
 import '../../pages/customer/VendorDashboard.css';
 
 export function CustomerLayout() {
   const { session, logout } = useAuth();
-  const { company, customers, shipments = [], isPortalMenuEnabled } = useCompany();
+  const { company, customers, shipments = [], isPortalMenuEnabled, refreshData } = useCompany();
   const { openModal, closeModal } = useModal();
   const navigate = useNavigate();
   const location = useLocation();
@@ -142,6 +143,23 @@ export function CustomerLayout() {
     navigate('/customer/orders/pickup-request');
   };
 
+  const handleOpenCodModal = () => {
+    setMobileMenuOpen(false);
+    openModal(
+      'COD Request',
+      <RequestCodModal
+        currentCustomer={currentCustomer}
+        onClose={closeModal}
+        onSuccess={() => {
+          closeModal();
+          if (typeof refreshData === 'function') refreshData();
+        }}
+      />,
+      'medium',
+      { hideHeader: true }
+    );
+  };
+
   const closeMobileMenu = () => {
     setMobileMenuOpen(false);
   };
@@ -229,6 +247,30 @@ export function CustomerLayout() {
 
         {/* Right: Date Filter, + Create Order, Notifications & Profile */}
         <div className="vendor-topbar-right">
+          {/* COD Request Topbar Button (Matches Screenshot) */}
+          <button
+            type="button"
+            onClick={handleOpenCodModal}
+            style={{
+              background: '#0052cc',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '6px 14px',
+              fontSize: '12.5px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 2px 4px rgba(0, 82, 204, 0.2)',
+              whiteSpace: 'nowrap',
+            }}
+            title="Submit Vendor COD Request"
+          >
+            COD Request
+          </button>
+
           <ThemeToggleBtn variant="pill" style={{ color: 'var(--vendor-text, #0f172a)' }} />
 
           {/* Date Filter Dropdown */}

@@ -310,7 +310,7 @@ export function CustomerCodSettlementPage() {
   // Open Request COD Payout Modal
   const handleOpenRequestCodModal = () => {
     openModal(
-      'Request COD Settlement Payout',
+      'COD Request',
       <RequestCodModal
         currentCustomer={{ ...currentCustomer, bank_details: bank }}
         onClose={closeModal}
@@ -321,7 +321,7 @@ export function CustomerCodSettlementPage() {
           if (typeof refreshData === 'function') refreshData();
         }}
       />,
-      'xxwide',
+      'medium',
       { hideHeader: true }
     );
   };
