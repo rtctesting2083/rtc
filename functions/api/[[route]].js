@@ -2949,12 +2949,56 @@ export async function onRequest(context) {
       }
     }
 
-    // 4.C COD Settlement Requests endpoint: Vendor Payout Requests & Admin Settlement
-    if (path === 'cod-requests' || path.startsWith('cod-requests/')) {
+    // 4.C FinTech COD Payout & Zero-Leakage Settlement Engine (Cloudflare D1)
+    if (
+      path === 'cod-requests' ||
+      path.startsWith('cod-requests/') ||
+      path === 'vendor/cod/summary' ||
+      path === 'vendor/cod/request' ||
+      path === 'vendor/cod/requests' ||
+      path === 'admin/cod-requests' ||
+      path.startsWith('admin/cod-requests/')
+    ) {
       const companyId = Number(url.searchParams.get('company_id') || 1);
 
-      // Ensure table & columns exist
+      // Ensure tables & indexes exist
       try {
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS cod_payout_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id INTEGER NOT NULL DEFAULT 1,
+            request_code TEXT UNIQUE NOT NULL,
+            vendor_id INTEGER NOT NULL,
+            vendor_name TEXT,
+            vendor_phone TEXT,
+            branch_id INTEGER,
+            gross_cod_amount REAL NOT NULL DEFAULT 0,
+            deducted_delivery_charge REAL NOT NULL DEFAULT 0,
+            net_payable_amount REAL NOT NULL DEFAULT 0,
+            payout_method TEXT NOT NULL DEFAULT 'BANK_TRANSFER',
+            account_details_json TEXT,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            vendor_note TEXT,
+            admin_remark TEXT,
+            transaction_reference TEXT,
+            processed_by_admin_id INTEGER,
+            parcels_count INTEGER NOT NULL DEFAULT 0,
+            shipment_ids_json TEXT,
+            tracking_numbers_json TEXT,
+            requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            processed_at DATETIME
+          )
+        `).run();
+
+        await db.prepare('CREATE INDEX IF NOT EXISTS idx_cod_payout_company ON cod_payout_requests(company_id)').run();
+        await db.prepare('CREATE INDEX IF NOT EXISTS idx_cod_payout_vendor ON cod_payout_requests(vendor_id)').run();
+        await db.prepare('CREATE INDEX IF NOT EXISTS idx_cod_payout_status ON cod_payout_requests(status)').run();
+        await db.prepare('CREATE INDEX IF NOT EXISTS idx_cod_payout_code ON cod_payout_requests(request_code)').run();
+        await db.prepare('ALTER TABLE shipments ADD COLUMN payout_request_id INTEGER').run().catch(() => {});
+        await db.prepare('ALTER TABLE shipments ADD COLUMN cod_settlement_status TEXT DEFAULT "unsettled"').run().catch(() => {});
+        await db.prepare('ALTER TABLE shipments ADD COLUMN cod_request_id INTEGER').run().catch(() => {});
+
+        // Legacy mirror table
         await db.prepare(`
           CREATE TABLE IF NOT EXISTS cod_requests (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2983,18 +3027,266 @@ export async function onRequest(context) {
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
           )
         `).run();
-        await db.prepare('CREATE INDEX IF NOT EXISTS idx_cod_requests_company ON cod_requests(company_id)').run();
-        await db.prepare('CREATE INDEX IF NOT EXISTS idx_cod_requests_vendor ON cod_requests(vendor_id)').run();
-        await db.prepare('CREATE INDEX IF NOT EXISTS idx_cod_requests_status ON cod_requests(status)').run();
-        await db.prepare('ALTER TABLE shipments ADD COLUMN cod_request_id INTEGER').run().catch(() => {});
       } catch (e) {}
 
-      // GET /api/cod-requests
-      if (path === 'cod-requests' && method === 'GET') {
+      // Internal zero-leakage calculation engine for a vendor
+      async function getVendorCodBreakdown(vId, cId) {
+        const vendor = await db.prepare('SELECT * FROM vendors WHERE id = ?').bind(Number(vId)).first().catch(() => null);
+        const vPhone = (vendor?.phone || '').trim();
+        const vName = (vendor?.name || '').trim();
+
+        // Query all shipments for this vendor in D1
+        const { results: allShipments } = await db.prepare(`
+          SELECT id, tracking_number, status, cod_amount, delivery_fee, cod_settled, cod_settlement_status, payout_request_id, cod_request_id
+          FROM shipments 
+          WHERE company_id = ? AND (
+            customer_id = ? 
+            OR (CASE WHEN sender_phone IS NOT NULL AND ? != '' THEN sender_phone = ? ELSE 0 END)
+            OR (CASE WHEN customer_phone IS NOT NULL AND ? != '' THEN customer_phone = ? ELSE 0 END)
+          )
+        `).bind(cId, Number(vId), vPhone, vPhone, vPhone, vPhone).all().catch(() => ({ results: [] }));
+
+        const list = allShipments || [];
+
+        // 1. Gross Collected COD:
+        // Delivered parcels with cod_amount > 0 that have not been settled and not locked in pending request
+        const deliveredUnsettled = list.filter((s) => {
+          const isDelivered = String(s.status || '').toLowerCase() === 'delivered';
+          const isSettled = s.cod_settled === 1 || String(s.cod_settlement_status || '').toLowerCase() === 'settled';
+          const isRequested = String(s.cod_settlement_status || '').toLowerCase() === 'requested' || Boolean(s.payout_request_id) || Boolean(s.cod_request_id);
+          return isDelivered && !isSettled && !isRequested && Number(s.cod_amount) > 0;
+        });
+
+        const grossCodCollected = deliveredUnsettled.reduce((acc, s) => acc + (Number(s.cod_amount) || 0), 0);
+
+        // 2. Total Deductible Charges:
+        // Delivery charges from all unsettled delivered or returned/failed parcels
+        const feeUnsettled = list.filter((s) => {
+          const isSettled = s.cod_settled === 1 || String(s.cod_settlement_status || '').toLowerCase() === 'settled';
+          const isRequested = String(s.cod_settlement_status || '').toLowerCase() === 'requested' || Boolean(s.payout_request_id) || Boolean(s.cod_request_id);
+          const isChargeable = ['delivered', 'returned', 'rto', 'failed'].includes(String(s.status || '').toLowerCase());
+          return isChargeable && !isSettled && !isRequested;
+        });
+
+        const totalDeliveryChargesDeducted = feeUnsettled.reduce((acc, s) => acc + (Number(s.delivery_fee) || Number(s.delivery_charge) || 0), 0);
+
+        // 3. Locked / Pending Payout Amount:
+        const { results: pendingPRes } = await db.prepare(`
+          SELECT net_payable_amount FROM cod_payout_requests 
+          WHERE company_id = ? AND vendor_id = ? AND UPPER(status) IN ('PENDING', 'APPROVED')
+        `).bind(cId, Number(vId)).all().catch(() => ({ results: [] }));
+
+        const pendingPayouts = (pendingPRes || []).reduce((acc, r) => acc + (Number(r.net_payable_amount) || 0), 0);
+
+        // 4. Net Available Withdrawable Balance (Zero Leakage Formula):
+        const rawBalance = grossCodCollected - totalDeliveryChargesDeducted - pendingPayouts;
+        const availableBalance = Math.max(0, Math.round(rawBalance * 100) / 100);
+        const canRequest = availableBalance > 0 && deliveredUnsettled.length > 0;
+
+        return {
+          vendor_id: Number(vId),
+          vendor_name: vName || 'Vendor',
+          vendor_phone: vPhone,
+          gross_cod_collected: grossCodCollected,
+          total_delivery_charges_deducted: totalDeliveryChargesDeducted,
+          pending_payouts: pendingPayouts,
+          available_withdrawable_balance: availableBalance,
+          can_request_cod: canRequest,
+          unsettled_shipments_count: deliveredUnsettled.length,
+          eligible_shipments: deliveredUnsettled.map((s) => ({
+            id: s.id,
+            tracking_number: s.tracking_number,
+            cod_amount: Number(s.cod_amount) || 0,
+            delivery_fee: Number(s.delivery_fee) || Number(s.delivery_charge) || 0,
+            status: s.status,
+          })),
+          saved_bank_details: {
+            bank_name: vendor?.bank_name || '',
+            bank_branch: vendor?.bank_branch || '',
+            account_number: vendor?.account_number || '',
+            account_holder_name: vendor?.account_holder_name || vName || '',
+          },
+        };
+      }
+
+      // ── API 1: GET /api/vendor/cod/summary ──
+      if (path === 'vendor/cod/summary' && method === 'GET') {
+        const vendorId = url.searchParams.get('vendor_id') || url.searchParams.get('customer_id');
+        if (!vendorId) return jsonResponse({ error: 'vendor_id is required' }, 400);
+
+        const summary = await getVendorCodBreakdown(vendorId, companyId);
+        return jsonResponse({
+          success: true,
+          ...summary,
+        });
+      }
+
+      // ── API 2: POST /api/vendor/cod/request ──
+      if ((path === 'vendor/cod/request' || (path === 'cod-requests' && method === 'POST')) && method === 'POST') {
+        const body = await request.json();
+        const cid = Number(body.company_id || companyId);
+        const vId = Number(body.vendor_id || body.customer_id);
+        if (!vId) return jsonResponse({ error: 'vendor_id is required' }, 400);
+
+        // Strict live zero-leakage check on D1
+        const summary = await getVendorCodBreakdown(vId, cid);
+
+        if (!summary.can_request_cod || summary.available_withdrawable_balance <= 0) {
+          return jsonResponse({
+            error: 'Cannot submit COD request: Available withdrawable COD balance is NPR 0.00. Either no delivered COD orders are available or delivery charges/pending requests exceed collected COD.'
+          }, 400);
+        }
+
+        const requestedAmount = Number(body.requested_amount) > 0
+          ? Math.min(Number(body.requested_amount), summary.available_withdrawable_balance)
+          : summary.available_withdrawable_balance;
+
+        if (requestedAmount > summary.available_withdrawable_balance) {
+          return jsonResponse({
+            error: `Requested amount (NPR ${requestedAmount}) exceeds available withdrawable balance of NPR ${summary.available_withdrawable_balance}.`
+          }, 400);
+        }
+
+        // Generate sequential request code: COD-REQ-YYYY-XXXX
+        const year = new Date().getFullYear();
+        const countRow = await db.prepare("SELECT COUNT(*) as c FROM cod_payout_requests WHERE company_id = ? AND request_code LIKE ?").bind(cid, `COD-REQ-${year}-%`).first().catch(() => ({ c: 0 }));
+        const seq = (countRow?.c || 0) + 1;
+        const requestCode = `COD-REQ-${year}-${String(seq).padStart(4, '0')}`;
+
+        const eligibleIds = summary.eligible_shipments.map((s) => s.id);
+        const eligibleTrackings = summary.eligible_shipments.map((s) => s.tracking_number).filter(Boolean);
+        const accountDetails = body.account_details || body.bank_details || summary.saved_bank_details;
+        const accountJson = JSON.stringify(accountDetails);
+        const payoutMethod = body.payout_method || 'BANK_TRANSFER';
+        const vendorNote = body.vendor_note || body.vendor_notes || body.details || '';
+
+        // Atomic db.batch() for zero financial leakage
+        const batch = [
+          // 1. Insert into cod_payout_requests
+          db.prepare(`
+            INSERT INTO cod_payout_requests (
+              company_id, request_code, vendor_id, vendor_name, vendor_phone, branch_id,
+              gross_cod_amount, deducted_delivery_charge, net_payable_amount, payout_method,
+              account_details_json, status, vendor_note, parcels_count, shipment_ids_json, tracking_numbers_json,
+              requested_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, datetime('now'))
+          `).bind(
+            cid, requestCode, vId, summary.vendor_name, summary.vendor_phone, body.branch_id || null,
+            summary.gross_cod_collected, summary.total_delivery_charges_deducted, requestedAmount, payoutMethod,
+            accountJson, vendorNote, eligibleIds.length, JSON.stringify(eligibleIds), JSON.stringify(eligibleTrackings)
+          )
+        ];
+
+        // 2. Lock each eligible shipment atomically in D1
+        for (const sId of eligibleIds) {
+          batch.push(
+            db.prepare(`
+              UPDATE shipments SET
+                cod_settlement_status = 'REQUESTED',
+                updated_at = datetime('now')
+              WHERE id = ?
+            `).bind(Number(sId))
+          );
+        }
+
+        // 3. Admin Notification
+        batch.push(
+          db.prepare(`
+            INSERT INTO notifications (
+              company_id, target_type, target_id, title, message, link, is_read, created_at
+            ) VALUES (?, 'admin', 0, ?, ?, '/company/cod-settlement?tab=requests', 0, datetime('now'))
+          `).bind(
+            cid,
+            'New Vendor COD Payout Request',
+            `Vendor "${summary.vendor_name}" submitted payout request ${requestCode} for NPR ${requestedAmount.toLocaleString()} (${eligibleIds.length} parcels).`
+          )
+        );
+
+        // 4. Mirror to legacy cod_requests table for backward compatibility
+        batch.push(
+          db.prepare(`
+            INSERT INTO cod_requests (
+              company_id, request_number, vendor_id, vendor_name, vendor_phone, branch_id,
+              bank_details_json, requested_amount, gross_cod, delivery_charges_deducted,
+              parcels_count, shipment_ids_json, tracking_numbers_json, vendor_notes, status,
+              created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'), datetime('now'))
+          `).bind(
+            cid, requestCode, vId, summary.vendor_name, summary.vendor_phone, body.branch_id || null,
+            accountJson, requestedAmount, summary.gross_cod_collected, summary.total_delivery_charges_deducted,
+            eligibleIds.length, JSON.stringify(eligibleIds), JSON.stringify(eligibleTrackings), vendorNote
+          )
+        );
+
+        const batchResults = await db.batch(batch);
+        const newPayoutId = batchResults[0]?.meta?.last_row_id;
+
+        // Link payout_request_id and cod_request_id on shipments
+        if (newPayoutId && eligibleIds.length > 0) {
+          await db.prepare(`
+            UPDATE shipments 
+            SET payout_request_id = ?, cod_request_id = ?
+            WHERE id IN (${eligibleIds.join(',')})
+          `).bind(newPayoutId, newPayoutId).run().catch(() => {});
+        }
+
+        // 5. Create linked support ticket in D1
+        try {
+          await db.prepare(`
+            INSERT INTO tickets (
+              company_id, customer_id, customer_name, customer_phone, ticket_type, subject,
+              description, priority, status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, 'payment', ?, ?, 'urgent', 'open', datetime('now'), datetime('now'))
+          `).bind(
+            cid, vId, summary.vendor_name, summary.vendor_phone,
+            `COD Payout Request #${requestCode} — NPR ${requestedAmount.toLocaleString()}`,
+            vendorNote || `Vendor requested COD payout for ${eligibleIds.length} delivered parcels via ${payoutMethod}.`
+          ).run();
+        } catch (e) {}
+
+        return jsonResponse({
+          success: true,
+          id: newPayoutId,
+          request_code: requestCode,
+          request_number: requestCode,
+          net_payable_amount: requestedAmount,
+          parcels_count: eligibleIds.length,
+          message: `COD Payout request ${requestCode} submitted successfully.`,
+        });
+      }
+
+      // ── API 3: GET /api/vendor/cod/requests ──
+      if (path === 'vendor/cod/requests' && method === 'GET') {
+        const vId = url.searchParams.get('vendor_id') || url.searchParams.get('customer_id');
+        if (!vId) return jsonResponse({ error: 'vendor_id is required' }, 400);
+
+        const { results } = await db.prepare(`
+          SELECT * FROM cod_payout_requests 
+          WHERE company_id = ? AND vendor_id = ? 
+          ORDER BY id DESC
+        `).bind(companyId, Number(vId)).all().catch(() => ({ results: [] }));
+
+        const formatted = (results || []).map((r) => ({
+          ...r,
+          request_number: r.request_code,
+          requested_amount: r.net_payable_amount,
+          gross_cod: r.gross_cod_amount,
+          delivery_charges_deducted: r.deducted_delivery_charge,
+          account_details: r.account_details_json ? JSON.parse(r.account_details_json) : {},
+          bank_details: r.account_details_json ? JSON.parse(r.account_details_json) : {},
+          shipment_ids: r.shipment_ids_json ? JSON.parse(r.shipment_ids_json) : [],
+          tracking_numbers: r.tracking_numbers_json ? JSON.parse(r.tracking_numbers_json) : [],
+        }));
+
+        return jsonResponse(formatted);
+      }
+
+      // ── API 4: GET /api/admin/cod-requests & GET /api/cod-requests ──
+      if ((path === 'admin/cod-requests' || path === 'cod-requests') && method === 'GET') {
         const vendorId = url.searchParams.get('vendor_id');
         const status = url.searchParams.get('status');
 
-        let query = 'SELECT * FROM cod_requests WHERE company_id = ?';
+        let query = 'SELECT * FROM cod_payout_requests WHERE company_id = ?';
         const params = [companyId];
 
         if (vendorId) {
@@ -3002,259 +3294,228 @@ export async function onRequest(context) {
           params.push(Number(vendorId));
         }
         if (status && status !== 'all') {
-          query += ' AND status = ?';
-          params.push(status);
+          query += ' AND UPPER(status) = ?';
+          params.push(status.toUpperCase());
         }
         query += ' ORDER BY id DESC';
 
-        const { results } = await db.prepare(query).bind(...params).all().catch(() => ({ results: [] }));
+        let { results } = await db.prepare(query).bind(...params).all().catch(() => ({ results: [] }));
+
+        // Fallback or merge with legacy cod_requests if table is empty
+        if (!results || results.length === 0) {
+          let legacyQ = 'SELECT * FROM cod_requests WHERE company_id = ?';
+          const lParams = [companyId];
+          if (vendorId) { legacyQ += ' AND vendor_id = ?'; lParams.push(Number(vendorId)); }
+          if (status && status !== 'all') { legacyQ += ' AND LOWER(status) = ?'; lParams.push(status.toLowerCase()); }
+          legacyQ += ' ORDER BY id DESC';
+          const legacyRes = await db.prepare(legacyQ).bind(...lParams).all().catch(() => ({ results: [] }));
+          results = (legacyRes.results || []).map((lr) => ({
+            id: lr.id,
+            company_id: lr.company_id,
+            request_code: lr.request_number,
+            vendor_id: lr.vendor_id,
+            vendor_name: lr.vendor_name,
+            vendor_phone: lr.vendor_phone,
+            branch_id: lr.branch_id,
+            gross_cod_amount: lr.gross_cod,
+            deducted_delivery_charge: lr.delivery_charges_deducted,
+            net_payable_amount: lr.requested_amount,
+            payout_method: lr.payment_method || 'BANK_TRANSFER',
+            account_details_json: lr.bank_details_json,
+            status: (lr.status === 'settled' ? 'PAID' : (lr.status === 'rejected' ? 'REJECTED' : 'PENDING')),
+            vendor_note: lr.vendor_notes,
+            admin_remark: lr.admin_notes,
+            transaction_reference: lr.payment_reference,
+            parcels_count: lr.parcels_count,
+            shipment_ids_json: lr.shipment_ids_json,
+            tracking_numbers_json: lr.tracking_numbers_json,
+            requested_at: lr.created_at,
+            processed_at: lr.settled_at,
+          }));
+        }
+
         const formatted = (results || []).map((r) => ({
           ...r,
-          bank_details: r.bank_details_json ? JSON.parse(r.bank_details_json) : {},
+          request_number: r.request_code,
+          requested_amount: r.net_payable_amount,
+          gross_cod: r.gross_cod_amount,
+          delivery_charges_deducted: r.deducted_delivery_charge,
+          account_details: r.account_details_json ? JSON.parse(r.account_details_json) : {},
+          bank_details: r.account_details_json ? JSON.parse(r.account_details_json) : {},
           shipment_ids: r.shipment_ids_json ? JSON.parse(r.shipment_ids_json) : [],
           tracking_numbers: r.tracking_numbers_json ? JSON.parse(r.tracking_numbers_json) : [],
         }));
+
         return jsonResponse(formatted);
       }
 
-      // POST /api/cod-requests (Step 1: Vendor creates COD payout request)
-      if (path === 'cod-requests' && method === 'POST') {
-        const body = await request.json();
-        const cid = Number(body.company_id || companyId);
-        const vId = Number(body.vendor_id);
-        const vName = body.vendor_name || 'Vendor';
-        const vPhone = body.vendor_phone || '';
-        const bId = body.branch_id ? Number(body.branch_id) : null;
-        const bankJson = typeof body.bank_details === 'object' ? JSON.stringify(body.bank_details) : (body.bank_details_json || '{}');
-        const reqAmt = Number(body.requested_amount || 0);
-        const grossCod = Number(body.gross_cod || 0);
-        const feeDeducted = Number(body.delivery_charges_deducted || 0);
-        const parcelsCount = Number(body.parcels_count || (body.shipment_ids || []).length);
-        const sIdsJson = typeof body.shipment_ids === 'object' ? JSON.stringify(body.shipment_ids) : (body.shipment_ids_json || '[]');
-        const trksJson = typeof body.tracking_numbers === 'object' ? JSON.stringify(body.tracking_numbers) : (body.tracking_numbers_json || '[]');
-        const vNotes = body.vendor_notes || body.notes || '';
+      // ── API 5: PATCH /api/admin/cod-requests/:id/process (and settle/reject aliases) ──
+      const processMatch = path.match(/^(?:admin\/cod-requests|cod-requests)\/(\d+)(?:\/(process|settle|reject))?$/);
+      if (processMatch && (method === 'PATCH' || method === 'POST')) {
+        const reqId = Number(processMatch[1]);
+        const subAction = processMatch[2];
+        const body = await request.json().catch(() => ({}));
+        const urlAction = subAction === 'settle' ? 'APPROVE' : (subAction === 'reject' ? 'REJECT' : (body.action || 'APPROVE').toUpperCase());
 
-        // Generate sequential request number: COD-REQ-YYYYMMDD-COUNT
-        const now = new Date();
-        const y = now.getFullYear();
-        const m = String(now.getMonth() + 1).padStart(2, '0');
-        const d = String(now.getDate()).padStart(2, '0');
-        const datePrefix = `${y}${m}${d}`;
-
-        const lastRow = await db.prepare(
-          "SELECT request_number FROM cod_requests WHERE company_id = ? AND request_number LIKE ? ORDER BY id DESC LIMIT 1"
-        ).bind(cid, `COD-REQ-${datePrefix}-%`).first().catch(() => null);
-
-        let seq = 1;
-        if (lastRow?.request_number) {
-          const match = lastRow.request_number.match(/-(\d+)$/);
-          if (match) seq = parseInt(match[1], 10) + 1;
+        let req = await db.prepare('SELECT * FROM cod_payout_requests WHERE id = ?').bind(reqId).first().catch(() => null);
+        if (!req) {
+          req = await db.prepare('SELECT * FROM cod_requests WHERE id = ?').bind(reqId).first().catch(() => null);
         }
-        const reqNumber = `COD-REQ-${datePrefix}-${String(seq).padStart(3, '0')}`;
+        if (!req) return jsonResponse({ error: 'COD payout request not found' }, 404);
 
-        const insertRes = await db.prepare(`
-          INSERT INTO cod_requests (
-            company_id, request_number, vendor_id, vendor_name, vendor_phone,
-            branch_id, bank_details_json, requested_amount, gross_cod,
-            delivery_charges_deducted, parcels_count, shipment_ids_json,
-            tracking_numbers_json, vendor_notes, status, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'), datetime('now'))
-        `).bind(
-          cid, reqNumber, vId, vName, vPhone,
-          bId, bankJson, reqAmt, grossCod,
-          feeDeducted, parcelsCount, sIdsJson,
-          trksJson, vNotes
-        ).run();
-
-        const reqId = insertRes.meta.last_row_id;
-
-        // Mark included shipments as 'requested'
-        let sIds = [];
-        try { sIds = JSON.parse(sIdsJson); } catch (e) {}
-        if (Array.isArray(sIds) && sIds.length > 0) {
-          for (const sId of sIds) {
-            await db.prepare(`
-              UPDATE shipments SET
-                cod_settlement_status = 'requested',
-                cod_request_id = ?,
-                updated_at = datetime('now')
-              WHERE id = ?
-            `).bind(reqId, Number(sId)).run().catch(() => {});
-          }
-        }
-
-        // Notify Admin of new COD request
-        try {
-          await db.prepare(`
-            INSERT INTO notifications (
-              company_id, target_type, target_id, title, message, link, is_read, created_at
-            ) VALUES (?, 'admin', 0, ?, ?, '/company/cod-settlement?tab=requests', 0, datetime('now'))
-          `).bind(
-            cid,
-            'New COD Payout Request',
-            `Vendor "${vName}" submitted COD payout request ${reqNumber} for NPR ${reqAmt.toLocaleString()} (${parcelsCount} parcels).`
-          ).run();
-        } catch (e) {}
-
-        return jsonResponse({
-          success: true,
-          id: reqId,
-          request_number: reqNumber,
-          message: 'COD settlement request submitted successfully to Admin.',
-        });
-      }
-
-      // POST /api/cod-requests/:id/settle (Step 2: Admin settles COD request)
-      const settleMatch = path.match(/^cod-requests\/(\d+)\/settle$/);
-      if (settleMatch && method === 'POST') {
-        const reqId = Number(settleMatch[1]);
-        const body = await request.json();
-        const payMethod = body.payment_method || 'Bank Transfer';
-        const payRef = (body.payment_reference || `TXN-${Date.now().toString().slice(-6)}`).trim();
-        const adminNotes = body.admin_notes || body.notes || 'Settlement disbursed by Admin';
-        const settledBy = body.settled_by || 'Admin';
-        const nowIso = new Date().toISOString();
-
-        const req = await db.prepare('SELECT * FROM cod_requests WHERE id = ?').bind(reqId).first();
-        if (!req) return jsonResponse({ error: 'COD request not found' }, 404);
-
-        if (req.status === 'settled') {
-          return jsonResponse({ error: 'This COD request has already been settled.' }, 400);
-        }
-
-        // Generate formal settlement voucher number: SETTLE-YYYYMMDD-COUNT
-        const now = new Date();
-        const y = now.getFullYear();
-        const m = String(now.getMonth() + 1).padStart(2, '0');
-        const d = String(now.getDate()).padStart(2, '0');
-        const datePrefix = `${y}${m}${d}`;
-        const settleNumber = `SETTLE-${datePrefix}-${String(reqId).padStart(4, '0')}`;
-
-        // 1. Insert formal record into cod_settlements table
-        const insertSettleRes = await db.prepare(`
-          INSERT INTO cod_settlements (
-            company_id, settlement_number, customer_id, branch_id,
-            vendor_name, vendor_phone, bank_details_json, total_cod,
-            delivery_charges_deducted, other_deductions, net_payable,
-            parcels_count, shipment_ids_json, payment_method,
-            payment_reference, notes, status, settled_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, 'completed', ?)
-        `).bind(
-          req.company_id, settleNumber, req.vendor_id, req.branch_id,
-          req.vendor_name, req.vendor_phone || '', req.bank_details_json || '{}',
-          Number(req.gross_cod), Number(req.delivery_charges_deducted), Number(req.requested_amount),
-          Number(req.parcels_count), req.shipment_ids_json || '[]',
-          payMethod, payRef, adminNotes, nowIso
-        ).run();
-
-        const settleId = insertSettleRes.meta.last_row_id;
-
-        // 2. Update cod_requests table status to settled
-        await db.prepare(`
-          UPDATE cod_requests SET
-            status = 'settled',
-            settlement_id = ?,
-            payment_method = ?,
-            payment_reference = ?,
-            admin_notes = ?,
-            settled_by = ?,
-            settled_at = ?,
-            updated_at = datetime('now')
-          WHERE id = ?
-        `).bind(settleId, payMethod, payRef, adminNotes, settledBy, nowIso, reqId).run();
-
-        // 3. Mark all included shipments as fully settled
         let sIds = [];
         try { sIds = JSON.parse(req.shipment_ids_json); } catch (e) {}
-        if (Array.isArray(sIds) && sIds.length > 0) {
-          for (const sId of sIds) {
-            await db.prepare(`
-              UPDATE shipments SET
-                cod_settled = 1,
-                cod_settlement_status = 'settled',
-                cod_settlement_ref = ?,
-                cod_settlement_method = ?,
-                cod_settled_at = ?,
-                cod_settlement_id = ?,
-                updated_at = datetime('now')
+
+        if (urlAction === 'APPROVE' || urlAction === 'PAID') {
+          const txnRef = (body.transaction_reference || body.payment_reference || `TXN-${Date.now().toString().slice(-6)}`).trim();
+          const adminRemark = body.admin_remark || body.admin_notes || 'Approved & paid by Admin';
+          const adminId = body.processed_by_admin_id || null;
+          const payMethod = body.payout_method || body.payment_method || req.payout_method || 'Bank Transfer';
+          const nowIso = new Date().toISOString();
+
+          // Generate formal settlement number: SETTLE-YYYYMMDD-COUNT
+          const now = new Date();
+          const y = now.getFullYear();
+          const m = String(now.getMonth() + 1).padStart(2, '0');
+          const d = String(now.getDate()).padStart(2, '0');
+          const settleNumber = `SETTLE-${y}${m}${d}-${String(reqId).padStart(4, '0')}`;
+
+          const batch = [
+            // 1. Update cod_payout_requests
+            db.prepare(`
+              UPDATE cod_payout_requests SET
+                status = 'PAID',
+                transaction_reference = ?,
+                admin_remark = ?,
+                processed_by_admin_id = ?,
+                processed_at = datetime('now')
               WHERE id = ?
-            `).bind(settleNumber, payMethod, nowIso, settleId, Number(sId)).run().catch(() => {});
+            `).bind(txnRef, adminRemark, adminId, reqId),
+
+            // 2. Also update cod_requests if present
+            db.prepare(`
+              UPDATE cod_requests SET
+                status = 'settled',
+                payment_reference = ?,
+                payment_method = ?,
+                admin_notes = ?,
+                settled_at = ?,
+                updated_at = datetime('now')
+              WHERE id = ? OR request_number = ?
+            `).bind(txnRef, payMethod, adminRemark, nowIso, reqId, req.request_code || req.request_number || ''),
+
+            // 3. Insert formal voucher into cod_settlements
+            db.prepare(`
+              INSERT INTO cod_settlements (
+                company_id, settlement_number, customer_id, branch_id,
+                vendor_name, vendor_phone, bank_details_json, total_cod,
+                delivery_charges_deducted, other_deductions, net_payable,
+                parcels_count, shipment_ids_json, payment_method,
+                payment_reference, notes, status, settled_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, 'completed', ?)
+            `).bind(
+              req.company_id, settleNumber, req.vendor_id, req.branch_id || null,
+              req.vendor_name || 'Vendor', req.vendor_phone || '', req.account_details_json || req.bank_details_json || '{}',
+              Number(req.gross_cod_amount || req.gross_cod || 0),
+              Number(req.deducted_delivery_charge || req.delivery_charges_deducted || 0),
+              Number(req.net_payable_amount || req.requested_amount || 0),
+              Number(req.parcels_count || sIds.length),
+              req.shipment_ids_json || '[]',
+              payMethod, txnRef, adminRemark, nowIso
+            )
+          ];
+
+          // 4. Mark all included shipments as fully settled
+          if (sIds.length > 0) {
+            for (const sId of sIds) {
+              batch.push(
+                db.prepare(`
+                  UPDATE shipments SET
+                    cod_settled = 1,
+                    cod_settlement_status = 'SETTLED',
+                    cod_settlement_ref = ?,
+                    cod_settlement_method = ?,
+                    cod_settled_at = ?,
+                    updated_at = datetime('now')
+                  WHERE id = ?
+                `).bind(txnRef, payMethod, nowIso, Number(sId))
+              );
+            }
           }
+
+          // 5. Notify vendor
+          batch.push(
+            db.prepare(`
+              INSERT INTO notifications (
+                company_id, target_type, target_id, title, message, link, is_read, created_at
+              ) VALUES (?, 'vendor', ?, ?, ?, '/customer/cod-settlement?tab=statements', 0, datetime('now'))
+            `).bind(
+              req.company_id, req.vendor_id, 'COD Payout Settled & Disbursed',
+              `Your COD payout request ${req.request_code || req.request_number} for NPR ${Number(req.net_payable_amount || req.requested_amount).toLocaleString()} has been paid via ${payMethod} (Ref: ${txnRef}).`
+            )
+          );
+
+          await db.batch(batch);
+          return jsonResponse({
+            success: true,
+            settlement_number: settleNumber,
+            message: `COD payout request ${req.request_code || req.request_number} approved and marked as PAID.`
+          });
         }
 
-        // 4. Notify Vendor that COD request was settled
-        try {
-          await db.prepare(`
-            INSERT INTO notifications (
-              company_id, target_type, target_id, title, message, link, is_read, created_at
-            ) VALUES (?, 'vendor', ?, ?, ?, '/customer/orders/cod-settlement?tab=statements', 0, datetime('now'))
-          `).bind(
-            req.company_id,
-            req.vendor_id,
-            'COD Payout Settled',
-            `Your COD request ${req.request_number} for NPR ${Number(req.requested_amount).toLocaleString()} has been settled by Admin via ${payMethod} (Ref: ${payRef}).`
-          ).run();
-        } catch (e) {}
+        if (urlAction === 'REJECT') {
+          const reason = (body.admin_remark || body.reason || body.admin_notes || 'Declined by Admin').trim();
 
-        return jsonResponse({
-          success: true,
-          settlement_id: settleId,
-          settlement_number: settleNumber,
-          message: `COD request ${req.request_number} settled successfully.`,
-        });
-      }
-
-      // POST /api/cod-requests/:id/reject (Admin declines COD request)
-      const rejectMatch = path.match(/^cod-requests\/(\d+)\/reject$/);
-      if (rejectMatch && method === 'POST') {
-        const reqId = Number(rejectMatch[1]);
-        const body = await request.json();
-        const reason = body.reason || body.admin_notes || 'Declined by Admin';
-
-        const req = await db.prepare('SELECT * FROM cod_requests WHERE id = ?').bind(reqId).first();
-        if (!req) return jsonResponse({ error: 'COD request not found' }, 404);
-
-        await db.prepare(`
-          UPDATE cod_requests SET
-            status = 'rejected',
-            admin_notes = ?,
-            updated_at = datetime('now')
-          WHERE id = ?
-        `).bind(reason, reqId).run();
-
-        // Release shipments back to unsettled
-        let sIds = [];
-        try { sIds = JSON.parse(req.shipment_ids_json); } catch (e) {}
-        if (Array.isArray(sIds) && sIds.length > 0) {
-          for (const sId of sIds) {
-            await db.prepare(`
-              UPDATE shipments SET
-                cod_settlement_status = 'unsettled',
-                cod_request_id = NULL,
-                updated_at = datetime('now')
+          const batch = [
+            db.prepare(`
+              UPDATE cod_payout_requests SET
+                status = 'REJECTED',
+                admin_remark = ?,
+                processed_at = datetime('now')
               WHERE id = ?
-            `).bind(Number(sId)).run().catch(() => {});
+            `).bind(reason, reqId),
+
+            db.prepare(`
+              UPDATE cod_requests SET
+                status = 'rejected',
+                admin_notes = ?,
+                updated_at = datetime('now')
+              WHERE id = ? OR request_number = ?
+            `).bind(reason, reqId, req.request_code || req.request_number || '')
+          ];
+
+          if (sIds.length > 0) {
+            for (const sId of sIds) {
+              batch.push(
+                db.prepare(`
+                  UPDATE shipments SET
+                    cod_settlement_status = 'UNSETTLED',
+                    payout_request_id = NULL,
+                    cod_request_id = NULL,
+                    updated_at = datetime('now')
+                  WHERE id = ?
+                `).bind(Number(sId))
+              );
+            }
           }
+
+          batch.push(
+            db.prepare(`
+              INSERT INTO notifications (
+                company_id, target_type, target_id, title, message, link, is_read, created_at
+              ) VALUES (?, 'vendor', ?, ?, ?, '/customer/cod-settlement?tab=requests', 0, datetime('now'))
+            `).bind(
+              req.company_id, req.vendor_id, 'COD Payout Request Rejected',
+              `Your COD request ${req.request_code || req.request_number} was rejected. Reason: ${reason}. Locked shipments have been released.`
+            )
+          );
+
+          await db.batch(batch);
+          return jsonResponse({
+            success: true,
+            message: `COD request ${req.request_code || req.request_number} rejected and shipments released.`
+          });
         }
-
-        // Notify Vendor
-        try {
-          await db.prepare(`
-            INSERT INTO notifications (
-              company_id, target_type, target_id, title, message, link, is_read, created_at
-            ) VALUES (?, 'vendor', ?, ?, ?, '/customer/orders/cod-settlement?tab=requests', 0, datetime('now'))
-          `).bind(
-            req.company_id,
-            req.vendor_id,
-            'COD Request Declined',
-            `Your COD request ${req.request_number} was declined by Admin. Reason: ${reason}`
-          ).run();
-        } catch (e) {}
-
-        return jsonResponse({
-          success: true,
-          message: `COD request ${req.request_number} declined and parcels released.`,
-        });
       }
     }
 

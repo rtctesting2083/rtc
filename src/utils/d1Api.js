@@ -535,6 +535,68 @@ export const d1Api = {
     }
   },
 
+  // FinTech Zero-Leakage Vendor COD Summary & Calculation
+  getVendorCodSummary: async (vendorId, companyId = 1) => {
+    try {
+      const res = await fetch(`/api/vendor/cod/summary?vendor_id=${vendorId}&company_id=${companyId}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to fetch COD summary');
+      }
+      return await res.json();
+    } catch (e) {
+      console.warn('getVendorCodSummary error:', e);
+      return null;
+    }
+  },
+
+  // Submit formal COD payout request
+  requestVendorCodPayout: async (payload = {}) => {
+    try {
+      const res = await fetch('/api/vendor/cod/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to submit COD payout request');
+      }
+      return await res.json();
+    } catch (e) {
+      throw e;
+    }
+  },
+
+  // Fetch vendor payout history
+  getVendorCodPayoutRequests: async (vendorId, companyId = 1) => {
+    try {
+      const res = await fetch(`/api/vendor/cod/requests?vendor_id=${vendorId}&company_id=${companyId}`);
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (e) {
+      return [];
+    }
+  },
+
+  // Process payout request by Admin (Approve/Paid or Reject)
+  processAdminCodPayoutRequest: async (requestId, payload = {}) => {
+    try {
+      const res = await fetch(`/api/admin/cod-requests/${requestId}/process`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to process COD payout request');
+      }
+      return await res.json();
+    } catch (e) {
+      throw e;
+    }
+  },
+
   createCodRequest: async (payload = {}) => {
     try {
       const res = await fetch('/api/cod-requests', {

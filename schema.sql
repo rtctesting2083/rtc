@@ -331,3 +331,35 @@ CREATE TABLE IF NOT EXISTS cod_settlements (
 CREATE INDEX IF NOT EXISTS idx_cod_settlements_company ON cod_settlements(company_id);
 CREATE INDEX IF NOT EXISTS idx_cod_settlements_customer ON cod_settlements(customer_id);
 CREATE INDEX IF NOT EXISTS idx_cod_settlements_number ON cod_settlements(settlement_number);
+
+-- COD Payout Requests Table (Zero-Leakage Vendor Withdrawal Requests)
+CREATE TABLE IF NOT EXISTS cod_payout_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id INTEGER NOT NULL DEFAULT 1,
+  request_code TEXT UNIQUE NOT NULL,
+  vendor_id INTEGER NOT NULL,
+  vendor_name TEXT,
+  vendor_phone TEXT,
+  branch_id INTEGER,
+  gross_cod_amount REAL NOT NULL DEFAULT 0,
+  deducted_delivery_charge REAL NOT NULL DEFAULT 0,
+  net_payable_amount REAL NOT NULL DEFAULT 0,
+  payout_method TEXT NOT NULL DEFAULT 'BANK_TRANSFER',
+  account_details_json TEXT,
+  status TEXT NOT NULL DEFAULT 'PENDING', -- 'PENDING' | 'APPROVED' | 'PAID' | 'REJECTED'
+  vendor_note TEXT,
+  admin_remark TEXT,
+  transaction_reference TEXT,
+  processed_by_admin_id INTEGER,
+  parcels_count INTEGER NOT NULL DEFAULT 0,
+  shipment_ids_json TEXT,
+  tracking_numbers_json TEXT,
+  requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  processed_at DATETIME
+);
+
+CREATE INDEX IF NOT EXISTS idx_cod_payout_company ON cod_payout_requests(company_id);
+CREATE INDEX IF NOT EXISTS idx_cod_payout_vendor ON cod_payout_requests(vendor_id);
+CREATE INDEX IF NOT EXISTS idx_cod_payout_status ON cod_payout_requests(status);
+CREATE INDEX IF NOT EXISTS idx_cod_payout_code ON cod_payout_requests(request_code);
+

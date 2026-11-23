@@ -53,6 +53,7 @@ export function CustomerCodSettlementPage() {
   const [d1Settlements, setD1Settlements] = useState([]);
   const [d1CodRequests, setD1CodRequests] = useState([]);
   const [d1Shipments, setD1Shipments] = useState([]);
+  const [d1CodSummary, setD1CodSummary] = useState(null);
   const [isD1Syncing, setIsD1Syncing] = useState(false);
   const [liveBankDetails, setLiveBankDetails] = useState(null);
 
@@ -93,6 +94,14 @@ export function CustomerCodSettlementPage() {
       if (Array.isArray(requestsRes)) {
         setD1CodRequests(requestsRes);
       }
+
+      // 2b. Fetch live zero-leakage COD summary
+      try {
+        const summaryRes = await d1Api.getVendorCodSummary(custId, 1);
+        if (summaryRes && summaryRes.success !== false) {
+          setD1CodSummary(summaryRes);
+        }
+      } catch (sErr) {}
 
       // 3. Fetch all shipments from D1
       const shipmentsRes = await d1Api.getShipments(1);
@@ -237,7 +246,9 @@ export function CustomerCodSettlementPage() {
     0
   );
 
-  const pendingNetPayout = Math.max(0, pendingCodAmount - pendingDeliveryFees);
+  const pendingNetPayout = d1CodSummary?.available_withdrawable_balance !== undefined
+    ? Math.max(0, Number(d1CodSummary.available_withdrawable_balance))
+    : Math.max(0, pendingCodAmount - pendingDeliveryFees);
 
   // Bank Info (Live from D1 or CurrentCustomer)
   const bank = useMemo(() => {

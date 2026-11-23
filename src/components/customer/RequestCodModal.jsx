@@ -1,13 +1,73 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useCompany } from '../../context/CompanyContext';
 import d1Api from '../../utils/d1Api';
-import { Edit2, X, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Edit2, X, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 
 export function RequestCodModal({ currentCustomer, onClose, onSuccess }) {
   const { shipments = [], updateCustomer, loadCodRequests, refreshData } = useCompany();
 
-  // 1. Identify delivered shipments with unsettled COD for this vendor
-  const myDeliveredShipments = useMemo(() => {
+  const [loadingSummary, setLoadingSummary] = useState(true);
+  const [d1Summary, setD1Summary] = useState(null);
+
+  // Bank Details Form State (pre-populated from vendor profile / D1)
+  const defaultBank = currentCustomer?.bank_details || {};
+  const [bankName, setBankName] = useState(
+    defaultBank.bank_name || currentCustomer?.bank_name || ''
+  );
+  const [accountNumber, setAccountNumber] = useState(
+    defaultBank.account_number || currentCustomer?.account_number || ''
+  );
+  const [accountHolderName, setAccountHolderName] = useState(
+    defaultBank.account_holder_name || currentCustomer?.account_holder_name || currentCustomer?.name || ''
+  );
+
+  const [isEditingBank, setIsEditingBank] = useState(true);
+  const [isConfirmed, setIsConfirmed] = useState(false);
+  const [details, setDetails] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+
+  // 1. Fetch live D1 COD financial summary on modal mount
+  useEffect(() => {
+    let isMounted = true;
+    const fetchSummary = async () => {
+      if (!currentCustomer?.id) {
+        setLoadingSummary(false);
+        return;
+      }
+      try {
+        setLoadingSummary(true);
+        const res = await d1Api.getVendorCodSummary(
+          currentCustomer.id,
+          currentCustomer.company_id || 1
+        );
+        if (isMounted && res && res.success !== false) {
+          setD1Summary(res);
+
+          // Pre-fill bank details if saved in D1
+          if (res.saved_bank_details) {
+            const sb = res.saved_bank_details;
+            if (sb.bank_name) setBankName(sb.bank_name);
+            if (sb.account_number) setAccountNumber(sb.account_number);
+            if (sb.account_holder_name) setAccountHolderName(sb.account_holder_name);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to fetch D1 COD summary, will compute locally:', err);
+      } finally {
+        if (isMounted) setLoadingSummary(false);
+      }
+    };
+
+    fetchSummary();
+    return () => {
+      isMounted = false;
+    };
+  }, [currentCustomer?.id]);
+
+  // Fallback local calculation from shipments context if D1 summary is pending or unavailable
+  const localDeliveredShipments = useMemo(() => {
     if (!currentCustomer?.id) return [];
     const custId = Number(currentCustomer.id);
     const custPhone = String(currentCustomer.phone || '').trim();
@@ -26,59 +86,30 @@ export function RequestCodModal({ currentCustomer, onClose, onSuccess }) {
       if (!isDelivered) return false;
 
       const isSettled = s.cod_settled === true || s.cod_settled === 1 || s.cod_settlement_status === 'settled';
-      const isRequested = s.cod_settlement_status === 'requested' || Boolean(s.cod_request_id);
+      const isRequested = s.cod_settlement_status === 'requested' || Boolean(s.cod_request_id) || Boolean(s.payout_request_id);
 
-      return !isSettled && !isRequested;
+      return !isSettled && !isRequested && Number(s.cod_amount) > 0;
     });
   }, [shipments, currentCustomer]);
 
-  // Compute live Unsettled COD balance
-  const computedUnsettledCod = useMemo(() => {
-    const sum = myDeliveredShipments.reduce((acc, s) => acc + (Number(s.cod_amount) || 0), 0);
-    return sum;
-  }, [myDeliveredShipments]);
+  const localGrossCod = useMemo(() => {
+    return localDeliveredShipments.reduce((acc, s) => acc + (Number(s.cod_amount) || 0), 0);
+  }, [localDeliveredShipments]);
 
-  // If live delivered shipments exist with COD, use it; otherwise fallback to customer unsettled_cod or 9400.00 to match demo
-  const unsettledCod = computedUnsettledCod > 0
-    ? computedUnsettledCod
-    : (Number(currentCustomer?.unsettled_cod) > 0 ? Number(currentCustomer.unsettled_cod) : 9400.00);
+  const localDeliveryFees = useMemo(() => {
+    return localDeliveredShipments.reduce((acc, s) => acc + (Number(s.delivery_fee) || Number(s.delivery_charge) || 0), 0);
+  }, [localDeliveredShipments]);
 
-  const unsettledCodFormatted = Number(unsettledCod).toFixed(2);
-
-  // Bank Details Form State (pre-populated from vendor profile)
-  const defaultBank = currentCustomer?.bank_details || {};
-  const [bankName, setBankName] = useState(
-    defaultBank.bank_name || currentCustomer?.bank_name || 'Nabil Bank Limited'
-  );
-  const [accountNumber, setAccountNumber] = useState(
-    defaultBank.account_number || currentCustomer?.account_number || '01001017502499'
-  );
-  const [accountHolderName, setAccountHolderName] = useState(
-    defaultBank.account_holder_name || currentCustomer?.account_holder_name || currentCustomer?.name || 'R. T. C COURIER PRIVATE LIMITED'
-  );
-
-  const [isEditingBank, setIsEditingBank] = useState(true);
-  const [isConfirmed, setIsConfirmed] = useState(false);
-  const [details, setDetails] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
-
-  // Auto-sync bank details if currentCustomer changes
-  useEffect(() => {
-    if (currentCustomer) {
-      const b = currentCustomer.bank_details || {};
-      if (b.bank_name || currentCustomer.bank_name) {
-        setBankName(b.bank_name || currentCustomer.bank_name);
-      }
-      if (b.account_number || currentCustomer.account_number) {
-        setAccountNumber(b.account_number || currentCustomer.account_number);
-      }
-      if (b.account_holder_name || currentCustomer.account_holder_name) {
-        setAccountHolderName(b.account_holder_name || currentCustomer.account_holder_name);
-      }
+  // Available withdrawable COD balance strictly computed (Zero Leakage, No Hardcoding)
+  const availableCodBalance = useMemo(() => {
+    if (d1Summary && typeof d1Summary.available_withdrawable_balance === 'number') {
+      return Math.max(0, d1Summary.available_withdrawable_balance);
     }
-  }, [currentCustomer]);
+    return Math.max(0, localGrossCod - localDeliveryFees);
+  }, [d1Summary, localGrossCod, localDeliveryFees]);
+
+  const unsettledCodFormatted = availableCodBalance.toFixed(2);
+  const isBalanceAvailable = availableCodBalance > 0;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -104,6 +135,10 @@ export function RequestCodModal({ currentCustomer, onClose, onSuccess }) {
       setError('Please enter Ticket Details.');
       return;
     }
+    if (!isBalanceAvailable) {
+      setError('Cannot submit request: No withdrawable COD balance available at this time.');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -113,7 +148,7 @@ export function RequestCodModal({ currentCustomer, onClose, onSuccess }) {
         account_holder_name: accountHolderName.trim(),
       };
 
-      // 1. Update vendor bank details in D1 database for persistence
+      // 1. Update vendor bank details in D1 for future auto-fill
       if (currentCustomer?.id) {
         if (typeof updateCustomer === 'function') {
           updateCustomer(currentCustomer.id, {
@@ -130,35 +165,44 @@ export function RequestCodModal({ currentCustomer, onClose, onSuccess }) {
         }).catch(() => {});
       }
 
-      // 2. Submit COD settlement payout request to D1 cod_requests table
-      const amt = Number(unsettledCod) || 9400;
+      // 2. Submit COD payout request to Cloudflare D1
+      const amt = Number(availableCodBalance);
+      const eligibleIds = d1Summary?.eligible_shipments?.map((s) => s.id) || localDeliveredShipments.map((s) => s.id);
+      const eligibleTrackings = d1Summary?.eligible_shipments?.map((s) => s.tracking_number) || localDeliveredShipments.map((s) => s.tracking_number);
+
       const codPayload = {
         company_id: currentCustomer?.company_id || 1,
         vendor_id: currentCustomer?.id ? Number(currentCustomer.id) : 1,
         vendor_name: currentCustomer?.name || updatedBank.account_holder_name || 'Vendor',
         vendor_phone: currentCustomer?.phone || '',
-        branch_id: currentCustomer?.branch_id || myDeliveredShipments[0]?.branch_id || null,
+        branch_id: currentCustomer?.branch_id || null,
         bank_details: updatedBank,
         requested_amount: amt,
         gross_cod: amt,
-        delivery_charges_deducted: 0,
-        parcels_count: myDeliveredShipments.length || 1,
-        shipment_ids: myDeliveredShipments.map((s) => s.id),
-        tracking_numbers: myDeliveredShipments.map((s) => s.tracking_number).filter(Boolean),
+        delivery_charges_deducted: d1Summary?.total_delivery_charges_deducted || localDeliveryFees || 0,
+        parcels_count: eligibleIds.length || 1,
+        shipment_ids: eligibleIds,
+        tracking_numbers: eligibleTrackings.filter(Boolean),
         vendor_notes: details.trim(),
       };
 
-      const result = await d1Api.createCodRequest(codPayload);
+      let result;
+      try {
+        result = await d1Api.requestVendorCodPayout(codPayload);
+      } catch (payoutErr) {
+        // Fallback to legacy endpoint if route was not caught
+        result = await d1Api.createCodRequest(codPayload);
+      }
 
-      // 3. Create a linked support ticket in D1 tickets table so it is trackable under Tickets
+      // 3. Create linked support ticket in D1 tickets table so vendor & admin can track
       try {
         await d1Api.createTicket({
-          company_id: 1,
+          company_id: currentCustomer?.company_id || 1,
           customer_id: currentCustomer?.id ? Number(currentCustomer.id) : 1,
           customer_name: currentCustomer?.name || updatedBank.account_holder_name || 'Vendor',
           customer_phone: currentCustomer?.phone || '',
           ticket_type: 'payment',
-          subject: `COD Request #${result?.request_number || 'REQ'} - NPR ${amt.toFixed(2)} (${updatedBank.bank_name})`,
+          subject: `COD Request #${result?.request_code || result?.request_number || 'REQ'} - NPR ${amt.toFixed(2)} (${updatedBank.bank_name})`,
           description: details.trim(),
           priority: 'urgent',
           status: 'open',
@@ -167,7 +211,7 @@ export function RequestCodModal({ currentCustomer, onClose, onSuccess }) {
         console.warn('Notice: linked ticket creation:', tErr);
       }
 
-      setSuccessMsg(`COD Request #${result?.request_number || ''} submitted successfully! Your payout will be processed to ${updatedBank.bank_name}.`);
+      setSuccessMsg(`COD Request #${result?.request_code || result?.request_number || ''} submitted successfully! Your payout will be reviewed and disbursed to ${updatedBank.bank_name}.`);
 
       if (typeof loadCodRequests === 'function') {
         loadCodRequests();
@@ -327,7 +371,7 @@ export function RequestCodModal({ currentCustomer, onClose, onSuccess }) {
               background: '#f8fafc',
               border: '1px solid #e5e7eb',
               borderRadius: '8px',
-              padding: '14px 16px 12px 16px',
+              padding: '14px 16px 14px 16px',
             }}
           >
             {/* Bank Name */}
@@ -348,7 +392,7 @@ export function RequestCodModal({ currentCustomer, onClose, onSuccess }) {
                 value={bankName}
                 onChange={(e) => setBankName(e.target.value)}
                 disabled={!isEditingBank}
-                placeholder="e.g. Nabil Bank Limited"
+                placeholder="e.g. Global IME Bank Ltd."
                 style={{
                   width: '100%',
                   padding: '8px 12px',
@@ -381,7 +425,7 @@ export function RequestCodModal({ currentCustomer, onClose, onSuccess }) {
                 value={accountNumber}
                 onChange={(e) => setAccountNumber(e.target.value)}
                 disabled={!isEditingBank}
-                placeholder="e.g. 01001017502499"
+                placeholder="e.g. 965586767676"
                 style={{
                   width: '100%',
                   padding: '8px 12px',
@@ -414,7 +458,7 @@ export function RequestCodModal({ currentCustomer, onClose, onSuccess }) {
                 value={accountHolderName}
                 onChange={(e) => setAccountHolderName(e.target.value)}
                 disabled={!isEditingBank}
-                placeholder="e.g. R. T. C COURIER PRIVATE LIMITED"
+                placeholder="e.g. Wens Trade Link"
                 style={{
                   width: '100%',
                   padding: '8px 12px',
@@ -429,17 +473,39 @@ export function RequestCodModal({ currentCustomer, onClose, onSuccess }) {
               />
             </div>
 
-            {/* Unsettled COD */}
+            {/* Unsettled COD (Live Dynamic Value from D1) */}
             <div
               style={{
-                fontSize: '12.5px',
+                fontSize: '13px',
                 fontWeight: 700,
-                color: '#111827',
-                margin: '8px 0 10px 0',
+                color: isBalanceAvailable ? '#111827' : '#6b7280',
+                margin: '10px 0 6px 0',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
               }}
             >
-              Unsettled COD: {unsettledCodFormatted}
+              <span>Unsettled COD: {loadingSummary ? 'Computing...' : unsettledCodFormatted}</span>
+              {loadingSummary && <Loader2 size={13} className="animate-spin text-gray-500" />}
             </div>
+
+            {/* Zero Balance Notice */}
+            {!loadingSummary && !isBalanceAvailable && (
+              <div
+                style={{
+                  fontSize: '11.5px',
+                  color: '#b45309',
+                  background: '#fef3c7',
+                  border: '1px solid #fde68a',
+                  borderRadius: '6px',
+                  padding: '7px 10px',
+                  margin: '6px 0 10px 0',
+                  lineHeight: '1.4',
+                }}
+              >
+                No withdrawable COD balance available at this time. All delivered orders have already been settled or pending requests and delivery fees exceed collected COD.
+              </div>
+            )}
 
             {/* Confirmation Checkbox */}
             <label
@@ -451,6 +517,7 @@ export function RequestCodModal({ currentCustomer, onClose, onSuccess }) {
                 color: '#4b5563',
                 cursor: 'pointer',
                 userSelect: 'none',
+                marginTop: '8px',
               }}
             >
               <input
@@ -538,19 +605,24 @@ export function RequestCodModal({ currentCustomer, onClose, onSuccess }) {
 
           <button
             type="submit"
-            disabled={loading || !isConfirmed || !details.trim()}
+            disabled={loading || loadingSummary || !isConfirmed || !details.trim() || !isBalanceAvailable}
+            title={!isBalanceAvailable ? 'Cannot submit: No withdrawable COD balance available' : ''}
             style={{
-              background: loading || !isConfirmed || !details.trim() ? '#93c5fd' : '#0052cc',
+              background: loading || loadingSummary || !isConfirmed || !details.trim() || !isBalanceAvailable ? '#93c5fd' : '#0052cc',
               color: '#ffffff',
               border: 'none',
               borderRadius: '6px',
               padding: '8px 26px',
               fontSize: '13px',
               fontWeight: 600,
-              cursor: loading || !isConfirmed || !details.trim() ? 'not-allowed' : 'pointer',
+              cursor: loading || loadingSummary || !isConfirmed || !details.trim() || !isBalanceAvailable ? 'not-allowed' : 'pointer',
               transition: 'background 0.15s ease',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
             }}
           >
+            {loading && <Loader2 size={14} className="animate-spin" />}
             {loading ? 'Submitting...' : 'Submit'}
           </button>
         </div>
