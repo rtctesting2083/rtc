@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
@@ -15,6 +15,11 @@ import {
   KeyRound,
   Eye,
   EyeOff,
+  Search,
+  MapPin,
+  ChevronDown,
+  Building2,
+  RotateCcw,
 } from 'lucide-react';
 import './CustomerStaffPage.css';
 
@@ -99,7 +104,7 @@ const DEFAULT_STAFF_USERS = [
 
 export function CustomerStaffPage() {
   const { currentCustomer } = useOutletContext() || {};
-  const { updateCustomer } = useCompany() || {};
+  const { updateCustomer, branches = [] } = useCompany() || {};
   const { openModal, closeModal } = useModal();
 
   // Normalize staff users list from currentCustomer
@@ -134,9 +139,99 @@ export function CustomerStaffPage() {
   const [users, setUsers] = useState(staffList);
   const [toastMessage, setToastMessage] = useState('');
 
+  // ── Search & Filter State on User List Page ──
+  const [searchQuery, setSearchQuery] = useState('');
+  const [locationFilter, setLocationFilter] = useState('ALL');
+  const [roleFilter, setRoleFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+
   useEffect(() => {
     setUsers(staffList);
   }, [staffList]);
+
+  // Unique Location (City) options derived from users + top branches
+  const availableLocations = useMemo(() => {
+    const locSet = new Set();
+    // 1. Collect from current users
+    users.forEach((u) => {
+      if (u.location && u.location.trim()) {
+        locSet.add(u.location.trim());
+      }
+    });
+
+    // 2. Add standard hubs / branch cities
+    const fallbackCities = ['Butwal', 'Kathmandu', 'Pokhara', 'Bhairahawa', 'Narayangarh', 'Biratnagar', 'Nepalgunj', 'Birgunj', 'Dang', 'Dhangadhi', 'Itahari'];
+    fallbackCities.forEach((c) => locSet.add(c));
+
+    if (Array.isArray(branches)) {
+      branches.forEach((b) => {
+        if (b.municipality) locSet.add(b.municipality.replace(/Municipality|Sub-Metropolitan City|Metropolitan City/gi, '').trim());
+        if (b.district) locSet.add(b.district.trim());
+      });
+    }
+
+    return Array.from(locSet).filter(Boolean).sort();
+  }, [users, branches]);
+
+  // Unique Roles derived from users
+  const availableRoles = useMemo(() => {
+    const roleSet = new Set();
+    users.forEach((u) => {
+      if (u.role && u.role.trim()) roleSet.add(u.role.trim());
+    });
+    return Array.from(roleSet).sort();
+  }, [users]);
+
+  // Real-time filtered users based on Search & Location (City) filter
+  const filteredUsers = useMemo(() => {
+    return users.filter((u) => {
+      // 1. Location (City) filter
+      if (locationFilter !== 'ALL') {
+        const uLoc = String(u.location || '').toLowerCase();
+        const fLoc = String(locationFilter).toLowerCase();
+        if (!uLoc.includes(fLoc)) return false;
+      }
+
+      // 2. Role filter
+      if (roleFilter !== 'ALL') {
+        if (String(u.role || '').toLowerCase() !== String(roleFilter).toLowerCase()) return false;
+      }
+
+      // 3. Status filter
+      if (statusFilter !== 'ALL') {
+        const isActive = u.active !== false;
+        if (statusFilter === 'ACTIVE' && !isActive) return false;
+        if (statusFilter === 'INACTIVE' && isActive) return false;
+      }
+
+      // 4. Text Search Query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const match =
+          String(u.first_name || '').toLowerCase().includes(q) ||
+          String(u.last_name || '').toLowerCase().includes(q) ||
+          String(u.username || '').toLowerCase().includes(q) ||
+          String(u.mobile || '').toLowerCase().includes(q) ||
+          String(u.email || '').toLowerCase().includes(q) ||
+          String(u.role || '').toLowerCase().includes(q) ||
+          String(u.location || '').toLowerCase().includes(q) ||
+          String(u.area || '').toLowerCase().includes(q) ||
+          String(u.designation || '').toLowerCase().includes(q);
+        if (!match) return false;
+      }
+
+      return true;
+    });
+  }, [users, locationFilter, roleFilter, statusFilter, searchQuery]);
+
+  const hasActiveFilters = searchQuery.trim() !== '' || locationFilter !== 'ALL' || roleFilter !== 'ALL' || statusFilter !== 'ALL';
+
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setLocationFilter('ALL');
+    setRoleFilter('ALL');
+    setStatusFilter('ALL');
+  };
 
   // Persist users to CompanyContext and Cloudflare D1
   const persistUsers = (newUsers) => {
@@ -234,21 +329,21 @@ export function CustomerStaffPage() {
     showToast('Password updated successfully.');
   };
 
-  // Open "Add New User" Modal
+  // Open "Add New User" Modal with branches passed
   const openAddUserModal = () => {
     openModal(
       'Add New User',
-      <VendorAddUserModal onSave={handleAddUser} onClose={closeModal} />,
+      <VendorAddUserModal branches={branches} onSave={handleAddUser} onClose={closeModal} />,
       'medium',
       { hideHeader: true }
     );
   };
 
-  // Open "Edit User" Modal
+  // Open "Edit User" Modal with branches passed
   const openEditUserModal = (user) => {
     openModal(
       'Edit User',
-      <VendorEditUserModal user={user} onSave={handleUpdateUser} onClose={closeModal} />,
+      <VendorEditUserModal user={user} branches={branches} onSave={handleUpdateUser} onClose={closeModal} />,
       'medium',
       { hideHeader: true }
     );
@@ -288,6 +383,100 @@ export function CustomerStaffPage() {
           </button>
         </div>
 
+        {/* ── Search & Location (City) Filter Bar ── */}
+        <div className="user-filter-bar">
+          {/* Search Input */}
+          <div className="filter-search-box">
+            <Search size={15} className="filter-search-icon" />
+            <input
+              type="text"
+              placeholder="Search by Name, Mobile, Email, Role, Area..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="filter-search-input"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                className="filter-clear-btn"
+                onClick={() => setSearchQuery('')}
+                title="Clear search"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+
+          {/* Location (City) Filter Dropdown */}
+          <div className="filter-dropdown-wrap">
+            <MapPin size={14} className="filter-icon" />
+            <select
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value)}
+              className="filter-select-input"
+              title="Filter by Location (City) / Branch"
+            >
+              <option value="ALL">All Locations (Cities)</option>
+              {availableLocations.map((loc) => (
+                <option key={loc} value={loc}>
+                  {loc}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Role Filter Dropdown */}
+          <div className="filter-dropdown-wrap">
+            <Shield size={14} className="filter-icon" />
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              className="filter-select-input"
+            >
+              <option value="ALL">All Roles</option>
+              {availableRoles.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Status Filter Dropdown */}
+          <div className="filter-dropdown-wrap">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="filter-select-input"
+            >
+              <option value="ALL">All Status</option>
+              <option value="ACTIVE">Active</option>
+              <option value="INACTIVE">Inactive</option>
+            </select>
+          </div>
+
+          {/* Reset Filters */}
+          {hasActiveFilters && (
+            <button
+              type="button"
+              className="filter-reset-btn"
+              onClick={handleResetFilters}
+              title="Reset all filters"
+            >
+              <RotateCcw size={13} />
+              <span>Reset</span>
+            </button>
+          )}
+        </div>
+
+        {/* Filter Summary Counter */}
+        {hasActiveFilters && (
+          <div className="filter-results-counter">
+            Showing <b>{filteredUsers.length}</b> of <b>{users.length}</b> users
+            {locationFilter !== 'ALL' && <span> in <b>{locationFilter}</b></span>}
+          </div>
+        )}
+
         {/* Table matching screenshot */}
         <div className="user-list-table-responsive">
           <table className="user-list-table">
@@ -307,7 +496,7 @@ export function CustomerStaffPage() {
               </tr>
             </thead>
             <tbody>
-              {users.map((u, index) => {
+              {filteredUsers.map((u, index) => {
                 const isSuperUser = Boolean(u.is_owner || u.role === 'superuser');
                 return (
                   <tr key={u.id} className={!u.active ? 'row-inactive' : ''}>
@@ -366,10 +555,12 @@ export function CustomerStaffPage() {
                 );
               })}
 
-              {users.length === 0 && (
+              {filteredUsers.length === 0 && (
                 <tr>
                   <td colSpan="11" className="user-table-empty">
-                    No users found. Click "Add New User" to create one.
+                    {hasActiveFilters
+                      ? 'No users match the selected branch/location or search filter.'
+                      : 'No users found. Click "Add New User" to create one.'}
                   </td>
                 </tr>
               )}
@@ -381,8 +572,185 @@ export function CustomerStaffPage() {
   );
 }
 
+// ── Searchable Branch & Location (City) Dropdown Input ──
+function BranchLocationInput({ value, onChange, onSelectBranch, branches = [], placeholder = 'e.g. Butwal' }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState(value || '');
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    setSearchTerm(value || '');
+  }, [value]);
+
+  // Handle outside click to close dropdown
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Filter branches and common cities in real-time
+  const filteredOptions = useMemo(() => {
+    const term = (searchTerm || '').toLowerCase().trim();
+
+    // Standard Nepal hub cities
+    const hubCities = [
+      { id: 'hub-butwal', name: 'Butwal', city: 'Butwal', district: 'Rupandehi', code: 'RTC-HUB-BTL' },
+      { id: 'hub-kathmandu', name: 'Kathmandu Valley', city: 'Kathmandu', district: 'Kathmandu', code: 'RTC-HUB-KTM' },
+      { id: 'hub-pokhara', name: 'Pokhara', city: 'Pokhara', district: 'Kaski', code: 'RTC-HUB-PKR' },
+      { id: 'hub-bhairahawa', name: 'Bhairahawa', city: 'Bhairahawa', district: 'Rupandehi', code: 'RTC-BR-566' },
+      { id: 'hub-narayangarh', name: 'Narayangarh (Chitwan)', city: 'Narayangarh', district: 'Chitwan', code: 'RTC-HUB-CHT' },
+      { id: 'hub-biratnagar', name: 'Biratnagar', city: 'Biratnagar', district: 'Morang', code: 'RTC-HUB-BRT' },
+      { id: 'hub-nepalgunj', name: 'Nepalgunj', city: 'Nepalgunj', district: 'Banke', code: 'RTC-HUB-NPJ' },
+      { id: 'hub-birgunj', name: 'Birgunj', city: 'Birgunj', district: 'Parsa', code: 'RTC-HUB-BRG' },
+      { id: 'hub-itahari', name: 'Itahari', city: 'Itahari', district: 'Sunsari', code: 'RTC-HUB-ITH' },
+      { id: 'hub-dang', name: 'Dang (Ghorahi / Tulsipur)', city: 'Dang', district: 'Dang', code: 'RTC-HUB-DNG' },
+      { id: 'hub-dhangadhi', name: 'Dhangadhi', city: 'Dhangadhi', district: 'Kailali', code: 'RTC-HUB-DHN' },
+      { id: 'hub-surkhet', name: 'Birendranagar (Surkhet)', city: 'Surkhet', district: 'Surkhet', code: 'RTC-HUB-SRK' },
+    ];
+
+    // Combine system branches + hub cities
+    const list = [...hubCities];
+    if (Array.isArray(branches) && branches.length > 0) {
+      branches.forEach((b) => {
+        const cleanCity = b.municipality || b.district || b.name.replace(/\(.*?\)/g, '').replace(/Branch|Hub|Sub-Metropolitan City|Municipality/gi, '').trim();
+        list.push({
+          id: `br-${b.id}`,
+          name: b.name,
+          city: cleanCity,
+          district: b.district || '',
+          municipality: b.municipality || '',
+          code: b.branch_code || b.code || `RTC-BR-${b.id}`,
+          rawBranch: b,
+        });
+      });
+    }
+
+    if (!term) return list.slice(0, 30);
+
+    return list.filter((item) => {
+      const n = (item.name || '').toLowerCase();
+      const c = (item.city || '').toLowerCase();
+      const d = (item.district || '').toLowerCase();
+      const cd = (item.code || '').toLowerCase();
+      const m = (item.municipality || '').toLowerCase();
+      return n.includes(term) || c.includes(term) || d.includes(term) || cd.includes(term) || m.includes(term);
+    }).slice(0, 40);
+  }, [branches, searchTerm]);
+
+  const handleInputChange = (e) => {
+    const text = e.target.value;
+    setSearchTerm(text);
+    onChange(text);
+    setIsOpen(true);
+  };
+
+  const handleSelect = (item) => {
+    const selectedCity = item.city || item.name.replace(/\(.*?\)/g, '').trim();
+    setSearchTerm(selectedCity);
+    onChange(selectedCity);
+    setIsOpen(false);
+    if (typeof onSelectBranch === 'function') {
+      onSelectBranch(item);
+    }
+  };
+
+  return (
+    <div className="branch-location-select-container" ref={containerRef}>
+      <div className="branch-location-input-box">
+        <MapPin size={14} className="branch-input-icon" />
+        <input
+          type="text"
+          placeholder={placeholder}
+          value={searchTerm}
+          onChange={handleInputChange}
+          onFocus={() => setIsOpen(true)}
+          className="branch-location-input"
+          autoComplete="off"
+        />
+        {searchTerm && (
+          <button
+            type="button"
+            className="branch-input-clear-btn"
+            onClick={() => {
+              setSearchTerm('');
+              onChange('');
+              setIsOpen(true);
+            }}
+            title="Clear"
+          >
+            <X size={13} />
+          </button>
+        )}
+        <button
+          type="button"
+          className="branch-input-chevron-btn"
+          onClick={() => setIsOpen((prev) => !prev)}
+          tabIndex={-1}
+        >
+          <ChevronDown size={14} className={isOpen ? 'rotate-180' : ''} />
+        </button>
+      </div>
+
+      {/* Floating Dropdown Filter Results */}
+      {isOpen && (
+        <div className="branch-dropdown-menu">
+          <div className="branch-dropdown-header">
+            <span>Select Branch / Location</span>
+            <span className="branch-dropdown-count">{filteredOptions.length} results</span>
+          </div>
+
+          {/* Quick option to use custom typed text */}
+          {searchTerm.trim() && (
+            <div
+              className="branch-dropdown-item custom-option"
+              onClick={() => {
+                onChange(searchTerm.trim());
+                setIsOpen(false);
+              }}
+            >
+              <div className="branch-item-title">
+                Use <b>"{searchTerm.trim()}"</b> as Location
+              </div>
+              <span className="branch-custom-badge">Custom</span>
+            </div>
+          )}
+
+          <div className="branch-dropdown-list">
+            {filteredOptions.map((item) => (
+              <div
+                key={item.id}
+                className="branch-dropdown-item"
+                onClick={() => handleSelect(item)}
+              >
+                <div className="branch-item-main">
+                  <div className="branch-item-title">{item.name}</div>
+                  <div className="branch-item-subtitle">
+                    {item.city} {item.district ? `• ${item.district}` : ''}
+                  </div>
+                </div>
+                <div className="branch-item-meta">
+                  <span className="branch-code-pill">{item.code}</span>
+                </div>
+              </div>
+            ))}
+
+            {filteredOptions.length === 0 && !searchTerm.trim() && (
+              <div className="branch-dropdown-empty">Type to search branches & cities...</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── 1. Add New User Modal Component ──
-function VendorAddUserModal({ onSave, onClose }) {
+function VendorAddUserModal({ branches = [], onSave, onClose }) {
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
@@ -423,6 +791,17 @@ function VendorAddUserModal({ onSave, onClose }) {
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
     }));
+  };
+
+  // Branch selected from Location (City) filter
+  const handleSelectBranch = (branchItem) => {
+    if (!formData.area || formData.area.trim() === '' || formData.area === '-') {
+      if (branchItem.municipality) {
+        setFormData((prev) => ({ ...prev, area: branchItem.municipality }));
+      } else if (branchItem.name) {
+        setFormData((prev) => ({ ...prev, area: branchItem.name }));
+      }
+    }
   };
 
   const handleSubmit = (e) => {
@@ -577,15 +956,16 @@ function VendorAddUserModal({ onSave, onClose }) {
           </div>
         </div>
 
+        {/* ── Location (City) Search & Filter and Area ── */}
         <div className="form-grid-2">
           <div className="form-group">
-            <label>Location (City)</label>
-            <input
-              type="text"
-              name="location"
-              placeholder="e.g. Butwal"
+            <label>Location (City) <span className="branch-search-hint">(Search Branch/City)</span></label>
+            <BranchLocationInput
               value={formData.location}
-              onChange={handleChange}
+              branches={branches}
+              onChange={(city) => setFormData((prev) => ({ ...prev, location: city }))}
+              onSelectBranch={handleSelectBranch}
+              placeholder="Search branch or city (e.g. Butwal, Kathmandu)"
             />
           </div>
 
@@ -627,7 +1007,7 @@ function VendorAddUserModal({ onSave, onClose }) {
 }
 
 // ── 2. Edit User Modal Component ──
-function VendorEditUserModal({ user, onSave, onClose }) {
+function VendorEditUserModal({ user, branches = [], onSave, onClose }) {
   const [formData, setFormData] = useState({
     id: user.id,
     first_name: user.first_name || '',
@@ -667,6 +1047,16 @@ function VendorEditUserModal({ user, onSave, onClose }) {
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
     }));
+  };
+
+  const handleSelectBranch = (branchItem) => {
+    if (!formData.area || formData.area.trim() === '' || formData.area === '-') {
+      if (branchItem.municipality) {
+        setFormData((prev) => ({ ...prev, area: branchItem.municipality }));
+      } else if (branchItem.name) {
+        setFormData((prev) => ({ ...prev, area: branchItem.name }));
+      }
+    }
   };
 
   const handleSubmit = (e) => {
@@ -763,14 +1153,16 @@ function VendorEditUserModal({ user, onSave, onClose }) {
           </div>
         </div>
 
+        {/* ── Location (City) Search & Filter and Area ── */}
         <div className="form-grid-2">
           <div className="form-group">
-            <label>Location (City)</label>
-            <input
-              type="text"
-              name="location"
+            <label>Location (City) <span className="branch-search-hint">(Search Branch/City)</span></label>
+            <BranchLocationInput
               value={formData.location}
-              onChange={handleChange}
+              branches={branches}
+              onChange={(city) => setFormData((prev) => ({ ...prev, location: city }))}
+              onSelectBranch={handleSelectBranch}
+              placeholder="Search branch or city (e.g. Butwal, Kathmandu)"
             />
           </div>
 
