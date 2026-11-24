@@ -1,0 +1,14 @@
+SELECT 'cod_payout_requests' AS tbl, COUNT(*) AS count FROM cod_payout_requests;
+SELECT 'cod_requests' AS tbl, COUNT(*) AS count FROM cod_requests;
+SELECT 'cod_settlements' AS tbl, COUNT(*) AS count FROM cod_settlements;
+SELECT 'commission_distribution_settings' AS tbl, COUNT(*) AS count FROM commission_distribution_settings;
+SELECT 'commission_payout_requests' AS tbl, COUNT(*) AS count FROM commission_payout_requests;
+SELECT 'commission_wallet_transactions' AS tbl, COUNT(*) AS count FROM commission_wallet_transactions;
+SELECT 'commission_wallets' AS tbl, COUNT(*) AS count FROM commission_wallets;
+SELECT 'vendors' AS tbl, COUNT(*) AS count FROM vendors;
+SELECT 'vendor_wallets' AS tbl, COUNT(*) AS count FROM vendor_wallets;
+SELECT 'wallet_transactions' AS tbl, COUNT(*) AS count FROM wallet_transactions;
+SELECT 'wallet_load_requests' AS tbl, COUNT(*) AS count FROM wallet_load_requests;
+SELECT 'shipment_commission_ledger' AS tbl, COUNT(*) AS count FROM shipment_commission_ledger;
+SELECT 'invoices' AS tbl, COUNT(*) AS count FROM invoices;
+SELECT 'credit_notes' AS tbl, COUNT(*) AS count FROM credit_notes;

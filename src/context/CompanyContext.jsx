@@ -400,10 +400,12 @@ export function CompanyProvider({ children }) {
 
       // 4. Hydrate live riders from Cloudflare remote D1 table 'riders'
       d1Api.getRiders(companyId).then((remoteRiders) => {
-        if (Array.isArray(remoteRiders) && remoteRiders.length > 0) {
+        if (Array.isArray(remoteRiders)) {
           setData((prev) => {
             if (!prev) return prev;
-            const maxRiderId = Math.max(...remoteRiders.map((r) => Number(r.id) || 1), prev.nextId?.courier || 1);
+            const maxRiderId = remoteRiders.length > 0
+              ? Math.max(...remoteRiders.map((r) => Number(r.id) || 1), prev.nextId?.courier || 1)
+              : (prev.nextId?.courier || 1);
             const updated = {
               ...prev,
               couriers: remoteRiders,
@@ -422,10 +424,12 @@ export function CompanyProvider({ children }) {
 
       // 5. Hydrate live vendors from Cloudflare remote D1 table 'vendors'
       d1Api.getVendors(companyId).then((remoteVendors) => {
-        if (Array.isArray(remoteVendors) && remoteVendors.length > 0) {
+        if (Array.isArray(remoteVendors)) {
           setData((prev) => {
             if (!prev) return prev;
-            const maxCustomerId = Math.max(...remoteVendors.map((v) => Number(v.id) || 1), prev.nextId?.customer || 1);
+            const maxCustomerId = remoteVendors.length > 0
+              ? Math.max(...remoteVendors.map((v) => Number(v.id) || 1), prev.nextId?.customer || 1)
+              : (prev.nextId?.customer || 1);
             const updated = {
               ...prev,
               customers: remoteVendors,
@@ -468,7 +472,7 @@ export function CompanyProvider({ children }) {
 
       // 7. Hydrate live COD settlements from Cloudflare remote D1 table 'cod_settlements'
       d1Api.getSettlements(companyId).then((remoteSettlements) => {
-        if (Array.isArray(remoteSettlements) && remoteSettlements.length > 0) {
+        if (Array.isArray(remoteSettlements)) {
           setData((prev) => {
             if (!prev) return prev;
             const updated = {
