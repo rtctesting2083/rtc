@@ -2596,6 +2596,20 @@ export async function onRequest(context) {
           },
           verified: v.verified === 1 || v.verified === true || v.verified === 'true' || v.verification_status === 'verified',
           verification_status: v.verification_status || (v.verified === 1 ? 'verified' : 'pending'),
+          staffUsers: (() => {
+            try {
+              return v.staff_users_json ? JSON.parse(v.staff_users_json) : [];
+            } catch (e) {
+              return [];
+            }
+          })(),
+          staffRoles: (() => {
+            try {
+              return v.staff_roles_json ? JSON.parse(v.staff_roles_json) : [];
+            } catch (e) {
+              return [];
+            }
+          })(),
         }));
         return jsonResponse(formatted);
       }
@@ -2754,6 +2768,20 @@ export async function onRequest(context) {
         const tradeName = body.trade_name !== undefined ? body.trade_name : (current.trade_name || name);
         const bankAcHolder = acHolder || current.bank_account_holder || '';
 
+        let staffUsersJson = current.staff_users_json || null;
+        if (body.staffUsers !== undefined) {
+          staffUsersJson = typeof body.staffUsers === 'string' ? body.staffUsers : JSON.stringify(body.staffUsers);
+        } else if (body.staff_users_json !== undefined) {
+          staffUsersJson = typeof body.staff_users_json === 'string' ? body.staff_users_json : JSON.stringify(body.staff_users_json);
+        }
+
+        let staffRolesJson = current.staff_roles_json || null;
+        if (body.staffRoles !== undefined) {
+          staffRolesJson = typeof body.staffRoles === 'string' ? body.staffRoles : JSON.stringify(body.staffRoles);
+        } else if (body.staff_roles_json !== undefined) {
+          staffRolesJson = typeof body.staff_roles_json === 'string' ? body.staff_roles_json : JSON.stringify(body.staff_roles_json);
+        }
+
         await db
           .prepare(`
             UPDATE vendors SET 
@@ -2788,6 +2816,8 @@ export async function onRequest(context) {
               doc_citizenship = ?,
               doc_vat_pan = ?,
               doc_contact_photo = ?,
+              staff_users_json = ?,
+              staff_roles_json = ?,
               updated_at = datetime("now") 
             WHERE id = ?
           `)
@@ -2823,6 +2853,8 @@ export async function onRequest(context) {
             docCitizenship,
             docVatPan,
             docContactPhoto,
+            staffUsersJson,
+            staffRolesJson,
             vendorId
           )
           .run();

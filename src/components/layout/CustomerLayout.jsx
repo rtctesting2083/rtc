@@ -614,7 +614,7 @@ export function CustomerLayout() {
                           className={({ isActive }) => `vendor-sub-item ${isActive ? 'active' : ''}`}
                         >
                           <span className="vendor-sub-icon"><UserCheck size={14} strokeWidth={2} /></span>
-                          <span>Manage Staffs</span>
+                          <span>Staff Logins</span>
                         </NavLink>
                       )}
                     </div>
