@@ -20,6 +20,13 @@ import {
   ChevronDown,
   Building2,
   RotateCcw,
+  User,
+  Phone,
+  Mail,
+  AtSign,
+  Briefcase,
+  Navigation,
+  Check,
 } from 'lucide-react';
 import './CustomerStaffPage.css';
 
@@ -334,7 +341,7 @@ export function CustomerStaffPage() {
     openModal(
       'Add New User',
       <VendorAddUserModal branches={branches} onSave={handleAddUser} onClose={closeModal} />,
-      'medium',
+      'wide',
       { hideHeader: true }
     );
   };
@@ -344,7 +351,7 @@ export function CustomerStaffPage() {
     openModal(
       'Edit User',
       <VendorEditUserModal user={user} branches={branches} onSave={handleUpdateUser} onClose={closeModal} />,
-      'medium',
+      'wide',
       { hideHeader: true }
     );
   };
@@ -834,11 +841,20 @@ function VendorAddUserModal({ branches = [], onSave, onClose }) {
   };
 
   return (
-    <div className="user-modal-box">
-      <div className="user-modal-header">
-        <h3>Add New User</h3>
-        <button type="button" className="modal-close-btn" onClick={onClose}>
-          <X size={18} />
+    <div className="user-modal-box modern-user-modal">
+      {/* Modern Header */}
+      <div className="user-modal-header modern-modal-header">
+        <div className="modal-header-left">
+          <div className="modal-header-badge add-badge">
+            <UserPlus size={18} />
+          </div>
+          <div>
+            <h3 className="modal-title">Add New User</h3>
+            <p className="modal-subtitle">Create a login account and assign branch role privileges</p>
+          </div>
+        </div>
+        <button type="button" className="modal-close-btn" onClick={onClose} title="Close">
+          <X size={17} />
         </button>
       </div>
 
@@ -849,156 +865,223 @@ function VendorAddUserModal({ branches = [], onSave, onClose }) {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="user-modal-form">
-        <div className="form-grid-2">
-          <div className="form-group">
-            <label>First Name <span className="req">*</span></label>
-            <input
-              type="text"
-              name="first_name"
-              placeholder="e.g. Roshan"
-              value={formData.first_name}
-              onChange={handleChange}
-              required
-            />
+      <form onSubmit={handleSubmit} className="user-modal-form modern-form">
+        {/* Section 1: Personal Details */}
+        <div className="modal-section-card">
+          <div className="modal-section-header">
+            <User size={13} className="section-header-icon" />
+            <span className="section-header-title">Personal Details</span>
           </div>
 
-          <div className="form-group">
-            <label>Last Name <span className="req">*</span></label>
-            <input
-              type="text"
-              name="last_name"
-              placeholder="e.g. Gautam"
-              value={formData.last_name}
-              onChange={handleChange}
-              required
-            />
-          </div>
-        </div>
+          <div className="form-grid-2">
+            <div className="form-group modern-form-group">
+              <label>First Name <span className="req">*</span></label>
+              <div className="input-with-icon-wrap">
+                <User size={14} className="input-prefix-icon" />
+                <input
+                  type="text"
+                  name="first_name"
+                  placeholder="e.g. Roshan"
+                  value={formData.first_name}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+            </div>
 
-        <div className="form-grid-2">
-          <div className="form-group">
-            <label>Username (Login ID) <span className="req">*</span></label>
-            <input
-              type="text"
-              name="username"
-              placeholder="e.g. roshan.gautam"
-              value={formData.username}
-              onChange={handleChange}
-              required
-            />
+            <div className="form-group modern-form-group">
+              <label>Last Name <span className="req">*</span></label>
+              <div className="input-with-icon-wrap">
+                <User size={14} className="input-prefix-icon" />
+                <input
+                  type="text"
+                  name="last_name"
+                  placeholder="e.g. Gautam"
+                  value={formData.last_name}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+            </div>
           </div>
 
-          <div className="form-group">
-            <label>Password <span className="req">*</span></label>
-            <div className="password-input-wrap">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                name="password"
-                placeholder="Enter password"
-                value={formData.password}
-                onChange={handleChange}
-                required
-              />
-              <button
-                type="button"
-                className="btn-toggle-eye"
-                onClick={() => setShowPassword((p) => !p)}
-              >
-                {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-              </button>
+          <div className="form-grid-2">
+            <div className="form-group modern-form-group">
+              <label>Mobile Number <span className="req">*</span></label>
+              <div className="input-with-icon-wrap">
+                <Phone size={14} className="input-prefix-icon" />
+                <input
+                  type="tel"
+                  name="mobile"
+                  placeholder="e.g. 9847000000"
+                  value={formData.mobile}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="form-group modern-form-group">
+              <label>Email Address</label>
+              <div className="input-with-icon-wrap">
+                <Mail size={14} className="input-prefix-icon" />
+                <input
+                  type="email"
+                  name="email"
+                  placeholder="e.g. roshugtm333@gmail.com"
+                  value={formData.email}
+                  onChange={handleChange}
+                />
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="form-grid-2">
-          <div className="form-group">
-            <label>Mobile Number <span className="req">*</span></label>
-            <input
-              type="tel"
-              name="mobile"
-              placeholder="e.g. 9742365230"
-              value={formData.mobile}
-              onChange={handleChange}
-              required
-            />
+        {/* Section 2: Account & Security */}
+        <div className="modal-section-card">
+          <div className="modal-section-header">
+            <Lock size={13} className="section-header-icon" />
+            <span className="section-header-title">Login Credentials</span>
           </div>
 
-          <div className="form-group">
-            <label>Email Address</label>
-            <input
-              type="email"
-              name="email"
-              placeholder="e.g. roshugtm333@gmail.com"
-              value={formData.email}
-              onChange={handleChange}
-            />
-          </div>
-        </div>
+          <div className="form-grid-2">
+            <div className="form-group modern-form-group">
+              <label>Username (Login ID) <span className="req">*</span></label>
+              <div className="input-with-icon-wrap">
+                <AtSign size={14} className="input-prefix-icon" />
+                <input
+                  type="text"
+                  name="username"
+                  placeholder="e.g. roshan.gautam"
+                  value={formData.username}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+            </div>
 
-        <div className="form-grid-2">
-          <div className="form-group">
-            <label>Role</label>
-            <select name="role" value={formData.role} onChange={handleChange}>
-              {rolesList.map((r) => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label>Designation</label>
-            <select name="designation" value={formData.designation} onChange={handleChange}>
-              {designationsList.map((d) => (
-                <option key={d} value={d}>{d}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* ── Location (City) Search & Filter and Area ── */}
-        <div className="form-grid-2">
-          <div className="form-group">
-            <label>Location (City) <span className="branch-search-hint">(Search Branch/City)</span></label>
-            <BranchLocationInput
-              value={formData.location}
-              branches={branches}
-              onChange={(city) => setFormData((prev) => ({ ...prev, location: city }))}
-              onSelectBranch={handleSelectBranch}
-              placeholder="Search branch or city (e.g. Butwal, Kathmandu)"
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Area / Landmark</label>
-            <input
-              type="text"
-              name="area"
-              placeholder="e.g. Butwal-Laxminagar-Rupandehi"
-              value={formData.area}
-              onChange={handleChange}
-            />
+            <div className="form-group modern-form-group">
+              <label>Password <span className="req">*</span></label>
+              <div className="input-with-icon-wrap password-wrap">
+                <KeyRound size={14} className="input-prefix-icon" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  placeholder="Enter secure password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  required
+                />
+                <button
+                  type="button"
+                  className="btn-toggle-eye"
+                  onClick={() => setShowPassword((p) => !p)}
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="form-group-checkbox">
-          <label>
+        {/* Section 3: Department & Assignment */}
+        <div className="modal-section-card">
+          <div className="modal-section-header">
+            <Shield size={13} className="section-header-icon" />
+            <span className="section-header-title">Department & Assignment</span>
+          </div>
+
+          <div className="form-grid-2">
+            <div className="form-group modern-form-group">
+              <label>Role</label>
+              <div className="input-with-icon-wrap">
+                <Shield size={14} className="input-prefix-icon" />
+                <select name="role" value={formData.role} onChange={handleChange}>
+                  {rolesList.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="form-group modern-form-group">
+              <label>Designation</label>
+              <div className="input-with-icon-wrap">
+                <Briefcase size={14} className="input-prefix-icon" />
+                <select name="designation" value={formData.designation} onChange={handleChange}>
+                  {designationsList.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="form-grid-2">
+            <div className="form-group modern-form-group">
+              <label>
+                Location (City) <span className="branch-search-hint">(Search Branch/City)</span>
+              </label>
+              <BranchLocationInput
+                value={formData.location}
+                branches={branches}
+                onChange={(city) => setFormData((prev) => ({ ...prev, location: city }))}
+                onSelectBranch={handleSelectBranch}
+                placeholder="Search branch or city (e.g. Butwal, Kathmandu)"
+              />
+            </div>
+
+            <div className="form-group modern-form-group">
+              <label>Area / Landmark</label>
+              <div className="input-with-icon-wrap">
+                <Navigation size={14} className="input-prefix-icon" />
+                <input
+                  type="text"
+                  name="area"
+                  placeholder="e.g. Butwal-Laxminagar-Rupandehi"
+                  value={formData.area}
+                  onChange={handleChange}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Modern Status Toggle Switch Card */}
+        <div className="modern-status-toggle-card">
+          <div className="status-toggle-info">
+            <div className={`status-toggle-badge ${formData.active ? 'active' : 'inactive'}`}>
+              <CheckCircle2 size={16} />
+            </div>
+            <div>
+              <div className="status-toggle-title">Active Account</div>
+              <div className="status-toggle-desc">
+                {formData.active
+                  ? 'Allow staff user to sign in to the Vendor Portal immediately.'
+                  : 'Account is deactivated. Login will be restricted.'}
+              </div>
+            </div>
+          </div>
+          <label className="switch-toggle-label" title={formData.active ? 'Account is Active' : 'Account is Inactive'}>
             <input
               type="checkbox"
               name="active"
               checked={formData.active}
               onChange={handleChange}
             />
-            <span>Active Account (User can login immediately)</span>
+            <span className="switch-slider"></span>
           </label>
         </div>
 
-        <div className="modal-actions-bar">
-          <button type="button" className="btn-modal-cancel" onClick={onClose}>
+        {/* Action Buttons */}
+        <div className="modal-actions-bar modern-actions-bar">
+          <button type="button" className="btn-modal-cancel modern-btn-cancel" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="btn-modal-save">
-            Add User
+          <button type="submit" className="btn-modal-save modern-btn-save">
+            <UserPlus size={15} />
+            <span>Add User</span>
           </button>
         </div>
       </form>
@@ -1070,11 +1153,20 @@ function VendorEditUserModal({ user, branches = [], onSave, onClose }) {
   };
 
   return (
-    <div className="user-modal-box">
-      <div className="user-modal-header">
-        <h3>Edit User: {user.first_name} {user.last_name}</h3>
-        <button type="button" className="modal-close-btn" onClick={onClose}>
-          <X size={18} />
+    <div className="user-modal-box modern-user-modal">
+      {/* Modern Header */}
+      <div className="user-modal-header modern-modal-header">
+        <div className="modal-header-left">
+          <div className="modal-header-badge edit-badge">
+            <Pencil size={18} />
+          </div>
+          <div>
+            <h3 className="modal-title">Edit User: {user.first_name} {user.last_name}</h3>
+            <p className="modal-subtitle">Update staff profile, assigned role privileges, and branch location</p>
+          </div>
+        </div>
+        <button type="button" className="modal-close-btn" onClick={onClose} title="Close">
+          <X size={17} />
         </button>
       </div>
 
@@ -1085,118 +1177,171 @@ function VendorEditUserModal({ user, branches = [], onSave, onClose }) {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="user-modal-form">
-        <div className="form-grid-2">
-          <div className="form-group">
-            <label>First Name <span className="req">*</span></label>
-            <input
-              type="text"
-              name="first_name"
-              value={formData.first_name}
-              onChange={handleChange}
-              required
-            />
+      <form onSubmit={handleSubmit} className="user-modal-form modern-form">
+        {/* Section 1: Personal Details */}
+        <div className="modal-section-card">
+          <div className="modal-section-header">
+            <User size={13} className="section-header-icon" />
+            <span className="section-header-title">Personal Details</span>
           </div>
 
-          <div className="form-group">
-            <label>Last Name <span className="req">*</span></label>
-            <input
-              type="text"
-              name="last_name"
-              value={formData.last_name}
-              onChange={handleChange}
-              required
-            />
-          </div>
-        </div>
+          <div className="form-grid-2">
+            <div className="form-group modern-form-group">
+              <label>First Name <span className="req">*</span></label>
+              <div className="input-with-icon-wrap">
+                <User size={14} className="input-prefix-icon" />
+                <input
+                  type="text"
+                  name="first_name"
+                  value={formData.first_name}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+            </div>
 
-        <div className="form-grid-2">
-          <div className="form-group">
-            <label>Mobile Number <span className="req">*</span></label>
-            <input
-              type="tel"
-              name="mobile"
-              value={formData.mobile}
-              onChange={handleChange}
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Email Address</label>
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-            />
-          </div>
-        </div>
-
-        <div className="form-grid-2">
-          <div className="form-group">
-            <label>Role</label>
-            <select name="role" value={formData.role} onChange={handleChange}>
-              {rolesList.map((r) => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
+            <div className="form-group modern-form-group">
+              <label>Last Name <span className="req">*</span></label>
+              <div className="input-with-icon-wrap">
+                <User size={14} className="input-prefix-icon" />
+                <input
+                  type="text"
+                  name="last_name"
+                  value={formData.last_name}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+            </div>
           </div>
 
-          <div className="form-group">
-            <label>Designation</label>
-            <select name="designation" value={formData.designation} onChange={handleChange}>
-              {designationsList.map((d) => (
-                <option key={d} value={d}>{d}</option>
-              ))}
-            </select>
-          </div>
-        </div>
+          <div className="form-grid-2">
+            <div className="form-group modern-form-group">
+              <label>Mobile Number <span className="req">*</span></label>
+              <div className="input-with-icon-wrap">
+                <Phone size={14} className="input-prefix-icon" />
+                <input
+                  type="tel"
+                  name="mobile"
+                  value={formData.mobile}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+            </div>
 
-        {/* ── Location (City) Search & Filter and Area ── */}
-        <div className="form-grid-2">
-          <div className="form-group">
-            <label>Location (City) <span className="branch-search-hint">(Search Branch/City)</span></label>
-            <BranchLocationInput
-              value={formData.location}
-              branches={branches}
-              onChange={(city) => setFormData((prev) => ({ ...prev, location: city }))}
-              onSelectBranch={handleSelectBranch}
-              placeholder="Search branch or city (e.g. Butwal, Kathmandu)"
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Area</label>
-            <input
-              type="text"
-              name="area"
-              value={formData.area}
-              onChange={handleChange}
-            />
+            <div className="form-group modern-form-group">
+              <label>Email Address</label>
+              <div className="input-with-icon-wrap">
+                <Mail size={14} className="input-prefix-icon" />
+                <input
+                  type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                />
+              </div>
+            </div>
           </div>
         </div>
 
+        {/* Section 2: Department & Assignment */}
+        <div className="modal-section-card">
+          <div className="modal-section-header">
+            <Shield size={13} className="section-header-icon" />
+            <span className="section-header-title">Department & Assignment</span>
+          </div>
+
+          <div className="form-grid-2">
+            <div className="form-group modern-form-group">
+              <label>Role</label>
+              <div className="input-with-icon-wrap">
+                <Shield size={14} className="input-prefix-icon" />
+                <select name="role" value={formData.role} onChange={handleChange}>
+                  {rolesList.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="form-group modern-form-group">
+              <label>Designation</label>
+              <div className="input-with-icon-wrap">
+                <Briefcase size={14} className="input-prefix-icon" />
+                <select name="designation" value={formData.designation} onChange={handleChange}>
+                  {designationsList.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="form-grid-2">
+            <div className="form-group modern-form-group">
+              <label>
+                Location (City) <span className="branch-search-hint">(Search Branch/City)</span>
+              </label>
+              <BranchLocationInput
+                value={formData.location}
+                branches={branches}
+                onChange={(city) => setFormData((prev) => ({ ...prev, location: city }))}
+                onSelectBranch={handleSelectBranch}
+                placeholder="Search branch or city (e.g. Butwal, Kathmandu)"
+              />
+            </div>
+
+            <div className="form-group modern-form-group">
+              <label>Area / Landmark</label>
+              <div className="input-with-icon-wrap">
+                <Navigation size={14} className="input-prefix-icon" />
+                <input
+                  type="text"
+                  name="area"
+                  value={formData.area}
+                  onChange={handleChange}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Modern Active Account Switch Card (only for non-owner) */}
         {!user.is_owner && (
-          <div className="form-group-checkbox">
-            <label>
+          <div className="modern-status-toggle-card">
+            <div className="status-toggle-info">
+              <div className={`status-toggle-badge ${formData.active ? 'active' : 'inactive'}`}>
+                <CheckCircle2 size={16} />
+              </div>
+              <div>
+                <div className="status-toggle-title">Active Account</div>
+                <div className="status-toggle-desc">
+                  {formData.active
+                    ? 'Allow staff user to sign in to the Vendor Portal immediately.'
+                    : 'Account is deactivated. Login will be restricted.'}
+                </div>
+              </div>
+            </div>
+            <label className="switch-toggle-label" title={formData.active ? 'Account is Active' : 'Account is Inactive'}>
               <input
                 type="checkbox"
                 name="active"
                 checked={formData.active}
                 onChange={handleChange}
               />
-              <span>Active Account</span>
+              <span className="switch-slider"></span>
             </label>
           </div>
         )}
 
-        <div className="modal-actions-bar">
-          <button type="button" className="btn-modal-cancel" onClick={onClose}>
+        <div className="modal-actions-bar modern-actions-bar">
+          <button type="button" className="btn-modal-cancel modern-btn-cancel" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="btn-modal-save">
-            Update User
+          <button type="submit" className="btn-modal-save modern-btn-save">
+            <Check size={15} />
+            <span>Update User</span>
           </button>
         </div>
       </form>
@@ -1233,16 +1378,20 @@ function VendorPasswordModal({ user, onSave, onClose }) {
   };
 
   return (
-    <div className="user-modal-box">
-      <div className="user-modal-header">
-        <h3>Change Password</h3>
-        <button type="button" className="modal-close-btn" onClick={onClose}>
-          <X size={18} />
+    <div className="user-modal-box modern-user-modal">
+      <div className="user-modal-header modern-modal-header">
+        <div className="modal-header-left">
+          <div className="modal-header-badge pass-badge">
+            <KeyRound size={18} />
+          </div>
+          <div>
+            <h3 className="modal-title">Change Password</h3>
+            <p className="modal-subtitle">Update credentials for <b>{user.first_name} {user.last_name}</b></p>
+          </div>
+        </div>
+        <button type="button" className="modal-close-btn" onClick={onClose} title="Close">
+          <X size={17} />
         </button>
-      </div>
-
-      <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '14px' }}>
-        Updating login credentials for <b>{user.first_name} {user.last_name}</b> (<code>{user.username}</code>)
       </div>
 
       {error && (
@@ -1252,10 +1401,11 @@ function VendorPasswordModal({ user, onSave, onClose }) {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="user-modal-form">
-        <div className="form-group">
+      <form onSubmit={handleSubmit} className="user-modal-form modern-form">
+        <div className="form-group modern-form-group">
           <label>New Password <span className="req">*</span></label>
-          <div className="password-input-wrap">
+          <div className="input-with-icon-wrap password-wrap">
+            <Lock size={14} className="input-prefix-icon" />
             <input
               type={showPassword ? 'text' : 'password'}
               placeholder="Enter new password"
@@ -1267,29 +1417,34 @@ function VendorPasswordModal({ user, onSave, onClose }) {
               type="button"
               className="btn-toggle-eye"
               onClick={() => setShowPassword((p) => !p)}
+              title={showPassword ? 'Hide password' : 'Show password'}
             >
               {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
             </button>
           </div>
         </div>
 
-        <div className="form-group">
+        <div className="form-group modern-form-group">
           <label>Confirm New Password <span className="req">*</span></label>
-          <input
-            type={showPassword ? 'text' : 'password'}
-            placeholder="Re-enter new password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            required
-          />
+          <div className="input-with-icon-wrap">
+            <KeyRound size={14} className="input-prefix-icon" />
+            <input
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Re-enter new password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+            />
+          </div>
         </div>
 
-        <div className="modal-actions-bar">
-          <button type="button" className="btn-modal-cancel" onClick={onClose}>
+        <div className="modal-actions-bar modern-actions-bar">
+          <button type="button" className="btn-modal-cancel modern-btn-cancel" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="btn-modal-save">
-            Update Password
+          <button type="submit" className="btn-modal-save modern-btn-save">
+            <KeyRound size={15} />
+            <span>Update Password</span>
           </button>
         </div>
       </form>
