@@ -3074,9 +3074,12 @@ export async function onRequest(context) {
           WHERE company_id = ? AND (
             customer_id = ? 
             OR (CASE WHEN sender_phone IS NOT NULL AND ? != '' THEN sender_phone = ? ELSE 0 END)
-            OR (CASE WHEN customer_phone IS NOT NULL AND ? != '' THEN customer_phone = ? ELSE 0 END)
+            OR (CASE WHEN sender_name IS NOT NULL AND ? != '' THEN LOWER(sender_name) = LOWER(?) ELSE 0 END)
           )
-        `).bind(cId, Number(vId), vPhone, vPhone, vPhone, vPhone).all().catch(() => ({ results: [] }));
+        `).bind(cId, Number(vId), vPhone, vPhone, vName, vName).all().catch((err) => {
+          console.error('getVendorCodBreakdown SQL error:', err);
+          return { results: [] };
+        });
 
         const list = allShipments || [];
 

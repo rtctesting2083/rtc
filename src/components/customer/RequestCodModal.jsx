@@ -178,7 +178,7 @@ export function RequestCodModal({ currentCustomer, onClose, onSuccess }) {
         branch_id: currentCustomer?.branch_id || null,
         bank_details: updatedBank,
         requested_amount: amt,
-        gross_cod: amt,
+        gross_cod: d1Summary?.gross_cod_collected || amt,
         delivery_charges_deducted: d1Summary?.total_delivery_charges_deducted || localDeliveryFees || 0,
         parcels_count: eligibleIds.length || 1,
         shipment_ids: eligibleIds,
@@ -481,12 +481,21 @@ export function RequestCodModal({ currentCustomer, onClose, onSuccess }) {
                 color: isBalanceAvailable ? '#111827' : '#6b7280',
                 margin: '10px 0 6px 0',
                 display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
+                flexDirection: 'column',
+                gap: '2px',
               }}
             >
-              <span>Unsettled COD: {loadingSummary ? 'Computing...' : unsettledCodFormatted}</span>
-              {loadingSummary && <Loader2 size={13} className="animate-spin text-gray-500" />}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>
+                  Unsettled COD: {loadingSummary ? 'Computing...' : (d1Summary?.gross_cod_collected != null ? Number(d1Summary.gross_cod_collected).toFixed(2) : unsettledCodFormatted)}
+                </span>
+                {loadingSummary && <Loader2 size={13} className="animate-spin text-gray-500" />}
+              </div>
+              {isBalanceAvailable && d1Summary && d1Summary.total_delivery_charges_deducted > 0 && (
+                <div style={{ fontSize: '11.5px', color: '#16a34a', fontWeight: 600 }}>
+                  Net Payable: NPR {availableCodBalance.toFixed(2)} (after NPR {Number(d1Summary.total_delivery_charges_deducted).toFixed(2)} delivery charge deduction)
+                </div>
+              )}
             </div>
 
             {/* Zero Balance Notice */}
