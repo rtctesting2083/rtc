@@ -3030,6 +3030,22 @@ export async function onRequest(context) {
         await db.prepare('ALTER TABLE shipments ADD COLUMN cod_settlement_status TEXT DEFAULT "unsettled"').run().catch(() => {});
         await db.prepare('ALTER TABLE shipments ADD COLUMN cod_request_id INTEGER').run().catch(() => {});
 
+        // Notifications table
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id INTEGER NOT NULL DEFAULT 1,
+            target_type TEXT NOT NULL,
+            target_id INTEGER DEFAULT 0,
+            title TEXT,
+            message TEXT,
+            link TEXT,
+            is_read INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )
+        `).run().catch(() => {});
+        await db.prepare('CREATE INDEX IF NOT EXISTS idx_notifications_company_target ON notifications(company_id, target_type, target_id)').run().catch(() => {});
+
         // Legacy mirror table
         await db.prepare(`
           CREATE TABLE IF NOT EXISTS cod_requests (
@@ -3224,20 +3240,7 @@ export async function onRequest(context) {
           );
         }
 
-        // 3. Admin Notification
-        batch.push(
-          db.prepare(`
-            INSERT INTO notifications (
-              company_id, target_type, target_id, title, message, link, is_read, created_at
-            ) VALUES (?, 'admin', 0, ?, ?, '/company/cod-settlement?tab=requests', 0, datetime('now'))
-          `).bind(
-            cid,
-            'New Vendor COD Payout Request',
-            `Vendor "${summary.vendor_name}" submitted payout request ${requestCode} for NPR ${requestedAmount.toLocaleString()} (${eligibleIds.length} parcels).`
-          )
-        );
-
-        // 4. Mirror to legacy cod_requests table for backward compatibility
+        // 3. Mirror to legacy cod_requests table for backward compatibility
         batch.push(
           db.prepare(`
             INSERT INTO cod_requests (
@@ -3255,6 +3258,21 @@ export async function onRequest(context) {
 
         const batchResults = await db.batch(batch);
         const newPayoutId = batchResults[0]?.meta?.last_row_id;
+
+        // 4. Safe admin notification (outside financial batch)
+        try {
+          await db.prepare(`
+            INSERT INTO notifications (
+              company_id, target_type, target_id, title, message, link, is_read, created_at
+            ) VALUES (?, 'admin', 0, ?, ?, '/company/cod-settlement?tab=requests', 0, datetime('now'))
+          `).bind(
+            cid,
+            'New Vendor COD Payout Request',
+            `Vendor "${summary.vendor_name}" submitted payout request ${requestCode} for NPR ${requestedAmount.toLocaleString()} (${eligibleIds.length} parcels).`
+          ).run();
+        } catch (nErr) {
+          console.warn('Admin notification notice:', nErr);
+        }
 
         // Link payout_request_id and cod_request_id on shipments
         if (newPayoutId && eligibleIds.length > 0) {
@@ -3478,19 +3496,22 @@ export async function onRequest(context) {
             }
           }
 
-          // 5. Notify vendor
-          batch.push(
-            db.prepare(`
+          await db.batch(batch);
+
+          // 5. Notify vendor (safe, outside batch)
+          try {
+            await db.prepare(`
               INSERT INTO notifications (
                 company_id, target_type, target_id, title, message, link, is_read, created_at
               ) VALUES (?, 'vendor', ?, ?, ?, '/customer/cod-settlement?tab=statements', 0, datetime('now'))
             `).bind(
               req.company_id, req.vendor_id, 'COD Payout Settled & Disbursed',
               `Your COD payout request ${req.request_code || req.request_number} for NPR ${Number(req.net_payable_amount || req.requested_amount).toLocaleString()} has been paid via ${payMethod} (Ref: ${txnRef}).`
-            )
-          );
+            ).run();
+          } catch (nErr) {
+            console.warn('Vendor notification notice:', nErr);
+          }
 
-          await db.batch(batch);
           return jsonResponse({
             success: true,
             settlement_number: settleNumber,
@@ -3534,18 +3555,22 @@ export async function onRequest(context) {
             }
           }
 
-          batch.push(
-            db.prepare(`
+          await db.batch(batch);
+
+          // Safe vendor notification (outside batch)
+          try {
+            await db.prepare(`
               INSERT INTO notifications (
                 company_id, target_type, target_id, title, message, link, is_read, created_at
               ) VALUES (?, 'vendor', ?, ?, ?, '/customer/cod-settlement?tab=requests', 0, datetime('now'))
             `).bind(
               req.company_id, req.vendor_id, 'COD Payout Request Rejected',
               `Your COD request ${req.request_code || req.request_number} was rejected. Reason: ${reason}. Locked shipments have been released.`
-            )
-          );
+            ).run();
+          } catch (nErr) {
+            console.warn('Vendor notification notice:', nErr);
+          }
 
-          await db.batch(batch);
           return jsonResponse({
             success: true,
             message: `COD request ${req.request_code || req.request_number} rejected and shipments released.`
