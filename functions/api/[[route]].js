@@ -1052,26 +1052,7 @@ export async function onRequest(context) {
         if (!catColNames.has('status')) await dbInstance.prepare("ALTER TABLE product_categories ADD COLUMN status TEXT DEFAULT 'active'").run().catch(() => {});
         if (!catColNames.has('display_order')) await dbInstance.prepare("ALTER TABLE product_categories ADD COLUMN display_order INTEGER DEFAULT 0").run().catch(() => {});
 
-        // 2. Category Delivery Rates table
-        await dbInstance.prepare(`
-          CREATE TABLE IF NOT EXISTS category_delivery_rates (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            company_id INTEGER NOT NULL DEFAULT 1,
-            category_id INTEGER NOT NULL,
-            zone_type TEXT NOT NULL DEFAULT 'ALL_ZONES',
-            pricing_model TEXT NOT NULL DEFAULT 'OVERRIDE_BASE_RATE',
-            base_charge_npr REAL NOT NULL DEFAULT 100.0,
-            base_weight_kg REAL NOT NULL DEFAULT 1.0,
-            extra_per_kg_npr REAL NOT NULL DEFAULT 50.0,
-            surcharge_value REAL NOT NULL DEFAULT 0.0,
-            min_charge_npr REAL NOT NULL DEFAULT 80.0,
-            is_active INTEGER NOT NULL DEFAULT 1,
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-          )
-        `).run();
-
-        // 3. Ensure shipments & vendor_order columns
+        // 2. Ensure shipments & vendor_order columns
         await dbInstance.prepare("ALTER TABLE shipments ADD COLUMN product_category_id INTEGER NULLABLE").run().catch(() => {});
         await dbInstance.prepare("ALTER TABLE shipments ADD COLUMN calculated_delivery_charge REAL NULLABLE").run().catch(() => {});
         await dbInstance.prepare("ALTER TABLE shipments ADD COLUMN category_pricing_breakdown_json TEXT NULLABLE").run().catch(() => {});
@@ -1080,7 +1061,7 @@ export async function onRequest(context) {
         await dbInstance.prepare("ALTER TABLE vendor_order ADD COLUMN calculated_delivery_charge REAL NULLABLE").run().catch(() => {});
         await dbInstance.prepare("ALTER TABLE vendor_order ADD COLUMN category_pricing_breakdown_json TEXT NULLABLE").run().catch(() => {});
 
-        // 4. Seed default categories if empty
+        // 3. Seed default categories if empty
         const countRow = await dbInstance.prepare("SELECT COUNT(*) as cnt FROM product_categories").first().catch(() => ({ cnt: 0 }));
         if (!countRow || countRow.cnt === 0) {
           const defaultCats = [
@@ -1098,80 +1079,6 @@ export async function onRequest(context) {
               INSERT OR REPLACE INTO product_categories (id, company_id, name_en, name, name_np, code, description, requires_fragile_handling, is_active, status)
               VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, 'active')
             `).bind(id, nEn, nEn, nNp, code, desc, frag, act).run().catch(() => {});
-          }
-
-          // Seed default zone rates
-          const defaultRates = [
-            // Documents
-            [1, 'SAME_MUNICIPALITY', 'OVERRIDE_BASE_RATE', 70.0, 0.5, 30.0, 0, 70.0],
-            [1, 'SAME_DISTRICT',     'OVERRIDE_BASE_RATE', 90.0, 0.5, 40.0, 0, 90.0],
-            [1, 'SAME_PROVINCE',     'OVERRIDE_BASE_RATE', 110.0, 0.5, 45.0, 0, 110.0],
-            [1, 'INTER_PROVINCE',    'OVERRIDE_BASE_RATE', 140.0, 0.5, 50.0, 0, 140.0],
-            // Apparel
-            [2, 'SAME_MUNICIPALITY', 'OVERRIDE_BASE_RATE', 90.0, 1.0, 40.0, 0, 90.0],
-            [2, 'SAME_DISTRICT',     'OVERRIDE_BASE_RATE', 120.0, 1.0, 50.0, 0, 120.0],
-            [2, 'SAME_PROVINCE',     'OVERRIDE_BASE_RATE', 150.0, 1.0, 60.0, 0, 150.0],
-            [2, 'INTER_PROVINCE',    'OVERRIDE_BASE_RATE', 180.0, 1.0, 70.0, 0, 180.0],
-            // Electronics
-            [3, 'SAME_MUNICIPALITY', 'OVERRIDE_BASE_RATE', 110.0, 1.0, 50.0, 20.0, 110.0],
-            [3, 'SAME_DISTRICT',     'OVERRIDE_BASE_RATE', 140.0, 1.0, 60.0, 25.0, 140.0],
-            [3, 'SAME_PROVINCE',     'OVERRIDE_BASE_RATE', 170.0, 1.0, 70.0, 30.0, 170.0],
-            [3, 'INTER_PROVINCE',    'OVERRIDE_BASE_RATE', 210.0, 1.0, 80.0, 40.0, 210.0],
-            // Fragile
-            [4, 'SAME_MUNICIPALITY', 'OVERRIDE_BASE_RATE', 130.0, 1.0, 60.0, 40.0, 130.0],
-            [4, 'SAME_DISTRICT',     'OVERRIDE_BASE_RATE', 160.0, 1.0, 70.0, 50.0, 160.0],
-            [4, 'SAME_PROVINCE',     'OVERRIDE_BASE_RATE', 200.0, 1.0, 80.0, 60.0, 200.0],
-            [4, 'INTER_PROVINCE',    'OVERRIDE_BASE_RATE', 250.0, 1.0, 90.0, 75.0, 250.0],
-            // Cosmetics
-            [5, 'SAME_MUNICIPALITY', 'OVERRIDE_BASE_RATE', 100.0, 1.0, 45.0, 0, 100.0],
-            [5, 'SAME_DISTRICT',     'OVERRIDE_BASE_RATE', 130.0, 1.0, 55.0, 0, 130.0],
-            [5, 'SAME_PROVINCE',     'OVERRIDE_BASE_RATE', 160.0, 1.0, 65.0, 0, 160.0],
-            [5, 'INTER_PROVINCE',    'OVERRIDE_BASE_RATE', 190.0, 1.0, 75.0, 0, 190.0],
-            // Food
-            [6, 'SAME_MUNICIPALITY', 'OVERRIDE_BASE_RATE', 120.0, 1.0, 50.0, 0, 120.0],
-            [6, 'SAME_DISTRICT',     'OVERRIDE_BASE_RATE', 150.0, 1.0, 60.0, 0, 150.0],
-            [6, 'SAME_PROVINCE',     'OVERRIDE_BASE_RATE', 180.0, 1.0, 70.0, 0, 180.0],
-            [6, 'INTER_PROVINCE',    'OVERRIDE_BASE_RATE', 220.0, 1.0, 80.0, 0, 220.0],
-            // Heavy
-            [7, 'SAME_MUNICIPALITY', 'OVERRIDE_BASE_RATE', 250.0, 5.0, 40.0, 0, 250.0],
-            [7, 'SAME_DISTRICT',     'OVERRIDE_BASE_RATE', 350.0, 5.0, 50.0, 0, 350.0],
-            [7, 'SAME_PROVINCE',     'OVERRIDE_BASE_RATE', 450.0, 5.0, 60.0, 0, 450.0],
-            [7, 'INTER_PROVINCE',    'OVERRIDE_BASE_RATE', 550.0, 5.0, 70.0, 0, 550.0],
-          ];
-
-          for (const [cId, zType, model, bChg, bWt, eKg, sur, minC] of defaultRates) {
-            await dbInstance.prepare(`
-              INSERT OR REPLACE INTO category_delivery_rates (
-                company_id, category_id, zone_type, pricing_model, base_charge_npr, base_weight_kg, extra_per_kg_npr, surcharge_value, min_charge_npr, is_active
-              ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-            `).bind(cId, zType, model, bChg, bWt, eKg, sur, minC).run().catch(() => {});
-          }
-        }
-
-        // 5. Ensure all existing product categories have category_delivery_rates
-        const ratesCountRow = await dbInstance.prepare("SELECT COUNT(*) as cnt FROM category_delivery_rates").first().catch(() => ({ cnt: 0 }));
-        if (!ratesCountRow || ratesCountRow.cnt === 0) {
-          const { results: existingCats } = await dbInstance.prepare("SELECT id, name_en, name, requires_fragile_handling FROM product_categories").all().catch(() => ({ results: [] }));
-          for (const cat of (existingCats || [])) {
-            const isFragile = Boolean(cat.requires_fragile_handling) || /fragile|glass/i.test(cat.name_en || cat.name || '');
-            const isDocs = /document|letter|paper/i.test(cat.name_en || cat.name || '');
-            const isElec = /electronic|gadget/i.test(cat.name_en || cat.name || '');
-            const isHeavy = /heavy|cargo|industrial/i.test(cat.name_en || cat.name || '');
-
-            const rates = [
-              ['SAME_MUNICIPALITY', 'OVERRIDE_BASE_RATE', isDocs ? 70 : (isHeavy ? 250 : (isFragile ? 130 : (isElec ? 110 : 90))), isDocs ? 0.5 : (isHeavy ? 5.0 : 1.0), isDocs ? 30 : 40, isFragile ? 40 : (isElec ? 20 : 0)],
-              ['SAME_DISTRICT',     'OVERRIDE_BASE_RATE', isDocs ? 90 : (isHeavy ? 350 : (isFragile ? 160 : (isElec ? 140 : 120))), isDocs ? 0.5 : (isHeavy ? 5.0 : 1.0), isDocs ? 40 : 50, isFragile ? 50 : (isElec ? 25 : 0)],
-              ['SAME_PROVINCE',     'OVERRIDE_BASE_RATE', isDocs ? 110 : (isHeavy ? 450 : (isFragile ? 200 : (isElec ? 170 : 150))), isDocs ? 0.5 : (isHeavy ? 5.0 : 1.0), isDocs ? 45 : 60, isFragile ? 60 : (isElec ? 30 : 0)],
-              ['INTER_PROVINCE',    'OVERRIDE_BASE_RATE', isDocs ? 140 : (isHeavy ? 550 : (isFragile ? 250 : (isElec ? 210 : 180))), isDocs ? 0.5 : (isHeavy ? 5.0 : 1.0), isDocs ? 50 : 70, isFragile ? 75 : (isElec ? 40 : 0)],
-            ];
-
-            for (const [zType, model, bChg, bWt, eKg, sur] of rates) {
-              await dbInstance.prepare(`
-                INSERT OR IGNORE INTO category_delivery_rates (
-                  company_id, category_id, zone_type, pricing_model, base_charge_npr, base_weight_kg, extra_per_kg_npr, surcharge_value, min_charge_npr, is_active
-                ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-              `).bind(cat.id, zType, model, bChg, bWt, eKg, sur, bChg).run().catch(() => {});
-            }
           }
         }
       } catch (e) {
@@ -1247,31 +1154,18 @@ export async function onRequest(context) {
       }
 
       // 3. Resolve Rate Rule for category & zone
-      let matchedRate = null;
-      if (cat?.id) {
-        matchedRate = await dbInstance.prepare(`
-          SELECT * FROM category_delivery_rates 
-          WHERE category_id = ? AND is_active = 1 AND zone_type IN (?, 'ALL_ZONES')
-          ORDER BY CASE WHEN zone_type = ? THEN 1 ELSE 2 END ASC
-          LIMIT 1
-        `).bind(cat.id, zoneDetected, zoneDetected).first().catch(() => null);
-      }
-
-      // Default fallback rule if not specifically configured
-      if (!matchedRate) {
-        const fallbackBase = zoneDetected === 'SAME_MUNICIPALITY' ? 90 : zoneDetected === 'SAME_DISTRICT' ? 120 : zoneDetected === 'SAME_PROVINCE' ? 150 : 180;
-        matchedRate = {
-          category_id: cat?.id || 1,
-          zone_type: zoneDetected,
-          pricing_model: 'OVERRIDE_BASE_RATE',
-          base_charge_npr: fallbackBase,
-          base_weight_kg: 1.0,
-          extra_per_kg_npr: 50.0,
-          surcharge_value: 0.0,
-          min_charge_npr: fallbackBase,
-          is_active: 1
-        };
-      }
+      const fallbackBase = zoneDetected === 'SAME_MUNICIPALITY' ? 90 : zoneDetected === 'SAME_DISTRICT' ? 120 : zoneDetected === 'SAME_PROVINCE' ? 150 : 180;
+      const matchedRate = {
+        category_id: cat?.id || 1,
+        zone_type: zoneDetected,
+        pricing_model: 'OVERRIDE_BASE_RATE',
+        base_charge_npr: fallbackBase,
+        base_weight_kg: 1.0,
+        extra_per_kg_npr: 50.0,
+        surcharge_value: cat?.requires_fragile_handling ? 30.0 : 0.0,
+        min_charge_npr: fallbackBase,
+        is_active: 1
+      };
 
       // 4. Rate Calculation Formula
       const baseCharge = Number(matchedRate.base_charge_npr) || 0;
@@ -4333,22 +4227,12 @@ export async function onRequest(context) {
           categories = results || [];
         }
 
-        // Attach rates to each category
-        const allRatesRes = await db.prepare('SELECT * FROM category_delivery_rates WHERE company_id = ? ORDER BY id ASC').bind(Number(companyId)).all().catch(() => ({ results: [] }));
-        const allRates = allRatesRes.results || [];
-        const ratesByCat = {};
-        allRates.forEach((r) => {
-          if (!ratesByCat[r.category_id]) ratesByCat[r.category_id] = [];
-          ratesByCat[r.category_id].push(r);
-        });
-
         const formatted = categories.map((cat) => ({
           ...cat,
           name: cat.name_en || cat.name || '',
           name_en: cat.name_en || cat.name || '',
           requires_fragile_handling: Boolean(cat.requires_fragile_handling),
           is_active: Boolean(cat.is_active),
-          rates: ratesByCat[cat.id] || [],
         }));
 
         if (paramId) {
@@ -4360,7 +4244,7 @@ export async function onRequest(context) {
         return jsonResponse(formatted);
       }
 
-      // POST: insert new product category + zone rates in D1
+      // POST: insert new product category in D1
       if (method === 'POST') {
         const body = await request.json();
         const cid = Number(body.company_id || companyId);
@@ -4384,29 +4268,7 @@ export async function onRequest(context) {
         `).bind(cid, nameEn, nameEn, nameNp, code, description, fragile, isActive, status, displayOrder).run();
 
         const createdId = res.meta?.last_row_id;
-
-        // Insert zone rates if provided
-        if (Array.isArray(body.rates) && body.rates.length > 0) {
-          for (const r of body.rates) {
-            const zType = r.zone_type || 'ALL_ZONES';
-            const model = r.pricing_model || 'OVERRIDE_BASE_RATE';
-            const bChg = Number(r.base_charge_npr) || 100.0;
-            const bWt = Number(r.base_weight_kg) || 1.0;
-            const eKg = Number(r.extra_per_kg_npr) || 50.0;
-            const sur = Number(r.surcharge_value) || 0.0;
-            const minC = Number(r.min_charge_npr) || 80.0;
-            const rActive = r.is_active !== undefined ? (r.is_active ? 1 : 0) : 1;
-
-            await db.prepare(`
-              INSERT OR REPLACE INTO category_delivery_rates (
-                company_id, category_id, zone_type, pricing_model, base_charge_npr, base_weight_kg, extra_per_kg_npr, surcharge_value, min_charge_npr, is_active, created_at, updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-            `).bind(cid, createdId, zType, model, bChg, bWt, eKg, sur, minC, rActive).run().catch(() => {});
-          }
-        }
-
         const newRow = await db.prepare('SELECT * FROM product_categories WHERE id = ?').bind(createdId).first();
-        const newRates = await db.prepare('SELECT * FROM category_delivery_rates WHERE category_id = ?').bind(createdId).all().catch(() => ({ results: [] }));
 
         return jsonResponse({
           success: true,
@@ -4415,12 +4277,11 @@ export async function onRequest(context) {
             name: newRow.name_en,
             requires_fragile_handling: Boolean(newRow.requires_fragile_handling),
             is_active: Boolean(newRow.is_active),
-            rates: newRates.results || [],
           },
         });
       }
 
-      // PUT: update existing product category + update rates matrix
+      // PUT: update existing product category
       if (method === 'PUT') {
         const body = await request.json();
         const targetId = paramId || Number(body.id);
@@ -4449,36 +4310,7 @@ export async function onRequest(context) {
           WHERE id = ? AND company_id = ?
         `).bind(nameEn, nameEn, nameNp, code, description, fragile, isActive, status, displayOrder, targetId, cid).run();
 
-        // Update rates if provided in payload
-        if (Array.isArray(body.rates)) {
-          for (const r of body.rates) {
-            const zType = r.zone_type || 'ALL_ZONES';
-            const model = r.pricing_model || 'OVERRIDE_BASE_RATE';
-            const bChg = Number(r.base_charge_npr) || 100.0;
-            const bWt = Number(r.base_weight_kg) || 1.0;
-            const eKg = Number(r.extra_per_kg_npr) || 50.0;
-            const sur = Number(r.surcharge_value) || 0.0;
-            const minC = Number(r.min_charge_npr) || 80.0;
-            const rActive = r.is_active !== undefined ? (r.is_active ? 1 : 0) : 1;
-
-            if (r.id) {
-              await db.prepare(`
-                UPDATE category_delivery_rates
-                SET zone_type = ?, pricing_model = ?, base_charge_npr = ?, base_weight_kg = ?, extra_per_kg_npr = ?, surcharge_value = ?, min_charge_npr = ?, is_active = ?, updated_at = datetime('now')
-                WHERE id = ? AND category_id = ?
-              `).bind(zType, model, bChg, bWt, eKg, sur, minC, rActive, Number(r.id), targetId).run().catch(() => {});
-            } else {
-              await db.prepare(`
-                INSERT INTO category_delivery_rates (
-                  company_id, category_id, zone_type, pricing_model, base_charge_npr, base_weight_kg, extra_per_kg_npr, surcharge_value, min_charge_npr, is_active, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-              `).bind(cid, targetId, zType, model, bChg, bWt, eKg, sur, minC, rActive).run().catch(() => {});
-            }
-          }
-        }
-
         const updatedRow = await db.prepare('SELECT * FROM product_categories WHERE id = ?').bind(targetId).first();
-        const updatedRates = await db.prepare('SELECT * FROM category_delivery_rates WHERE category_id = ?').bind(targetId).all().catch(() => ({ results: [] }));
 
         return jsonResponse({
           success: true,
@@ -4487,12 +4319,11 @@ export async function onRequest(context) {
             name: updatedRow.name_en,
             requires_fragile_handling: Boolean(updatedRow.requires_fragile_handling),
             is_active: Boolean(updatedRow.is_active),
-            rates: updatedRates.results || [],
           },
         });
       }
 
-      // DELETE: delete or soft-delete product category & cascade rates
+      // DELETE: delete product category
       if (method === 'DELETE') {
         let targetId = paramId;
         if (!targetId) {
@@ -4509,10 +4340,9 @@ export async function onRequest(context) {
         }
 
         const cid = Number(companyId);
-        await db.prepare('DELETE FROM category_delivery_rates WHERE category_id = ?').bind(targetId).run().catch(() => {});
         await db.prepare('DELETE FROM product_categories WHERE id = ? AND company_id = ?').bind(targetId, cid).run();
 
-        return jsonResponse({ success: true, message: `Product category ${targetId} and associated rates deleted successfully` });
+        return jsonResponse({ success: true, message: `Product category ${targetId} deleted successfully` });
       }
     }
 
