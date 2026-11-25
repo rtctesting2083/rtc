@@ -1153,64 +1153,111 @@ export async function onRequest(context) {
         zoneLabel = 'Inter-Province Delivery';
       }
 
-      // 3. Resolve Rate Rule for category & zone
-      const fallbackBase = zoneDetected === 'SAME_MUNICIPALITY' ? 90 : zoneDetected === 'SAME_DISTRICT' ? 120 : zoneDetected === 'SAME_PROVINCE' ? 150 : 180;
-      const matchedRate = {
-        category_id: cat?.id || 1,
-        zone_type: zoneDetected,
-        pricing_model: 'OVERRIDE_BASE_RATE',
-        base_charge_npr: fallbackBase,
-        base_weight_kg: 1.0,
-        extra_per_kg_npr: 50.0,
-        surcharge_value: cat?.requires_fragile_handling ? 30.0 : 0.0,
-        min_charge_npr: fallbackBase,
-        is_active: 1
-      };
-
-      // 4. Rate Calculation Formula
-      const baseCharge = Number(matchedRate.base_charge_npr) || 0;
-      const baseWeight = Number(matchedRate.base_weight_kg) || 1.0;
-      const extraPerKg = Number(matchedRate.extra_per_kg_npr) || 0;
-      const extraWeight = Math.max(0, wt - baseWeight);
-      const extraWeightCharge = Math.ceil(extraWeight) * extraPerKg;
-
-      let surcharge = 0;
-      if (matchedRate.pricing_model === 'FLAT_ADDON') {
-        surcharge = Number(matchedRate.surcharge_value) || 0;
-      } else if (matchedRate.pricing_model === 'PERCENTAGE_MARKUP') {
-        const pct = Number(matchedRate.surcharge_value) || 0;
-        surcharge = Math.round((baseCharge + extraWeightCharge) * (pct / 100));
-      } else {
-        surcharge = Number(matchedRate.surcharge_value) || 0;
+      // 3. Load D1 delivery charge settings and shipping zones
+      let settingsRow = await dbInstance.prepare('SELECT * FROM delivery_charge_settings WHERE company_id = ?').bind(cid).first().catch(() => null);
+      let { results: zoneRows } = await dbInstance.prepare('SELECT * FROM shipping_zones WHERE company_id = ? ORDER BY sort_order ASC, id ASC').bind(cid).all().catch(() => ({ results: [] }));
+      
+      let pricingJson = {};
+      if (settingsRow?.pricing_json) {
+        try { pricingJson = JSON.parse(settingsRow.pricing_json); } catch (e) {}
       }
 
-      const minCharge = Number(matchedRate.min_charge_npr) || 0;
-      const calculatedTotal = Math.max(minCharge, Math.round(baseCharge + extraWeightCharge + surcharge));
+      const firstWeight = Number(settingsRow?.first_weight_kg) || Number(pricingJson.first_weight_kg) || 1.0;
+      const defaultZoneCode = settingsRow?.default_zone || pricingJson.default_zone || 'C';
+
+      // Resolve Zone from destination district or fallback
+      let matchedZone = null;
+      const destDistrictNorm = (destBranch?.district || destinationLocation || '').trim().toLowerCase();
+      if (destDistrictNorm && zoneRows && zoneRows.length > 0) {
+        matchedZone = zoneRows.find((z) => {
+          let distList = [];
+          try { distList = JSON.parse(z.districts || '[]'); } catch (e) {}
+          return distList.some((d) => String(d).trim().toLowerCase() === destDistrictNorm);
+        });
+      }
+      if (!matchedZone && zoneRows && zoneRows.length > 0) {
+        matchedZone = zoneRows.find((z) => z.zone_code === defaultZoneCode || z.is_default === 1) || zoneRows[0];
+      }
+
+      const fallbackBase = zoneDetected === 'SAME_MUNICIPALITY' ? 90 : zoneDetected === 'SAME_DISTRICT' ? 120 : zoneDetected === 'SAME_PROVINCE' ? 150 : 180;
+      const baseCharge = Number(matchedZone?.base_rate ?? matchedZone?.base) || fallbackBase;
+      const extraPerKg = Number(matchedZone?.extra_per_kg) || 60.0;
+      const baseWeight = firstWeight;
+      const extraWeight = Math.max(0, wt - baseWeight);
+      const extraWeightCharge = Math.ceil(extraWeight) * extraPerKg;
+      const zoneSubtotal = baseCharge + extraWeightCharge;
+
+      // 4. Resolve Category Extra Charge / Surcharge from D1 settings
+      const configuredCategories = Array.isArray(pricingJson.categories) ? pricingJson.categories : [];
+      const catMatch = configuredCategories.find((c) => 
+        (cat && c.id === cat.id) || 
+        (cat && c.code && cat.code && String(c.code).toLowerCase() === String(cat.code).toLowerCase()) ||
+        (c.name_en && cat?.name_en && String(c.name_en).toLowerCase() === String(cat.name_en).toLowerCase()) ||
+        (c.name && categoryName && String(c.name).toLowerCase() === String(categoryName).toLowerCase())
+      );
+
+      const surchargePercent = Number(catMatch?.surcharge_percent) || 0;
+      const handlingFeeNpr = Number(catMatch?.handling_fee_npr) || 0;
+      let categorySurcharge = 0;
+      if (surchargePercent > 0) {
+        categorySurcharge += Math.round(zoneSubtotal * (surchargePercent / 100));
+      }
+      if (handlingFeeNpr > 0) {
+        categorySurcharge += handlingFeeNpr;
+      }
+
+      // Fragile Fee
+      let fragileFee = 0;
+      const isFragile = Boolean(cat?.requires_fragile_handling || catMatch?.requires_fragile_handling);
+      if (isFragile && (settingsRow?.fragile_enabled === 1 || pricingJson.fragile?.enabled)) {
+        fragileFee = Number(settingsRow?.fragile_fee || pricingJson.fragile?.fee) || 50;
+      }
+
+      // COD Fee
+      let codFee = 0;
+      const codVal = Number(codAmount) || 0;
+      if (codVal > 0 && (settingsRow?.cod_enabled === 1 || pricingJson.cod?.enabled)) {
+        const codPct = Number(settingsRow?.cod_percent || pricingJson.cod?.percent) || 1.5;
+        const codMin = Number(settingsRow?.cod_minimum || pricingJson.cod?.minimum) || 30;
+        codFee = Math.max(codMin, Math.round(codVal * (codPct / 100)));
+      }
+
+      const calculatedTotal = Math.round(zoneSubtotal + categorySurcharge + fragileFee + codFee);
 
       const breakdown = {
-        category_id: cat?.id || null,
-        category_name: cat?.name_en || cat?.name || 'Standard Parcel',
+        category_id: cat?.id || catMatch?.id || null,
+        category_name: cat?.name_en || cat?.name || catMatch?.name_en || catMatch?.name || 'Standard Parcel',
         category_name_np: cat?.name_np || null,
-        requires_fragile_handling: Boolean(cat?.requires_fragile_handling),
+        category_code: cat?.code || catMatch?.code || '',
+        requires_fragile_handling: isFragile,
         zone_detected: zoneDetected,
-        zone_label: zoneLabel,
-        pricing_model: matchedRate.pricing_model,
+        zone_label: matchedZone ? `${matchedZone.name} (${matchedZone.zone_code})` : zoneLabel,
+        zone_code: matchedZone?.zone_code || defaultZoneCode,
         base_charge_npr: baseCharge,
         base_weight_kg: baseWeight,
         actual_weight_kg: wt,
         extra_weight_kg: Math.round(extraWeight * 100) / 100,
         extra_per_kg_npr: extraPerKg,
         extra_weight_charge: extraWeightCharge,
-        surcharge_value: Number(matchedRate.surcharge_value) || 0,
-        surcharge_npr: surcharge,
-        min_charge_npr: minCharge,
+        zone_subtotal: zoneSubtotal,
+        surcharge_percent: surchargePercent,
+        handling_fee_npr: handlingFeeNpr,
+        surcharge_npr: categorySurcharge,
+        category_surcharge_npr: categorySurcharge,
+        fragile_fee: fragileFee,
+        cod_fee: codFee,
         total_delivery_charge: calculatedTotal,
       };
 
       return {
         success: true,
         ...breakdown,
-        rate_rule: matchedRate,
+        rate_rule: {
+          category_id: breakdown.category_id,
+          surcharge_percent: surchargePercent,
+          handling_fee_npr: handlingFeeNpr,
+          total_delivery_charge: calculatedTotal,
+        },
       };
     }
 
@@ -5352,6 +5399,37 @@ export async function onRequest(context) {
             : (pricingJsonParsed?.tax_enabled !== undefined ? Boolean(pricingJsonParsed.tax_enabled) : true));
         const taxPercentVal = Number(settingsRow.tax_percent !== undefined ? settingsRow.tax_percent : 13);
 
+        let savedCategories = [];
+        if (pricingJsonParsed?.categories && Array.isArray(pricingJsonParsed.categories)) {
+          savedCategories = pricingJsonParsed.categories;
+        }
+
+        let categories = savedCategories;
+        // Merge with live product_categories database table
+        try {
+          const { results: dbCats } = await db
+            .prepare("SELECT * FROM product_categories WHERE company_id = ? AND (status IS NULL OR status = 'active' OR is_active = 1) ORDER BY display_order ASC, id ASC")
+            .bind(companyId)
+            .all();
+
+          if (dbCats && dbCats.length > 0) {
+            categories = dbCats.map((cat) => {
+              const match = (savedCategories || []).find((c) => c.id === cat.id || (c.name_en || c.name)?.toLowerCase() === (cat.name_en || cat.name)?.toLowerCase() || (c.code && cat.code && c.code === cat.code));
+              return {
+                id: cat.id,
+                name: cat.name_en || cat.name || '',
+                name_en: cat.name_en || cat.name || '',
+                name_np: cat.name_np || '',
+                code: cat.code || '',
+                description: cat.description || '',
+                requires_fragile_handling: Boolean(cat.requires_fragile_handling),
+                surcharge_percent: match !== undefined && match.surcharge_percent !== undefined ? Number(match.surcharge_percent) : 0,
+                handling_fee_npr: match !== undefined && match.handling_fee_npr !== undefined ? Number(match.handling_fee_npr) : 0,
+              };
+            });
+          }
+        } catch (e) {}
+
         const pricing = {
           first_weight_kg: Number(settingsRow.first_weight_kg) || 2,
           default_zone: settingsRow.default_zone || 'C',
@@ -5361,6 +5439,7 @@ export async function onRequest(context) {
             divisor: Number(settingsRow.volumetric_divisor) || 5000,
           },
           services,
+          categories,
           cod: {
             enabled: settingsRow.cod_enabled === 1,
             percent: Number(settingsRow.cod_percent) || 1.5,
@@ -5398,6 +5477,8 @@ export async function onRequest(context) {
           tax: pricing.tax,
           pricing,
           zones: formattedZones,
+          services,
+          categories,
           settings: settingsRow,
         });
       }

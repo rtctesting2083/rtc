@@ -550,25 +550,17 @@ export function DeliveryChargesSettingsPage() {
       );
 
       if (matchedCat || configuredCat) {
-        const catObj = matchedCat || configuredCat;
-        const zType = matchedZone.id === 'A' ? 'SAME_MUNICIPALITY' : matchedZone.id === 'B' ? 'SAME_DISTRICT' : matchedZone.id === 'C' ? 'SAME_PROVINCE' : 'INTER_PROVINCE';
-        categoryZoneLabel = zType === 'SAME_MUNICIPALITY' ? 'Intra-City' : zType === 'SAME_DISTRICT' ? 'District' : zType === 'SAME_PROVINCE' ? 'Province' : 'Inter-Province';
-
-        const matchedRate = (catObj.rates || []).find((r) => r.zone_type === zType || r.zone_type === 'ALL_ZONES');
-        if (matchedRate) {
-          if (matchedRate.pricing_model === 'FLAT_ADDON') {
-            categorySurcharge = Number(matchedRate.surcharge_value) || 0;
-          } else if (matchedRate.pricing_model === 'PERCENTAGE_MARKUP') {
-            categorySurcharge = Math.round(base * (Number(matchedRate.surcharge_value) / 100));
-          } else {
-            categorySurcharge = Number(matchedRate.surcharge_value) || 0;
-          }
-        } else if (configuredCat && (Number(configuredCat.surcharge_percent) > 0 || Number(configuredCat.handling_fee_npr) > 0)) {
-          const pctVal = Number(configuredCat.surcharge_percent) || 0;
-          const flatVal = Number(configuredCat.handling_fee_npr) || 0;
-          categorySurcharge = Math.round((base + extra) * pctVal / 100) + flatVal;
-        } else if (catObj.requires_fragile_handling) {
-          categorySurcharge = Number(p.fragile?.fee) || 40;
+        const catObj = configuredCat || matchedCat;
+        const pctVal = Number(catObj.surcharge_percent) || 0;
+        const flatVal = Number(catObj.handling_fee_npr) || 0;
+        if (pctVal > 0) {
+          categorySurcharge += Math.round((base + extra) * (pctVal / 100));
+        }
+        if (flatVal > 0) {
+          categorySurcharge += flatVal;
+        }
+        if (catObj.requires_fragile_handling && !categorySurcharge && p.fragile?.enabled) {
+          categorySurcharge = Number(p.fragile?.fee) || 50;
         }
       }
     }

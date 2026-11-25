@@ -214,6 +214,8 @@ export function calculateDeliveryCharge({
   widthCm = 0,
   heightCm = 0,
   serviceType = 'Door to Door Delivery',
+  productCategory = '',
+  category = '',
   codAmount = 0,
   declaredValue = 0,
   isFragile = false,
@@ -245,6 +247,10 @@ export function calculateDeliveryCharge({
       speedFee: 0,
       speedPercent: 0,
       serviceAdjustment: 0,
+      categoryFee: 0,
+      categorySurchargePercent: 0,
+      categoryHandlingFee: 0,
+      categoryName: '',
       codFee: 0,
       fragileFee: 0,
       insuranceFee: 0,
@@ -305,15 +311,12 @@ export function calculateDeliveryCharge({
   } else {
     // Dynamic RTC Courier standard service type pricing adjustments
     if (sTypeNorm.includes('door to door')) {
-      // Premium door-to-door (pickup from vendor door + deliver to receiver door)
       serviceAdjustment = 30; // +Rs. 30 door delivery & pickup
       speedPercent = 20;
     } else if (sTypeNorm.includes('door to branch')) {
-      // Door pickup + counter collection
       serviceAdjustment = 15; // +Rs. 15 pickup
       speedPercent = 10;
     } else if (sTypeNorm.includes('branch to branch') || sTypeNorm.includes('counter to counter')) {
-      // Counter drop-off + counter pickup (economical)
       serviceAdjustment = -25; // Rs. 25 discount
       speedPercent = -15;
     } else if (sTypeNorm.includes('same day')) {
@@ -323,13 +326,41 @@ export function calculateDeliveryCharge({
       speedPercent = 30;
       serviceAdjustment = Math.round(zoneSubtotal * 0.3);
     } else {
-      // Branch to Door Delivery or Standard Delivery: baseline 0 adjustment
       serviceAdjustment = 0;
       speedPercent = 0;
     }
   }
 
   const speedFee = serviceAdjustment;
+
+  // 3b. Product Category Extra Delivery Surcharges (from D1 delivery_charge_settings)
+  const catIdentifier = String(productCategory || category || '').trim().toLowerCase();
+  const configuredCategories = Array.isArray(p.categories) ? p.categories : (Array.isArray(settings?.categories) ? settings.categories : []);
+  const matchedCategory = catIdentifier
+    ? configuredCategories.find((c) => {
+        const cName = String(c.name_en || c.name || '').trim().toLowerCase();
+        const cCode = String(c.code || '').trim().toLowerCase();
+        const cId = String(c.id || '').trim().toLowerCase();
+        return cName === catIdentifier || cCode === catIdentifier || cId === catIdentifier;
+      })
+    : null;
+
+  let categorySurchargePercent = 0;
+  let categoryHandlingFee = 0;
+  let categoryFee = 0;
+  const isCategoryFragile = Boolean(matchedCategory?.requires_fragile_handling || /fragile|glass/i.test(catIdentifier));
+
+  if (matchedCategory) {
+    categorySurchargePercent = Number(matchedCategory.surcharge_percent) || 0;
+    categoryHandlingFee = Number(matchedCategory.handling_fee_npr) || 0;
+
+    if (categorySurchargePercent > 0) {
+      categoryFee += Math.round(zoneSubtotal * (categorySurchargePercent / 100));
+    }
+    if (categoryHandlingFee > 0) {
+      categoryFee += categoryHandlingFee;
+    }
+  }
 
   // 4. Extra Services
   // COD fee
@@ -341,10 +372,11 @@ export function calculateDeliveryCharge({
     codFee = Math.round(Math.max(Number(codCfg.minimum) || 30, rawCod));
   }
 
-  // Fragile fee
+  // Fragile fee (applicable if isFragile is true OR product category requires fragile handling)
   let fragileFee = 0;
   const fragileCfg = p.fragile || { enabled: false, fee: 50 };
-  if (fragileCfg.enabled && isFragile) {
+  const effectiveFragile = Boolean(isFragile || isCategoryFragile);
+  if (fragileCfg.enabled && effectiveFragile) {
     fragileFee = Number(fragileCfg.fee) || 50;
   }
 
@@ -372,7 +404,7 @@ export function calculateDeliveryCharge({
 
   // Final Total Delivery Charge
   const baseDeliveryCharge = Math.max(0, zoneSubtotal + speedFee - discountAmount);
-  const deliveryFee = Math.max(0, baseDeliveryCharge + codFee + fragileFee + insuranceFee);
+  const deliveryFee = Math.max(0, baseDeliveryCharge + categoryFee + codFee + fragileFee + insuranceFee);
 
   // 6. Tax (Added when invoices are generated or computed with rates)
   const isTaxEnabled = p.tax?.enabled !== undefined
@@ -395,6 +427,11 @@ export function calculateDeliveryCharge({
     speedFee,
     speedPercent,
     serviceAdjustment,
+    categoryFee,
+    categorySurchargePercent,
+    categoryHandlingFee,
+    categoryName: matchedCategory ? (matchedCategory.name_en || matchedCategory.name) : (productCategory || category || ''),
+    requiresFragile: effectiveFragile,
     codFee,
     fragileFee,
     insuranceFee,

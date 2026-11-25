@@ -578,6 +578,7 @@ export function CreateOrderModal({
     origin: originText,
     weightKg: weight,
     serviceType,
+    productCategory,
     codAmount: parseFloat(codAmount) || 0,
     declaredValue: parseFloat(itemValue) || 0,
     isFragile: isFragileItem,
@@ -674,7 +675,8 @@ export function CreateOrderModal({
       product_category: productCategory || 'Clothing and Apparels',
       product_category_id: categoryRateResult?.category_id || null,
       calculated_delivery_charge: serviceCharge,
-      category_pricing_breakdown_json: categoryRateResult ? JSON.stringify(categoryRateResult) : null,
+      category_pricing_breakdown_json: categoryRateResult ? JSON.stringify(categoryRateResult) : (feeCalc ? JSON.stringify(feeCalc) : null),
+      category_surcharge_npr: feeCalc?.categoryFee || categoryRateResult?.surcharge_npr || 0,
       item_value: parseFloat(itemValue) || 0,
       promo_code: appliedDiscount ? promoCode.trim().toUpperCase() : '',
       priority: /express|same/i.test(serviceType || '') ? 'express' : 'normal',
@@ -1873,6 +1875,34 @@ export function CreateOrderModal({
                     {serviceType || '—'}
                   </span>
                 </div>
+                {productCategory && (
+                  <div className="summary-data-row">
+                    <span className="summary-data-label">Category</span>
+                    <span className="summary-data-val" style={{ fontSize: '11.5px', fontWeight: 600, color: '#1e293b' }}>
+                      {productCategory}
+                    </span>
+                  </div>
+                )}
+                {(feeCalc?.categoryFee > 0 || (categoryRateResult && categoryRateResult.surcharge_npr > 0)) && (
+                  <div
+                    className="summary-data-row"
+                    style={{
+                      background: '#fff7ed',
+                      border: '1px solid #fed7aa',
+                      borderRadius: '6px',
+                      padding: '4px 8px',
+                      margin: '4px 0',
+                    }}
+                  >
+                    <span className="summary-data-label" style={{ color: '#c2410c', fontWeight: 600, fontSize: '11.5px' }}>
+                      Category Extra {feeCalc?.categorySurchargePercent > 0 ? `(+${feeCalc.categorySurchargePercent}%)` : (categoryRateResult?.surcharge_percent > 0 ? `(+${categoryRateResult.surcharge_percent}%)` : '')}
+                      {feeCalc?.categoryHandlingFee > 0 ? ` (+Rs. ${feeCalc.categoryHandlingFee})` : ''}
+                    </span>
+                    <span className="summary-data-val" style={{ color: '#c2410c', fontWeight: 700 }}>
+                      + NPR {Number(feeCalc?.categoryFee || categoryRateResult?.surcharge_npr || 0).toFixed(2)}
+                    </span>
+                  </div>
+                )}
                 {/* Category-Wise Dynamic Rate Breakdown */}
                 {categoryRateResult && (
                   <div
@@ -1901,7 +1931,7 @@ export function CreateOrderModal({
                     )}
                     {categoryRateResult.surcharge_npr > 0 && (
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', color: '#c2410c' }}>
-                        <span>Handling Surcharge:</span>
+                        <span>Category Surcharge:</span>
                         <span style={{ fontWeight: 700 }}>+ Rs. {categoryRateResult.surcharge_npr}</span>
                       </div>
                     )}

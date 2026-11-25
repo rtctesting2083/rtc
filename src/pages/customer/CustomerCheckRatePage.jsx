@@ -42,7 +42,7 @@ export const NEPAL_POPULAR_LOCATIONS = [
 export function CustomerCheckRatePage() {
   const outletCtx = useOutletContext() || {};
   const currentCustomer = outletCtx.currentCustomer;
-  const { branches = [], landmarks = [], deliveryChargeSettings } = useCompany() || {};
+  const { branches = [], landmarks = [], productCategories = [], deliveryChargeSettings } = useCompany() || {};
 
   // Build combined locations list
   const locationOptions = useMemo(() => {
@@ -81,6 +81,7 @@ export function CustomerCheckRatePage() {
   const [weightKg, setWeightKg] = useState('1');
   const [serviceType, setServiceType] = useState('Door to Door Delivery');
   const [deliveryType, setDeliveryType] = useState('Delivery Order');
+  const [productCategory, setProductCategory] = useState('');
 
   // Result state
   const [rateResult, setRateResult] = useState(null);
@@ -100,12 +101,13 @@ export function CustomerCheckRatePage() {
 
     const wt = parseFloat(weightKg) || 1;
 
-    // Use our delivery charge engine
+    // Use our delivery charge engine with productCategory support
     const calc = calculateDeliveryCharge({
       origin: fromLocation,
       destination: toLocation,
       weightKg: wt,
       serviceType: serviceType,
+      productCategory: productCategory,
       settings: deliveryChargeSettings,
     });
 
@@ -114,7 +116,7 @@ export function CustomerCheckRatePage() {
     const toLower = toLocation.toLowerCase();
 
     // Base rate
-    let baseRate = 160.0;
+    let baseRate = calc?.baseFee || 160.0;
     if (serviceType.includes('Branch to Branch') || serviceType.includes('Counter')) {
       baseRate = 120.0;
     } else if (serviceType.includes('Door to Branch')) {
@@ -147,17 +149,24 @@ export function CustomerCheckRatePage() {
 
     // Extra weight charge (above 1 kg)
     const extraKg = Math.max(0, Math.ceil(wt - 1));
-    const extraPerKgRate = 50.0;
+    const extraPerKgRate = calc?.extraWeightFee && extraKg > 0 ? (calc.extraWeightFee / extraKg) : 50.0;
     const extraWeightCharge = extraKg * extraPerKgRate;
 
+    // Category Extra Charge
+    const categorySurcharge = calc?.categoryFee || 0;
+
     // Total
-    const total = baseRate + locationSurcharge + provinceSurcharge + extraWeightCharge;
+    const total = baseRate + locationSurcharge + provinceSurcharge + extraWeightCharge + categorySurcharge;
 
     setRateResult({
       baseRate,
       locationSurcharge,
       provinceSurcharge,
       extraWeightCharge,
+      categorySurcharge,
+      categorySurchargePercent: calc?.categorySurchargePercent || 0,
+      categoryHandlingFee: calc?.categoryHandlingFee || 0,
+      categoryName: calc?.categoryName || productCategory,
       total,
       billableKg: wt,
     });
@@ -350,7 +359,7 @@ export function CustomerCheckRatePage() {
             </div>
           </div>
 
-          {/* Row 3: Delivery Type (Half width on left column) */}
+          {/* Row 3: Delivery Type & Product Category */}
           <div
             style={{
               display: 'grid',
@@ -391,7 +400,42 @@ export function CustomerCheckRatePage() {
                 <option value="Return Order">Return Order</option>
               </select>
             </div>
-            <div />
+
+            <div>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  color: 'var(--text-main, #374151)',
+                  marginBottom: '6px',
+                }}
+              >
+                Product Category (Optional)
+              </label>
+              <select
+                value={productCategory}
+                onChange={(e) => setProductCategory(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 14px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-color, #d1d5db)',
+                  background: 'var(--card-bg, #ffffff)',
+                  color: productCategory ? 'var(--text-main, #1e293b)' : '#9ca3af',
+                  fontSize: '13.5px',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              >
+                <option value="">Select Category (Standard / No Surcharge)</option>
+                {productCategories.filter((c) => c.is_active !== false && c.status !== 'inactive').map((cat) => (
+                  <option key={cat.id} value={cat.name_en || cat.name} style={{ color: '#1e293b' }}>
+                    {cat.name_en || cat.name} {cat.requires_fragile_handling ? '⚠️ (Fragile)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Action Button (Matches Screenshot: Check Rate in RTC Brand Color) */}
@@ -494,6 +538,26 @@ export function CustomerCheckRatePage() {
                 <span>Extra Weight Charge</span>
                 <span>{rateResult.extraWeightCharge.toFixed(2)}</span>
               </div>
+
+              {rateResult.categorySurcharge > 0 && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: '13.5px',
+                    color: '#c2410c',
+                    fontWeight: 600,
+                  }}
+                >
+                  <span>
+                    Category Extra ({rateResult.categoryName || productCategory}
+                    {rateResult.categorySurchargePercent > 0 ? ` +${rateResult.categorySurchargePercent}%` : ''}
+                    {rateResult.categoryHandlingFee > 0 ? ` +Rs. ${rateResult.categoryHandlingFee}` : ''})
+                  </span>
+                  <span>+{rateResult.categorySurcharge.toFixed(2)}</span>
+                </div>
+              )}
             </div>
 
             <hr
