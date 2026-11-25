@@ -3,20 +3,6 @@ import { Link } from 'react-router-dom';
 import { useCompany } from '../../../context/CompanyContext';
 import { fmtMoney } from '../../../utils/helpers';
 import { d1Api } from '../../../utils/d1Api';
-import {
-  Tag,
-  ShieldAlert,
-  Sliders,
-  Plus,
-  Trash2,
-  RefreshCw,
-  Box,
-  Check,
-  AlertCircle,
-  X,
-  SlidersHorizontal,
-  Search,
-} from 'lucide-react';
 import './DeliveryChargesSettings.css';
 
 // 77 Districts of Nepal grouped by 7 Provinces
@@ -164,6 +150,46 @@ export function mergeServiceTypesWithPricing(dbTypes = [], savedServices = []) {
     });
 }
 
+export function mergeCategoriesWithPricing(dbCategories = [], savedCategories = []) {
+  if (!dbCategories || !dbCategories.length) {
+    if (savedCategories && savedCategories.length) return savedCategories;
+    return [];
+  }
+
+  return dbCategories
+    .filter((cat) => cat.is_active !== false && cat.status !== 'inactive')
+    .map((cat) => {
+      const match = (savedCategories || []).find(
+        (c) => String(c.id) === String(cat.id) || (c.name_en || c.name || '').trim().toLowerCase() === (cat.name_en || cat.name || '').trim().toLowerCase()
+      );
+
+      // Default surcharge fallback from existing rates or category props
+      let defSurcharge = 0;
+      if (Array.isArray(cat.rates) && cat.rates.length > 0) {
+        const firstRate = cat.rates[0];
+        defSurcharge = Number(firstRate.surcharge_value) || 0;
+      } else if (cat.requires_fragile_handling) {
+        defSurcharge = 20;
+      }
+
+      return {
+        id: cat.id,
+        name: cat.name_en || cat.name || '',
+        name_en: cat.name_en || cat.name || '',
+        name_np: cat.name_np || '',
+        code: cat.code || '',
+        description: cat.description || '',
+        requires_fragile_handling: Boolean(cat.requires_fragile_handling),
+        handling_fee_npr: match !== undefined && match.handling_fee_npr !== undefined
+          ? (match.handling_fee_npr === '' ? '' : Number(match.handling_fee_npr))
+          : 0,
+        surcharge_percent: match !== undefined && match.surcharge_percent !== undefined
+          ? (match.surcharge_percent === '' ? '' : Number(match.surcharge_percent))
+          : defSurcharge,
+      };
+    });
+}
+
 export function DeliveryChargesSettingsPage() {
   const { company, deliveryChargeSettings, deliveryServiceTypes = [], productCategories: contextCategories = [], saveDeliveryCharges } = useCompany();
 
@@ -172,10 +198,6 @@ export function DeliveryChargesSettingsPage() {
   // --------------------------------------------------------------------------
   const [productCategories, setProductCategories] = useState(() => (Array.isArray(contextCategories) && contextCategories.length > 0 ? contextCategories : []));
   const [loadingCategories, setLoadingCategories] = useState(false);
-  const [categoryModalData, setCategoryModalData] = useState(null); // { mode: 'add' | 'edit', initialData: ... }
-  const [catSearch, setCatSearch] = useState('');
-  const [catStatusFilter, setCatStatusFilter] = useState('all');
-  const [catFragileFilter, setCatFragileFilter] = useState('all');
 
   const loadD1Categories = async () => {
     setLoadingCategories(true);
@@ -208,81 +230,14 @@ export function DeliveryChargesSettingsPage() {
     }
   }, [contextCategories, productCategories.length]);
 
-  const filteredCategories = useMemo(() => {
-    return productCategories.filter((cat) => {
-      const q = catSearch.toLowerCase().trim();
-      const nEn = String(cat.name_en || cat.name || '').toLowerCase();
-      const nNp = String(cat.name_np || '').toLowerCase();
-      const code = String(cat.code || '').toLowerCase();
-      const desc = String(cat.description || '').toLowerCase();
-      const matchesSearch = !q || nEn.includes(q) || nNp.includes(q) || code.includes(q) || desc.includes(q) || String(cat.id).includes(q);
-
-      const isActive = cat.is_active !== false && cat.status !== 'inactive';
-      const matchesStatus =
-        catStatusFilter === 'all' ||
-        (catStatusFilter === 'active' && isActive) ||
-        (catStatusFilter === 'disabled' && !isActive);
-
-      const isFragile = Boolean(cat.requires_fragile_handling);
-      const matchesFragile =
-        catFragileFilter === 'all' ||
-        (catFragileFilter === 'fragile' && isFragile) ||
-        (catFragileFilter === 'standard' && !isFragile);
-
-      return matchesSearch && matchesStatus && matchesFragile;
-    });
-  }, [productCategories, catSearch, catStatusFilter, catFragileFilter]);
-
-  const handleToggleCategoryActive = async (cat) => {
-    const nextActive = !(cat.is_active !== false && cat.status !== 'inactive');
-    setProductCategories((prev) =>
-      prev.map((c) => (c.id === cat.id ? { ...c, is_active: nextActive, status: nextActive ? 'active' : 'inactive' } : c))
-    );
-    try {
-      await d1Api.toggleProductCategoryStatus(cat.id, nextActive);
-      setSaveNote(`Updated "${cat.name_en || cat.name}" status in Cloudflare D1.`);
-      setTimeout(() => setSaveNote(''), 3000);
-    } catch (e) {
-      console.error(e);
-      loadD1Categories();
-    }
-  };
-
-  const handleSaveCategoryRates = async (payload) => {
-    try {
-      if (payload.id) {
-        await d1Api.updateProductCategory(payload.id, payload, company?.id || 1);
-        setSaveNote(`Updated "${payload.name_en}" & zone rates in Cloudflare D1.`);
-      } else {
-        await d1Api.addProductCategory(payload);
-        setSaveNote(`Added "${payload.name_en}" & zone rates to Cloudflare D1.`);
-      }
-      setTimeout(() => setSaveNote(''), 4000);
-      setCategoryModalData(null);
-      await loadD1Categories();
-    } catch (err) {
-      alert('Failed to save category to D1: ' + err.message);
-    }
-  };
-
-  const handleDeleteCategory = async (cat) => {
-    if (!window.confirm(`Delete product category "${cat.name_en || cat.name}" and its zone rates from Cloudflare D1?`)) return;
-    try {
-      await d1Api.deleteProductCategory(cat.id, company?.id || 1);
-      setSaveNote(`Deleted category "${cat.name_en || cat.name}" from D1.`);
-      setTimeout(() => setSaveNote(''), 3000);
-      loadD1Categories();
-    } catch (err) {
-      alert('Delete failed: ' + err.message);
-    }
-  };
-
-  // Load existing saved settings or default suggested ones merged with database deliveryServiceTypes
+  // Load existing saved settings or default suggested ones merged with database deliveryServiceTypes and productCategories
   const initialData = useMemo(() => {
     const s = deliveryChargeSettings;
     const def = defaultSuggestedPricing();
     const sourceServices = s?.pricing?.services || s?.services || def.services;
     const mergedServices = mergeServiceTypesWithPricing(deliveryServiceTypes, sourceServices);
+    const sourceCategories = s?.pricing?.categories || s?.categories || [];
+    const mergedCategories = mergeCategoriesWithPricing(productCategories, sourceCategories);
 
     const isTaxEnabled = s?.pricing?.tax?.enabled !== undefined
       ? Boolean(s.pricing.tax.enabled)
@@ -301,6 +256,7 @@ export function DeliveryChargesSettingsPage() {
         tax_percent: taxPercent,
         tax: { enabled: isTaxEnabled, percent: taxPercent },
         services: mergedServices,
+        categories: mergedCategories,
       };
     }
     return {
@@ -310,8 +266,9 @@ export function DeliveryChargesSettingsPage() {
       tax_percent: taxPercent,
       tax: { enabled: isTaxEnabled, percent: taxPercent },
       services: mergedServices,
+      categories: mergedCategories,
     };
-  }, [deliveryChargeSettings, deliveryServiceTypes]);
+  }, [deliveryChargeSettings, deliveryServiceTypes, productCategories]);
 
   // Main state copy for editing
   const [pricing, setPricing] = useState(initialData);
@@ -325,6 +282,8 @@ export function DeliveryChargesSettingsPage() {
     const s = deliveryChargeSettings;
     const sourceServices = s?.pricing?.services || s?.services || def.services;
     const mergedServices = mergeServiceTypesWithPricing(deliveryServiceTypes, sourceServices);
+    const sourceCategories = s?.pricing?.categories || s?.categories || [];
+    const mergedCategories = mergeCategoriesWithPricing(productCategories, sourceCategories);
 
     const isTaxEnabled = s?.pricing?.tax?.enabled !== undefined
       ? Boolean(s.pricing.tax.enabled)
@@ -343,8 +302,9 @@ export function DeliveryChargesSettingsPage() {
       tax_percent: taxPercent,
       tax: { enabled: isTaxEnabled, percent: taxPercent },
       services: mergedServices,
+      categories: mergedCategories.length > 0 ? mergedCategories : (prev.categories || []),
     }));
-  }, [deliveryChargeSettings, deliveryServiceTypes]);
+  }, [deliveryChargeSettings, deliveryServiceTypes, productCategories]);
 
   // District picker modal state
   const [activeModalZoneIdx, setActiveModalZoneIdx] = useState(null);
@@ -504,6 +464,7 @@ export function DeliveryChargesSettingsPage() {
         },
       },
       services: pricing.services,
+      categories: pricing.categories,
     };
 
     try {
@@ -576,7 +537,7 @@ export function DeliveryChargesSettingsPage() {
       insuranceFee = Math.round((Number(calcItemValue) * (Number(p.insurance.percent) || 0.5)) / 100);
     }
 
-    // Product Category Rate / Surcharge Evaluation from Cloudflare D1
+    // Product Category Rate / Surcharge Evaluation from Cloudflare D1 and pricing settings
     let categorySurcharge = 0;
     let matchedCat = null;
     let categoryZoneLabel = '';
@@ -584,10 +545,16 @@ export function DeliveryChargesSettingsPage() {
       matchedCat = productCategories.find(
         (c) => String(c.id) === String(calcCategory) || (c.name_en || c.name || '').toLowerCase() === String(calcCategory).toLowerCase()
       );
-      if (matchedCat) {
+      const configuredCat = (p.categories || []).find(
+        (c) => String(c.id) === String(calcCategory) || (c.name_en || c.name || '').toLowerCase() === String(calcCategory).toLowerCase()
+      );
+
+      if (matchedCat || configuredCat) {
+        const catObj = matchedCat || configuredCat;
         const zType = matchedZone.id === 'A' ? 'SAME_MUNICIPALITY' : matchedZone.id === 'B' ? 'SAME_DISTRICT' : matchedZone.id === 'C' ? 'SAME_PROVINCE' : 'INTER_PROVINCE';
         categoryZoneLabel = zType === 'SAME_MUNICIPALITY' ? 'Intra-City' : zType === 'SAME_DISTRICT' ? 'District' : zType === 'SAME_PROVINCE' ? 'Province' : 'Inter-Province';
-        const matchedRate = (matchedCat.rates || []).find((r) => r.zone_type === zType || r.zone_type === 'ALL_ZONES');
+
+        const matchedRate = (catObj.rates || []).find((r) => r.zone_type === zType || r.zone_type === 'ALL_ZONES');
         if (matchedRate) {
           if (matchedRate.pricing_model === 'FLAT_ADDON') {
             categorySurcharge = Number(matchedRate.surcharge_value) || 0;
@@ -596,8 +563,12 @@ export function DeliveryChargesSettingsPage() {
           } else {
             categorySurcharge = Number(matchedRate.surcharge_value) || 0;
           }
-        } else if (matchedCat.requires_fragile_handling) {
-          categorySurcharge = Number(p.fragile_fee) || 40;
+        } else if (configuredCat && (Number(configuredCat.surcharge_percent) > 0 || Number(configuredCat.handling_fee_npr) > 0)) {
+          const pctVal = Number(configuredCat.surcharge_percent) || 0;
+          const flatVal = Number(configuredCat.handling_fee_npr) || 0;
+          categorySurcharge = Math.round((base + extra) * pctVal / 100) + flatVal;
+        } else if (catObj.requires_fragile_handling) {
+          categorySurcharge = Number(p.fragile?.fee) || 40;
         }
       }
     }
@@ -796,270 +767,135 @@ export function DeliveryChargesSettingsPage() {
       </section>
 
       {/* ------------------------------------------------------------------ */}
-      {/* SECTION 2: PRODUCT CATEGORY DELIVERY CHARGES (CLOUDFLARE D1)       */}
+      {/* SECTION 2: PRODUCT CATEGORY DELIVERY CHARGES                       */}
       {/* ------------------------------------------------------------------ */}
       <section className="cs-section" id="product-category-delivery-charges">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '8px' }}>
-          <h2>
-            <span className="cs-step">2</span> Product Category Delivery Charges
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '6px' }}>
+          <h2 style={{ margin: 0 }}>
+            <span className="cs-step">2</span> Product category delivery charges
           </h2>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: '4px', padding: '2px 8px' }}>
-              Cloudflare D1 Database Synced
-            </span>
-            <span style={{ fontSize: '11px', fontWeight: 700, background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '4px', padding: '2px 8px' }}>
-              {productCategories.length} Categories in D1
-            </span>
-            <button
-              type="button"
-              onClick={loadD1Categories}
-              disabled={loadingCategories}
-              style={{
-                background: '#f8fafc',
-                border: '1px solid #cbd5e1',
-                borderRadius: '6px',
-                padding: '5px 10px',
-                fontSize: '12px',
-                fontWeight: 600,
-                color: '#475569',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '5px',
-              }}
-            >
-              <RefreshCw size={13} className={loadingCategories ? 'animate-spin' : ''} />
-              Refresh
-            </button>
-            <button
-              type="button"
-              onClick={() => setCategoryModalData({ mode: 'add', data: {} })}
-              style={{
-                background: '#dc2626',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '6px 14px',
-                fontSize: '12.5px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '5px',
-              }}
-            >
-              <Plus size={14} />
-              Add Product Category
-            </button>
-          </div>
+          <Link
+            to="/company/settings/product-categories"
+            style={{
+              fontSize: '12.5px',
+              color: 'var(--theme-color, #dc2626)',
+              fontWeight: 600,
+              textDecoration: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            Manage Product Categories ➔
+          </Link>
         </div>
-
         <p className="cs-help">
-          Category-based pricing rules and handling surcharges stored directly in Cloudflare D1 tables <code>product_categories</code> and <code>category_delivery_rates</code>. When vendors create orders and choose a category (e.g. Fragile Glassware, Electronics, Heavy Cargo), these rates dynamically calculate or override delivery charges across Nepal's 4 route zones.
+          Product categories are loaded from your database. Enter the extra percentage added on top of the base delivery charge for handling special product categories (e.g., Fragile, Glassware, Heavy Cargo, Electronics). Leave 0 for standard parcels.
         </p>
 
-        {/* Quick Search & Filters Bar */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', justifyContent: 'space-between', marginTop: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '8px 12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 240px', maxWidth: '380px' }}>
-            <div style={{ position: 'relative', width: '100%' }}>
-              <Search size={14} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-              <input
-                type="text"
-                placeholder="Search category name, code, description..."
-                value={catSearch}
-                onChange={(e) => setCatSearch(e.target.value)}
-                style={{ width: '100%', height: '30px', paddingLeft: '28px', paddingRight: '8px', fontSize: '12px', borderRadius: '4px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-              />
-            </div>
-            {catSearch && (
-              <button
-                type="button"
-                onClick={() => setCatSearch('')}
-                style={{ background: 'none', border: 'none', fontSize: '11px', color: '#64748b', cursor: 'pointer', textDecoration: 'underline' }}
-              >
-                Clear
-              </button>
-            )}
-          </div>
+        <table className="cs-table">
+          <thead>
+            <tr>
+              <th>PRODUCT CATEGORY</th>
+              <th>HANDLING TYPE</th>
+              <th>EXTRA CHARGE</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(pricing.categories && pricing.categories.length > 0
+              ? pricing.categories
+              : productCategories.filter((c) => c.is_active !== false && c.status !== 'inactive')
+            ).map((cat, idx) => {
+              const currentSurcharge =
+                pricing.categories?.[idx]?.surcharge_percent !== undefined
+                  ? pricing.categories[idx].surcharge_percent
+                  : (cat.surcharge_percent !== undefined ? cat.surcharge_percent : 0);
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <select
-              value={catStatusFilter}
-              onChange={(e) => setCatStatusFilter(e.target.value)}
-              style={{ height: '30px', fontSize: '11.5px', borderRadius: '4px', border: '1px solid #cbd5e1', padding: '0 8px', background: '#ffffff' }}
-            >
-              <option value="all">All Status ({productCategories.length})</option>
-              <option value="active">Active Only ({productCategories.filter(c => c.is_active !== false && c.status !== 'inactive').length})</option>
-              <option value="disabled">Disabled ({productCategories.filter(c => c.is_active === false || c.status === 'inactive').length})</option>
-            </select>
-
-            <select
-              value={catFragileFilter}
-              onChange={(e) => setCatFragileFilter(e.target.value)}
-              style={{ height: '30px', fontSize: '11.5px', borderRadius: '4px', border: '1px solid #cbd5e1', padding: '0 8px', background: '#ffffff' }}
-            >
-              <option value="all">All Handling</option>
-              <option value="fragile">⚠️ Fragile Care ({productCategories.filter(c => c.requires_fragile_handling).length})</option>
-              <option value="standard">Standard Items</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Categories List Table */}
-        <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', marginTop: '10px' }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-              <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                  <th style={{ padding: '10px 14px', fontWeight: 700, color: '#475569', fontSize: '11.5px', textTransform: 'uppercase' }}>ID / Code</th>
-                  <th style={{ padding: '10px 14px', fontWeight: 700, color: '#475569', fontSize: '11.5px', textTransform: 'uppercase' }}>Category Name</th>
-                  <th style={{ padding: '10px 14px', fontWeight: 700, color: '#475569', fontSize: '11.5px', textTransform: 'uppercase' }}>Handling &amp; Surcharge</th>
-                  <th style={{ padding: '10px 14px', fontWeight: 700, color: '#475569', fontSize: '11.5px', textTransform: 'uppercase' }}>Zone Rates Matrix (4 Route Zones)</th>
-                  <th style={{ padding: '10px 14px', fontWeight: 700, color: '#475569', fontSize: '11.5px', textTransform: 'uppercase' }}>Status</th>
-                  <th style={{ padding: '10px 14px', fontWeight: 700, color: '#475569', fontSize: '11.5px', textTransform: 'uppercase', textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredCategories.map((cat) => {
-                  const isActive = cat.is_active !== false && cat.status !== 'inactive';
-                  const rates = Array.isArray(cat.rates) ? cat.rates : [];
-                  const maxSurcharge = rates.reduce((max, r) => Math.max(max, Number(r.surcharge_value) || 0), 0);
-                  const isPercentSurcharge = rates.some((r) => r.pricing_model === 'PERCENTAGE_MARKUP' && Number(r.surcharge_value) > 0);
-
-                  return (
-                    <tr key={cat.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '12px 14px' }}>
-                        <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#64748b' }}>#{cat.id}</span>
-                        {cat.code && (
-                          <div style={{ fontSize: '10.5px', background: '#f1f5f9', color: '#475569', padding: '1px 5px', borderRadius: '3px', display: 'inline-block', marginTop: '2px', fontWeight: 700 }}>
-                            {cat.code}
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ padding: '12px 14px' }}>
-                        <div style={{ fontWeight: 700, color: '#0f172a' }}>{cat.name_en || cat.name}</div>
-                        {cat.name_np && <div style={{ fontSize: '11.5px', color: '#64748b' }}>{cat.name_np}</div>}
-                      </td>
-                      <td style={{ padding: '12px 14px', maxWidth: '240px' }}>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
-                          {cat.requires_fragile_handling ? (
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: '#fff7ed', color: '#c2410c', border: '1px solid #ffedd5', borderRadius: '4px', padding: '1px 6px', fontSize: '10.5px', fontWeight: 700 }}>
-                              ⚠️ Fragile Handling
-                            </span>
-                          ) : (
-                            <span style={{ fontSize: '11.5px', color: '#64748b' }}>Standard Handling</span>
-                          )}
-                          {maxSurcharge > 0 && (
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0', borderRadius: '4px', padding: '1px 6px', fontSize: '10.5px', fontWeight: 700 }}>
-                              +{isPercentSurcharge ? `${maxSurcharge}% Markup` : `Rs.${maxSurcharge} Surcharge`}
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {cat.description || '—'}
-                        </div>
-                      </td>
-                      <td style={{ padding: '12px 14px' }}>
-                        {rates.length > 0 ? (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                            {rates.map((r, i) => (
-                              <span key={i} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '4px', padding: '2px 6px', fontSize: '11px', color: '#334155' }}>
-                                <span style={{ color: '#64748b', fontWeight: 600 }}>
-                                  {r.zone_type === 'SAME_MUNICIPALITY' ? 'Intra' : r.zone_type === 'SAME_DISTRICT' ? 'Dist' : r.zone_type === 'SAME_PROVINCE' ? 'Prov' : 'Inter'}:
-                                </span>{' '}
-                                <b>Rs.{r.base_charge_npr}</b>
-                                {Number(r.extra_per_kg_npr) > 0 && (
-                                  <span style={{ fontSize: '10px', color: '#94a3b8', marginLeft: '3px' }}>
-                                    (+{r.extra_per_kg_npr}/kg)
-                                  </span>
-                                )}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span style={{ color: '#94a3b8', fontSize: '11.5px', fontStyle: 'italic' }}>Zone default rates apply</span>
-                        )}
-                      </td>
-                      <td style={{ padding: '12px 14px' }}>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleCategoryActive(cat)}
-                          title={`Click to ${isActive ? 'Disable' : 'Enable'} on Vendor Portal`}
+              return (
+                <tr key={cat.id || cat.code || idx}>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontWeight: 700, color: '#111827' }}>{cat.name_en || cat.name}</span>
+                      {cat.code && (
+                        <span
                           style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '5px',
-                            borderRadius: '12px',
-                            padding: '3px 9px',
-                            fontSize: '11px',
+                            fontSize: '10.5px',
                             fontWeight: 700,
-                            backgroundColor: isActive ? '#ecfdf5' : '#f1f5f9',
-                            color: isActive ? '#059669' : '#64748b',
-                            border: isActive ? '1px solid #a7f3d0' : '1px solid #cbd5e1',
-                            cursor: 'pointer',
+                            color: '#4b5563',
+                            background: '#f3f4f6',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            letterSpacing: '0.5px',
                           }}
                         >
-                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: isActive ? '#10b981' : '#94a3b8' }} />
-                          {isActive ? 'Active' : 'Disabled'}
-                        </button>
-                      </td>
-                      <td style={{ padding: '12px 14px', textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', gap: '6px' }}>
-                          <button
-                            type="button"
-                            onClick={() => setCategoryModalData({ mode: 'edit', data: cat })}
-                            style={{
-                              background: '#eff6ff',
-                              color: '#1d4ed8',
-                              border: '1px solid #bfdbfe',
-                              borderRadius: '4px',
-                              padding: '4px 8px',
-                              fontSize: '11.5px',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                            }}
-                          >
-                            <Sliders size={12} />
-                            Rates
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteCategory(cat)}
-                            style={{
-                              background: '#fef2f2',
-                              color: '#dc2626',
-                              border: '1px solid #fecaca',
-                              borderRadius: '4px',
-                              padding: '4px 7px',
-                              fontSize: '11px',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {filteredCategories.length === 0 && (
-                  <tr>
-                    <td colSpan="6" style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>
-                      {loadingCategories
-                        ? 'Loading product categories from Cloudflare D1...'
-                        : productCategories.length > 0
-                        ? 'No categories match your search / filter. Try clearing filters.'
-                        : 'No categories found in D1. Click "+ Add Product Category" above.'}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                          {cat.code}
+                        </span>
+                      )}
+                    </div>
+                    {(cat.name_np || cat.description) && (
+                      <div style={{ fontSize: '11.5px', color: '#6b7280', marginTop: '2px' }}>
+                        {cat.name_np ? `${cat.name_np} ` : ''}
+                        {cat.description ? `· ${cat.description}` : ''}
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ color: '#4b5563', fontSize: '12.5px' }}>
+                    {cat.requires_fragile_handling ? (
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          color: '#c2410c',
+                          fontWeight: 600,
+                        }}
+                      >
+                        ⚠️ Fragile / Delicate
+                      </span>
+                    ) : (
+                      <span style={{ color: '#6b7280' }}>Standard Parcel</span>
+                    )}
+                  </td>
+                  <td>
+                    <label className="cs-field">
+                      <span className="cs-input-wrap" style={{ maxWidth: '140px' }}>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={currentSurcharge === '' ? '' : currentSurcharge}
+                          onChange={(e) => {
+                            const cats = [
+                              ...(pricing.categories && pricing.categories.length > 0
+                                ? pricing.categories
+                                : productCategories.filter((c) => c.is_active !== false && c.status !== 'inactive')),
+                            ];
+                            cats[idx] = {
+                              ...cats[idx],
+                              surcharge_percent: e.target.value === '' ? '' : Number(e.target.value),
+                            };
+                            updatePricing({ categories: cats });
+                          }}
+                        />
+                        <em>%</em>
+                      </span>
+                    </label>
+                  </td>
+                </tr>
+              );
+            })}
+            {(!pricing.categories || pricing.categories.length === 0) &&
+              productCategories.filter((c) => c.is_active !== false && c.status !== 'inactive').length === 0 && (
+                <tr>
+                  <td colSpan="3" style={{ padding: '20px', textAlign: 'center', color: '#6b7280' }}>
+                    {loadingCategories
+                      ? 'Loading product categories from database...'
+                      : 'No product categories found in database.'}
+                  </td>
+                </tr>
+              )}
+          </tbody>
+        </table>
       </section>
 
       {/* ------------------------------------------------------------------ */}
@@ -1137,7 +973,7 @@ export function DeliveryChargesSettingsPage() {
             <span className="cs-step">4</span> Delivery speed
           </h2>
           <Link
-            to="/company/delivery-service-types"
+            to="/company/settings/delivery-service-types"
             style={{
               fontSize: '12.5px',
               color: 'var(--theme-color, #dc2626)',
@@ -1916,323 +1752,6 @@ export function DeliveryChargesSettingsPage() {
           </div>
         </div>
       )}
-
-      {/* ------------------------------------------------------------------ */}
-      {/* CATEGORY RATES MATRIX MODAL (D1 CONNECTED)                         */}
-      {/* ------------------------------------------------------------------ */}
-      {categoryModalData && (
-        <CategoryRatesModal
-          mode={categoryModalData.mode}
-          initialData={categoryModalData.data || {}}
-          onSave={handleSaveCategoryRates}
-          onClose={() => setCategoryModalData(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-// ── Product Category & Zone Rate Matrix Editor Modal ──
-function CategoryRatesModal({ mode = 'add', initialData = {}, onSave, onClose }) {
-  const [nameEn, setNameEn] = useState(initialData.name_en || initialData.name || '');
-  const [nameNp, setNameNp] = useState(initialData.name_np || '');
-  const [code, setCode] = useState(initialData.code || '');
-  const [description, setDescription] = useState(initialData.description || '');
-  const [requiresFragile, setRequiresFragile] = useState(Boolean(initialData.requires_fragile_handling));
-  const [isActive, setIsActive] = useState(initialData.is_active !== false && initialData.status !== 'inactive');
-  const [error, setError] = useState('');
-
-  const defaultZoneTemplates = [
-    { zone_type: 'SAME_MUNICIPALITY', label: 'Same Municipality (Intra-City)', pricing_model: 'OVERRIDE_BASE_RATE', base_charge_npr: 90, base_weight_kg: 1.0, extra_per_kg_npr: 40, surcharge_value: 0, min_charge_npr: 90 },
-    { zone_type: 'SAME_DISTRICT',     label: 'Same District Route',           pricing_model: 'OVERRIDE_BASE_RATE', base_charge_npr: 120, base_weight_kg: 1.0, extra_per_kg_npr: 50, surcharge_value: 0, min_charge_npr: 120 },
-    { zone_type: 'SAME_PROVINCE',     label: 'Same Province (Intra-Province)',pricing_model: 'OVERRIDE_BASE_RATE', base_charge_npr: 150, base_weight_kg: 1.0, extra_per_kg_npr: 60, surcharge_value: 0, min_charge_npr: 150 },
-    { zone_type: 'INTER_PROVINCE',    label: 'Inter-Province Delivery',       pricing_model: 'OVERRIDE_BASE_RATE', base_charge_npr: 180, base_weight_kg: 1.0, extra_per_kg_npr: 70, surcharge_value: 0, min_charge_npr: 180 },
-  ];
-
-  const [rates, setRates] = useState(() => {
-    if (Array.isArray(initialData.rates) && initialData.rates.length > 0) {
-      return defaultZoneTemplates.map((tmpl) => {
-        const found = initialData.rates.find((r) => r.zone_type === tmpl.zone_type);
-        return found ? { ...tmpl, ...found } : tmpl;
-      });
-    }
-    return defaultZoneTemplates;
-  });
-
-  const handleRateFieldChange = (index, field, value) => {
-    setRates((prev) => {
-      const copy = [...prev];
-      copy[index] = { ...copy[index], [field]: value };
-      return copy;
-    });
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!nameEn.trim()) {
-      setError('Please provide an English name for this category.');
-      return;
-    }
-
-    const payload = {
-      ...(initialData.id ? { id: initialData.id } : {}),
-      name_en: nameEn.trim(),
-      name: nameEn.trim(),
-      name_np: nameNp.trim() || null,
-      code: (code.trim() || nameEn.trim().substring(0, 10)).toUpperCase(),
-      description: description.trim(),
-      requires_fragile_handling: requiresFragile ? 1 : 0,
-      is_active: isActive ? 1 : 0,
-      status: isActive ? 'active' : 'inactive',
-      rates: rates.map((r) => ({
-        ...r,
-        base_charge_npr: parseFloat(r.base_charge_npr) || 0,
-        base_weight_kg: parseFloat(r.base_weight_kg) || 1.0,
-        extra_per_kg_npr: parseFloat(r.extra_per_kg_npr) || 0,
-        surcharge_value: parseFloat(r.surcharge_value) || 0,
-        min_charge_npr: parseFloat(r.min_charge_npr) || 0,
-      })),
-    };
-
-    onSave(payload);
-  };
-
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.5)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000,
-        padding: '20px',
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: '#ffffff',
-          borderRadius: '12px',
-          maxWidth: '680px',
-          width: '100%',
-          maxHeight: '90vh',
-          display: 'flex',
-          flexDirection: 'column',
-          padding: '20px 24px',
-          boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
-          overflowY: 'auto',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-          <div>
-            <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>
-              {mode === 'edit' ? `Edit Rates: ${initialData.name_en || initialData.name}` : 'Add Product Category & Rates'}
-            </h3>
-            <span style={{ fontSize: '11.5px', color: '#64748b' }}>
-              Directly synced with Cloudflare D1 database
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#6b7280' }}
-          >
-            ✕
-          </button>
-        </div>
-
-        {error && (
-          <div style={{ padding: '8px 12px', backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fee2e2', borderRadius: '6px', fontSize: '12.5px', marginBottom: '10px' }}>
-            ⚠️ {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '3px' }}>
-                Category Name (English) *
-              </label>
-              <input
-                type="text"
-                value={nameEn}
-                onChange={(e) => {
-                  setNameEn(e.target.value);
-                  if (!code && mode === 'add') {
-                    setCode(e.target.value.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8).toUpperCase());
-                  }
-                }}
-                placeholder="e.g. Apparel & Garments, Fragile Glassware"
-                required
-                style={{ width: '100%', height: '32px', fontSize: '12.5px', borderRadius: '6px', border: '1px solid #cbd5e1', padding: '0 8px', boxSizing: 'border-box' }}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '3px' }}>
-                Category Name (Nepali)
-              </label>
-              <input
-                type="text"
-                value={nameNp}
-                onChange={(e) => setNameNp(e.target.value)}
-                placeholder="उदा. लत्ताकपडा तथा फेसन"
-                style={{ width: '100%', height: '32px', fontSize: '12.5px', borderRadius: '6px', border: '1px solid #cbd5e1', padding: '0 8px', boxSizing: 'border-box' }}
-              />
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '3px' }}>
-                Code / Short Tag
-              </label>
-              <input
-                type="text"
-                value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
-                placeholder="e.g. APPAREL, FRAGILE"
-                style={{ width: '100%', height: '32px', fontSize: '12px', fontFamily: 'monospace', textTransform: 'uppercase', borderRadius: '6px', border: '1px solid #cbd5e1', padding: '0 8px', boxSizing: 'border-box' }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', paddingTop: '16px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 600, color: '#ea580c', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={requiresFragile}
-                  onChange={(e) => setRequiresFragile(e.target.checked)}
-                />
-                Requires Fragile Care ⚠️
-              </label>
-
-              <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 600, color: '#16a34a', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={isActive}
-                  onChange={(e) => setIsActive(e.target.checked)}
-                />
-                Active in D1
-              </label>
-            </div>
-          </div>
-
-          <div>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '3px' }}>
-              Handling Instructions
-            </label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="e.g. Handle with caution, delicate packaging guidelines..."
-              style={{ width: '100%', height: '32px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', padding: '0 8px', boxSizing: 'border-box' }}
-            />
-          </div>
-
-          {/* 4 Zone Rates */}
-          <div>
-            <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#0f172a', marginBottom: '6px' }}>
-              Zone Rates Matrix (4 Route Zones)
-            </label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {rates.map((rate, idx) => (
-                <div key={rate.zone_type} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '8px 10px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                    <span style={{ fontWeight: 700, fontSize: '12px', color: '#1e293b' }}>
-                      {rate.label || rate.zone_type}
-                    </span>
-                    <select
-                      value={rate.pricing_model}
-                      onChange={(e) => handleRateFieldChange(idx, 'pricing_model', e.target.value)}
-                      style={{ height: '24px', fontSize: '11px', borderRadius: '4px', border: '1px solid #cbd5e1', padding: '0 4px', background: '#fff' }}
-                    >
-                      <option value="OVERRIDE_BASE_RATE">Override Base Rate</option>
-                      <option value="FLAT_ADDON">Flat Surcharge Addon</option>
-                      <option value="PERCENTAGE_MARKUP">% Percentage Markup</option>
-                    </select>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: '6px' }}>
-                    <div>
-                      <span style={{ fontSize: '10.5px', color: '#64748b' }}>Base Fee (NPR)</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={rate.base_charge_npr}
-                        onChange={(e) => handleRateFieldChange(idx, 'base_charge_npr', e.target.value)}
-                        style={{ width: '100%', height: '26px', fontSize: '11.5px', borderRadius: '4px', border: '1px solid #cbd5e1', padding: '0 5px', boxSizing: 'border-box' }}
-                      />
-                    </div>
-                    <div>
-                      <span style={{ fontSize: '10.5px', color: '#64748b' }}>Base Wt (kg)</span>
-                      <input
-                        type="number"
-                        min="0.1"
-                        step="0.5"
-                        value={rate.base_weight_kg}
-                        onChange={(e) => handleRateFieldChange(idx, 'base_weight_kg', e.target.value)}
-                        style={{ width: '100%', height: '26px', fontSize: '11.5px', borderRadius: '4px', border: '1px solid #cbd5e1', padding: '0 5px', boxSizing: 'border-box' }}
-                      />
-                    </div>
-                    <div>
-                      <span style={{ fontSize: '10.5px', color: '#64748b' }}>Extra/kg (NPR)</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={rate.extra_per_kg_npr}
-                        onChange={(e) => handleRateFieldChange(idx, 'extra_per_kg_npr', e.target.value)}
-                        style={{ width: '100%', height: '26px', fontSize: '11.5px', borderRadius: '4px', border: '1px solid #cbd5e1', padding: '0 5px', boxSizing: 'border-box' }}
-                      />
-                    </div>
-                    <div>
-                      <span style={{ fontSize: '10.5px', color: '#64748b' }}>Surcharge {rate.pricing_model === 'PERCENTAGE_MARKUP' ? '(%)' : '(NPR)'}</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={rate.surcharge_value}
-                        onChange={(e) => handleRateFieldChange(idx, 'surcharge_value', e.target.value)}
-                        style={{ width: '100%', height: '26px', fontSize: '11.5px', borderRadius: '4px', border: '1px solid #cbd5e1', padding: '0 5px', boxSizing: 'border-box' }}
-                      />
-                    </div>
-                    <div>
-                      <span style={{ fontSize: '10.5px', color: '#64748b' }}>Min Fee (NPR)</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={rate.min_charge_npr}
-                        onChange={(e) => handleRateFieldChange(idx, 'min_charge_npr', e.target.value)}
-                        style={{ width: '100%', height: '26px', fontSize: '11.5px', borderRadius: '4px', border: '1px solid #cbd5e1', padding: '0 5px', boxSizing: 'border-box' }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '10px' }}>
-            <button
-              type="button"
-              className="btn-reset-light"
-              onClick={onClose}
-              style={{ padding: '6px 14px', fontSize: '12px' }}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="btn-save-red"
-              style={{ padding: '6px 16px', fontSize: '12px' }}
-            >
-              Save to Cloudflare D1
-            </button>
-          </div>
-        </form>
-      </div>
     </div>
   );
 }
