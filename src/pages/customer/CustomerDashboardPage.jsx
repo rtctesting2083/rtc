@@ -46,6 +46,7 @@ export function CustomerDashboardPage() {
   /* ── 1. Real COD Settlements from Cloudflare D1 (cod_settlements table) ── */
   const [vendorSettlements, setVendorSettlements] = useState([]);
   const [loadingSettlements, setLoadingSettlements] = useState(true);
+  const [d1CodSummary, setD1CodSummary] = useState(null);
 
   useEffect(() => {
     const custId = currentCustomer?.id;
@@ -61,6 +62,16 @@ export function CustomerDashboardPage() {
       .finally(() => {
         if (active) setLoadingSettlements(false);
       });
+
+    // Also fetch real-time D1 COD summary
+    d1Api.getVendorCodSummary(custId, currentCustomer.company_id || 1)
+      .then((res) => {
+        if (active && res && res.success !== false) {
+          setD1CodSummary(res);
+        }
+      })
+      .catch((err) => console.warn('Could not load COD summary from D1:', err));
+
     return () => {
       active = false;
     };
@@ -133,23 +144,26 @@ export function CustomerDashboardPage() {
   );
 
   /* ── Compute 100% REAL dynamic metrics from database ── */
-  const totalOrders = myShipments.filter((s) => s.status !== 'cancelled').length;
-  const delivered = myShipments.filter((s) => s.status === 'delivered').length;
+  const normStatus = (s) => String(s?.status || '').toLowerCase().trim();
+
+  const totalOrders = myShipments.filter((s) => normStatus(s) !== 'cancelled').length;
+  const deliveredShipments = myShipments.filter((s) => normStatus(s) === 'delivered');
+  const delivered = deliveredShipments.length;
   const inProcess = myShipments.filter((s) =>
-    ['pending', 'assigned', 'picked_up', 'in_transit', 'out_for_delivery', 'at_destination_hub'].includes(s.status)
+    ['pending', 'assigned', 'picked_up', 'in_transit', 'out_for_delivery', 'at_destination_hub', 'received_at_branch'].includes(normStatus(s))
   ).length;
   const rtoCount = myShipments.filter((s) =>
-    ['failed', 'returned', 'rto'].includes(s.status)
+    ['failed', 'returned', 'rto'].includes(normStatus(s))
   ).length;
   const followUpReturn = myShipments.filter((s) =>
-    ['failed', 'returned', 'follow_up'].includes(s.status)
+    ['failed', 'returned', 'follow_up'].includes(normStatus(s))
   ).length;
 
   // Today metrics
   const todayOrders = myShipments.filter((s) => isToday(s.created_at)).length;
-  const todayDelivered = myShipments.filter((s) => s.status === 'delivered' && isToday(s.delivered_at)).length;
-  const todayCancelled = myShipments.filter((s) => s.status === 'cancelled' && isToday(s.created_at)).length;
-  const todayRto = myShipments.filter((s) => ['failed', 'returned', 'rto'].includes(s.status) && isToday(s.delivered_at || s.created_at)).length;
+  const todayDelivered = myShipments.filter((s) => normStatus(s) === 'delivered' && isToday(s.delivered_at)).length;
+  const todayCancelled = myShipments.filter((s) => normStatus(s) === 'cancelled' && isToday(s.created_at)).length;
+  const todayRto = myShipments.filter((s) => ['failed', 'returned', 'rto'].includes(normStatus(s)) && isToday(s.delivered_at || s.created_at)).length;
 
   // Real comment count across orders
   const commentCount = myShipments.reduce((sum, s) => {
@@ -161,12 +175,33 @@ export function CustomerDashboardPage() {
   }, 0);
 
   // Real Values from Database
-  const totalCODCollected = myShipments
-    .filter((s) => s.status === 'delivered')
-    .reduce((sum, s) => sum + (Number(s.cod_amount) || 0), 0);
+  // 1. Total COD collected across all delivered orders
+  const totalCODCollected = deliveredShipments.reduce((sum, s) => sum + (Number(s.cod_amount) || 0), 0);
 
-  const totalDeliveryCharge = myShipments
-    .reduce((sum, s) => sum + (Number(s.delivery_fee) || 0), 0);
+  // 2. Unsettled Delivered Orders with COD (not yet settled or requested)
+  const unsettledDeliveredShipments = deliveredShipments.filter((s) => {
+    const isSettled = s.cod_settled === true || s.cod_settled === 1 || String(s.cod_settlement_status || '').toLowerCase().trim() === 'settled';
+    const isRequested = String(s.cod_settlement_status || '').toLowerCase().trim() === 'requested' || Boolean(s.cod_request_id) || Boolean(s.payout_request_id);
+    return !isSettled && !isRequested && Number(s.cod_amount) > 0;
+  });
+
+  // 3. Chargeable unsettled shipments (delivery charges to deduct: delivered unsettled + returned/failed unsettled)
+  const unsettledChargeableShipments = myShipments.filter((s) => {
+    const st = normStatus(s);
+    const isSettled = s.cod_settled === true || s.cod_settled === 1 || String(s.cod_settlement_status || '').toLowerCase().trim() === 'settled';
+    const isRequested = String(s.cod_settlement_status || '').toLowerCase().trim() === 'requested' || Boolean(s.cod_request_id) || Boolean(s.payout_request_id);
+    const isChargeable = ['delivered', 'returned', 'rto', 'failed'].includes(st);
+    return isChargeable && !isSettled && !isRequested;
+  });
+
+  const unsettledGrossCod = unsettledDeliveredShipments.reduce((sum, s) => sum + (Number(s.cod_amount) || 0), 0);
+  const unsettledDeliveryCharge = unsettledChargeableShipments.reduce((sum, s) => sum + (Number(s.delivery_fee) || Number(s.delivery_charge) || 0), 0);
+
+  // Delivery charge display for delivered / chargeable shipments
+  const chargeableShipments = myShipments.filter((s) => ['delivered', 'returned', 'rto', 'failed'].includes(normStatus(s)));
+  const totalDeliveryCharge = chargeableShipments.length > 0
+    ? chargeableShipments.reduce((sum, s) => sum + (Number(s.delivery_fee) || Number(s.delivery_charge) || 0), 0)
+    : myShipments.reduce((sum, s) => sum + (Number(s.delivery_fee) || Number(s.delivery_charge) || 0), 0);
 
   // 100% Real Settled COD from D1 cod_settlements table (falling back to invoices if any)
   const settlementsTotal = vendorSettlements.reduce(
@@ -178,7 +213,13 @@ export function CustomerDashboardPage() {
     .reduce((sum, inv) => sum + (Number(inv.total_amount) || 0), 0);
   const totalSettledCOD = settlementsTotal > 0 ? settlementsTotal : invoicesTotal;
 
-  const codBalanceNet = Math.max(0, totalCODCollected - totalSettledCOD - totalDeliveryCharge);
+  // Unsettled COD amount after deduction of delivery charge (Zero Leakage)
+  const localUnsettledNetCod = Math.max(0, Math.round((unsettledGrossCod - unsettledDeliveryCharge) * 100) / 100);
+
+  // Authoritative Net Unsettled COD Balance from D1 or local calculation
+  const codBalanceNet = d1CodSummary?.available_withdrawable_balance !== undefined
+    ? Number(d1CodSummary.available_withdrawable_balance)
+    : localUnsettledNetCod;
 
   // Last settled transaction from D1
   const lastSettledRecord = vendorSettlements.length > 0
@@ -191,21 +232,20 @@ export function CustomerDashboardPage() {
   const totalOrderValue = myShipments
     .reduce((sum, s) => sum + (Number(s.cod_amount) || Number(s.item_value) || 0), 0);
 
-  const deliveredValue = myShipments
-    .filter((s) => s.status === 'delivered')
+  const deliveredValue = deliveredShipments
     .reduce((sum, s) => sum + (Number(s.cod_amount) || Number(s.item_value) || 0), 0);
 
   const returnedValue = myShipments
-    .filter((s) => ['failed', 'returned', 'rto'].includes(s.status))
+    .filter((s) => ['failed', 'returned', 'rto'].includes(normStatus(s)))
     .reduce((sum, s) => sum + (Number(s.cod_amount) || Number(s.item_value) || 0), 0);
 
   const pendingValue = Math.max(0, totalOrderValue - deliveredValue - returnedValue);
 
   // Process Status counts from database
-  const sentForDeliveryCount = myShipments.filter((s) => s.status === 'out_for_delivery').length;
-  const returnProcessCount = myShipments.filter((s) => ['returned', 'failed', 'rto'].includes(s.status)).length;
-  const redirectedCount = myShipments.filter((s) => s.status === 'redirected').length;
-  const readyForPickupCount = myShipments.filter((s) => ['pending', 'assigned'].includes(s.status)).length;
+  const sentForDeliveryCount = myShipments.filter((s) => normStatus(s) === 'out_for_delivery').length;
+  const returnProcessCount = myShipments.filter((s) => ['returned', 'failed', 'rto'].includes(normStatus(s))).length;
+  const redirectedCount = myShipments.filter((s) => normStatus(s) === 'redirected').length;
+  const readyForPickupCount = myShipments.filter((s) => ['pending', 'assigned'].includes(normStatus(s))).length;
   const unreadCommentCount = myShipments.filter((s) => s.unread_comments || (s.last_comment && s.last_comment !== '-')).length;
 
   // Donut percentage
@@ -696,6 +736,11 @@ export function CustomerDashboardPage() {
                       <div className="cod-card-sub">
                         Last Settled Date: {lastSettledRecord ? fmtDate(lastSettledRecord.settled_at || lastSettledRecord.created_at) : lastSettledInvoice ? fmtDate(lastSettledInvoice.paid_at || lastSettledInvoice.created_at) : '—'}
                       </div>
+                      {unsettledGrossCod > 0 && (
+                        <div className="cod-card-sub" style={{ color: '#16a34a', fontWeight: 600, marginTop: '3px' }}>
+                          Unsettled COD: {fmtMoney(unsettledGrossCod)} − Fee: {fmtMoney(unsettledDeliveryCharge)}
+                        </div>
+                      )}
                     </div>
                     <div>
                       <button
