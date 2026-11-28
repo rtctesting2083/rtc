@@ -12906,11 +12906,35 @@ export async function onRequest(context) {
           const validColumns = new Set((tableInfo.results || []).map((c) => c.name));
           if (validColumns.size === 0) return null;
 
+          const data = { ...recData };
+
+          // Handle special column mapping & NOT NULL constraints for vendor_order mirror table
+          if (targetTable === 'vendor_order') {
+            const vendorId = data.vendor_id || data.customer_id;
+            // If this shipment was not created by/for a vendor, skip vendor_order mirror insertion
+            if (!vendorId) return null;
+
+            data.vendor_id = vendorId;
+            const existingVo = data.tracking_number
+              ? await db.prepare('SELECT id FROM vendor_order WHERE tracking_number = ?').bind(data.tracking_number).first().catch(() => null)
+              : null;
+            if (existingVo?.id) {
+              data.id = existingVo.id;
+            } else {
+              delete data.id; // Allow vendor_order to auto-assign its own primary key
+            }
+            data.company_id = data.company_id || 1;
+            data.receiver_name = data.receiver_name || 'Recipient';
+            data.receiver_phone = data.receiver_phone || '';
+            data.delivery_address = data.delivery_address || '';
+            data.created_at = data.created_at || new Date().toISOString();
+          }
+
           const insertCols = [];
           const insertVals = [];
           const placeholders = [];
 
-          for (const [key, val] of Object.entries(recData)) {
+          for (const [key, val] of Object.entries(data)) {
             if (validColumns.has(key) && key !== 'backup_id') {
               insertCols.push(key);
               insertVals.push(val);
@@ -12965,17 +12989,21 @@ export async function onRequest(context) {
           const primaryStmt = await restoreRecordToActiveTable(cfg.table, rec);
           if (primaryStmt) batchStmts.push(primaryStmt);
 
-          // Mirror table restore statement if applicable
-          if (cfg.mirrorTable) {
-            const mirrorStmt = await restoreRecordToActiveTable(cfg.mirrorTable, rec);
-            if (mirrorStmt) batchStmts.push(mirrorStmt);
-          }
-
           // Delete from backups table
           batchStmts.push(db.prepare(`DELETE FROM ${cfg.backupTable} WHERE backup_id = ?`).bind(backupId));
 
           // Execute restore transaction atomically
           await db.batch(batchStmts);
+
+          // Mirror table restore statement if applicable (non-blocking)
+          if (cfg.mirrorTable) {
+            try {
+              const mirrorStmt = await restoreRecordToActiveTable(cfg.mirrorTable, rec);
+              if (mirrorStmt) await mirrorStmt.run();
+            } catch (mirrorErr) {
+              console.warn(`Non-blocking mirror restore notice for ${cfg.mirrorTable}:`, mirrorErr);
+            }
+          }
 
           return jsonResponse({
             success: true,
@@ -13041,15 +13069,21 @@ export async function onRequest(context) {
               const batchStmts = [];
               const primaryStmt = await restoreRecordToActiveTable(cfg.table, rec);
               if (primaryStmt) batchStmts.push(primaryStmt);
-              if (cfg.mirrorTable) {
-                const mirrorStmt = await restoreRecordToActiveTable(cfg.mirrorTable, rec);
-                if (mirrorStmt) batchStmts.push(mirrorStmt);
-              }
               batchStmts.push(db.prepare(`DELETE FROM ${cfg.backupTable} WHERE backup_id = ?`).bind(bId));
 
               try {
                 await db.batch(batchStmts);
                 restoredCount++;
+
+                // Mirror table restore (non-blocking)
+                if (cfg.mirrorTable) {
+                  try {
+                    const mirrorStmt = await restoreRecordToActiveTable(cfg.mirrorTable, rec);
+                    if (mirrorStmt) await mirrorStmt.run();
+                  } catch (mirrorErr) {
+                    console.warn(`Non-blocking mirror restore notice for ${cfg.mirrorTable}:`, mirrorErr);
+                  }
+                }
               } catch (errRest) {
                 errors.push(`ID #${row.original_id}: ${errRest.message}`);
               }
