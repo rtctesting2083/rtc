@@ -895,16 +895,25 @@ export function CompanyShipmentsPage({ view }) {
         statusType = 'returned';
       }
 
-      const destBranch =
+      let destBranch =
         (s.destination_branch_id && findBranch(s.destination_branch_id)) ||
-        (s.branch_id && findBranch(s.branch_id)) ||
         null;
+      if (!destBranch && (s.destination_hub || s.destination_branch_name)) {
+        const dName = (s.destination_hub || s.destination_branch_name).toLowerCase();
+        destBranch = (branches || []).find((b) => b.name && dName.includes(b.name.toLowerCase())) || null;
+      }
+      if (!destBranch && s.branch_id) {
+        destBranch = findBranch(s.branch_id);
+      }
 
       const destDist = s.receiver_district || s.destination_district || destBranch?.district || destBranch?.address?.district || '';
       const destProv = s.receiver_province || s.destination_province || destBranch?.province || destBranch?.address?.province || getProvinceForDistrict(destDist) || '';
 
-      const destBranchName = s.destination_hub || s.destination_branch_name || (destBranch ? destBranch.name : 'Rolpa Municipality Branch');
-      const formattedDest = destBranchName.includes('(') ? destBranchName : `${destBranchName}${destDist ? ` ( ${destDist} )` : ''}`;
+      const destBranchName = s.destination_hub || s.destination_branch_name || (destBranch ? destBranch.name : '—');
+      const formattedDest = destBranchName !== '—' && !destBranchName.includes('(') && destDist
+        ? `${destBranchName}${destDist ? ` ( ${destDist} )` : ''}`
+        : destBranchName;
+      const destBranchPhone = destBranch?.phone || destBranch?.contact_number || s.destination_branch_phone || '—';
 
       const formattedAddress = formatAddressWithDistrictProvince(
         s.delivery_address || s.receiver_address,
@@ -915,6 +924,23 @@ export function CompanyShipmentsPage({ view }) {
       const cust = (s.customer_id && findCustomer(s.customer_id)) || (s.vendor_id && findCustomer(s.vendor_id)) || null;
       const senderName = s.sender_name || cust?.name || cust?.business_name || s.vendor_name || '—';
       const senderPhone = s.sender_phone || cust?.phone || s.vendor_phone || '—';
+
+      let origBranch =
+        (s.origin_branch_id && findBranch(s.origin_branch_id)) ||
+        (s.branch_id && findBranch(s.branch_id)) ||
+        (cust?.branch_id && findBranch(cust.branch_id)) ||
+        null;
+      if (!origBranch && (s.origin_branch_name || s.sender_branch_name)) {
+        const oName = (s.origin_branch_name || s.sender_branch_name).toLowerCase();
+        origBranch = (branches || []).find((b) => b.name && oName.includes(b.name.toLowerCase())) || null;
+      }
+      const senderDist = origBranch?.district || origBranch?.address?.district || '';
+      const rawSenderBranchName = s.origin_branch_name || s.sender_branch_name || origBranch?.name || '—';
+      const senderBranchName = rawSenderBranchName !== '—' && !rawSenderBranchName.includes('(') && senderDist
+        ? `${rawSenderBranchName}${senderDist ? ` ( ${senderDist} )` : ''}`
+        : rawSenderBranchName;
+      const senderBranchPhone = origBranch?.phone || origBranch?.contact_number || s.origin_branch_phone || s.sender_branch_phone || '—';
+
       let rawSenderAddr = s.pickup_address || s.sender_address;
       if (!rawSenderAddr && cust?.address) {
         if (typeof cust.address === 'string') {
@@ -927,8 +953,7 @@ export function CompanyShipmentsPage({ view }) {
         rawSenderAddr = cust.pickup_address;
       }
       if (!rawSenderAddr) {
-        const origB = (s.origin_branch_id && findBranch(s.origin_branch_id)) || (s.branch_id && findBranch(s.branch_id)) || null;
-        rawSenderAddr = origB?.name || '—';
+        rawSenderAddr = origBranch?.name || '—';
       }
       const senderAddress = rawSenderAddr || '—';
 
@@ -954,10 +979,13 @@ export function CompanyShipmentsPage({ view }) {
         sender_name: senderName,
         sender_phone: senderPhone,
         sender_address: senderAddress,
+        sender_branch: senderBranchName,
+        sender_branch_phone: senderBranchPhone,
         product_description: s.product_description || s.product_title || s.package_description || '—',
         order_type: orderTypeVal,
         order_type_kind: orderTypeKind,
         destination_hub: formattedDest,
+        destination_branch_phone: destBranchPhone,
         cod_amount: Number(s.cod_amount) || 0,
         delivery_fee: Number(s.delivery_fee) || Number(s.service_charge) || 0,
         last_comment: s.notes && s.notes !== '-' ? s.notes : '',
@@ -968,7 +996,7 @@ export function CompanyShipmentsPage({ view }) {
         customer_id: s.customer_id,
       };
     });
-  }, [shipments, directShipments, findBranch, findCustomer]);
+  }, [shipments, directShipments, findBranch, findCustomer, branches]);
 
   // Tab counts
   const exchangeCount = useMemo(() => {
@@ -1006,6 +1034,10 @@ export function CompanyShipmentsPage({ view }) {
         const recPhone = (o.receiver_phone || '').toLowerCase();
         const senderName = (o.sender_name || '').toLowerCase();
         const senderPhone = (o.sender_phone || '').toLowerCase();
+        const destHub = (o.destination_hub || '').toLowerCase();
+        const destPhone = (o.destination_branch_phone || '').toLowerCase();
+        const senderBranch = (o.sender_branch || '').toLowerCase();
+        const senderBranchPhone = (o.sender_branch_phone || '').toLowerCase();
         if (
           !trk.includes(q) &&
           !ref.includes(q) &&
@@ -1014,7 +1046,11 @@ export function CompanyShipmentsPage({ view }) {
           !recName.includes(q) &&
           !recPhone.includes(q) &&
           !senderName.includes(q) &&
-          !senderPhone.includes(q)
+          !senderPhone.includes(q) &&
+          !destHub.includes(q) &&
+          !destPhone.includes(q) &&
+          !senderBranch.includes(q) &&
+          !senderBranchPhone.includes(q)
         ) {
           return false;
         }
@@ -1419,12 +1455,15 @@ export function CompanyShipmentsPage({ view }) {
       'Customer Name',
       'Customer Phone',
       'Delivery Address',
+      'Destination Branch',
+      'Destination Branch Contact',
       'Sender Name',
       'Sender Phone',
       'Sender Address',
+      'Sender Branch',
+      'Sender Branch Contact',
       'Product Description',
       'Order Type',
-      'Destination Branch',
       'COD Amount (NPR)',
       'Service Charge (NPR)',
       'Last Comment',
@@ -1438,12 +1477,15 @@ export function CompanyShipmentsPage({ view }) {
       o.receiver_name,
       o.receiver_phone,
       o.formatted_address || o.delivery_address,
+      o.destination_hub,
+      o.destination_branch_phone,
       o.sender_name,
       o.sender_phone,
       o.sender_address,
+      o.sender_branch,
+      o.sender_branch_phone,
       o.product_description,
       o.order_type,
-      o.destination_hub,
       o.cod_amount,
       o.delivery_fee,
       o.last_comment,
@@ -3115,8 +3157,8 @@ export function CompanyShipmentsPage({ view }) {
                   </th>
                   <th style={{ minWidth: '155px' }}>ORDER ID</th>
                   <th>STATUS</th>
-                  <th style={{ minWidth: '170px' }}>CUSTOMERS</th>
-                  <th style={{ minWidth: '170px' }}>SENDER</th>
+                  <th style={{ minWidth: '190px' }}>CUSTOMERS</th>
+                  <th style={{ minWidth: '190px' }}>SENDER</th>
                   <th style={{ textAlign: 'center' }}>ORDER TYPE</th>
                   <th>DESTINATION BRANCH</th>
                   <th style={{ minWidth: '160px' }}>AMOUNT</th>
@@ -3292,6 +3334,22 @@ export function CompanyShipmentsPage({ view }) {
                             {order.formatted_address || order.delivery_address || '—'}
                           </span>
                         </div>
+                        <div className="amount-line" style={{ maxWidth: '280px' }}>
+                          <span className="amount-label" style={{ flexShrink: 0 }}>Branch:</span>{' '}
+                          <span
+                            className="amount-val"
+                            style={{ fontWeight: 600, color: '#1e293b', wordBreak: 'break-word' }}
+                            title={order.destination_hub}
+                          >
+                            {order.destination_hub || '—'}
+                          </span>
+                        </div>
+                        <div className="amount-line">
+                          <span className="amount-label">Contact:</span>{' '}
+                          <span className="amount-val" style={{ fontWeight: 600, color: '#334155' }}>
+                            {order.destination_branch_phone || '—'}
+                          </span>
+                        </div>
                       </td>
 
                       {/* 4b. Sender */}
@@ -3316,6 +3374,22 @@ export function CompanyShipmentsPage({ view }) {
                             title={order.sender_address}
                           >
                             {order.sender_address || '—'}
+                          </span>
+                        </div>
+                        <div className="amount-line" style={{ maxWidth: '280px' }}>
+                          <span className="amount-label" style={{ flexShrink: 0 }}>Branch:</span>{' '}
+                          <span
+                            className="amount-val"
+                            style={{ fontWeight: 600, color: '#1e293b', wordBreak: 'break-word' }}
+                            title={order.sender_branch}
+                          >
+                            {order.sender_branch || '—'}
+                          </span>
+                        </div>
+                        <div className="amount-line">
+                          <span className="amount-label">Contact:</span>{' '}
+                          <span className="amount-val" style={{ fontWeight: 600, color: '#334155' }}>
+                            {order.sender_branch_phone || '—'}
                           </span>
                         </div>
                       </td>
