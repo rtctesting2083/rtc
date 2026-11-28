@@ -3160,7 +3160,6 @@ export function CompanyShipmentsPage({ view }) {
                   <th style={{ minWidth: '190px' }}>CUSTOMERS</th>
                   <th style={{ minWidth: '190px' }}>SENDER</th>
                   <th style={{ textAlign: 'center' }}>ORDER TYPE</th>
-                  <th>DESTINATION BRANCH</th>
                   <th style={{ minWidth: '160px' }}>AMOUNT</th>
                   <th style={{ textAlign: 'center', minWidth: '140px' }}>ACTIONS</th>
                 </tr>
@@ -3411,12 +3410,7 @@ export function CompanyShipmentsPage({ view }) {
                         )}
                       </td>
 
-                      {/* 7. Destination Branch */}
-                      <td>
-                        <div className="destination-hub-text">{order.destination_hub}</div>
-                      </td>
-
-                      {/* 8. Amount */}
+                      {/* 6. Amount */}
                       <td>
                         <div className="amount-line">
                           <span className="amount-label">Cod Amount:</span>{' '}
@@ -3509,7 +3503,7 @@ export function CompanyShipmentsPage({ view }) {
 
                 {displayOrders.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="table-empty">
+                    <td colSpan={8} className="table-empty">
                       No orders found matching the filter criteria.
                     </td>
                   </tr>
