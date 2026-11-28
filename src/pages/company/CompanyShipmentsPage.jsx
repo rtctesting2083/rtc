@@ -970,6 +970,23 @@ export function CompanyShipmentsPage({ view }) {
         : rawSenderBranchName;
       const senderBranchPhone = origBranch?.phone || origBranch?.contact_number || s.origin_branch_phone || s.sender_branch_phone || '—';
 
+      // Vendor Contact Person & Display Name
+      const vendorContactPerson = cust?.contact_person || cust?.contact_name || s.sender_contact_person || s.contact_person || '';
+      const senderNameDisplay = (senderName !== '—' && vendorContactPerson && !senderName.includes(vendorContactPerson))
+        ? `${senderName} ( ${vendorContactPerson} )`
+        : senderName;
+
+      // Branch Contact Person & Display Contact
+      const branchContactPerson = origBranch?.contact_person || origBranch?.manager_name || s.origin_branch_contact_person || '';
+      let senderBranchContactDisplay = senderBranchPhone;
+      if (branchContactPerson && !senderBranchPhone.includes(branchContactPerson)) {
+        if (senderBranchPhone && senderBranchPhone !== '—') {
+          senderBranchContactDisplay = `${senderBranchPhone} ( ${branchContactPerson} )`;
+        } else {
+          senderBranchContactDisplay = `( ${branchContactPerson} )`;
+        }
+      }
+
       // Vendor Profile Address resolution
       const vendorProfileAddress = formatVendorProfileAddress(cust);
       const isVendorSender = Boolean(
@@ -1013,10 +1030,12 @@ export function CompanyShipmentsPage({ view }) {
         delivery_address: s.delivery_address || s.receiver_address || '—',
         formatted_address: formattedAddress,
         sender_name: senderName,
+        sender_name_display: senderNameDisplay,
         sender_phone: senderPhone,
         sender_address: senderAddress,
         sender_branch: senderBranchName,
         sender_branch_phone: senderBranchPhone,
+        sender_branch_contact_display: senderBranchContactDisplay,
         order_type: orderTypeVal,
         order_type_kind: orderTypeKind,
         service_type: s.service_type || s.delivery_service_type || 'Door to Door Delivery',
@@ -1072,13 +1091,13 @@ export function CompanyShipmentsPage({ view }) {
         const tpCourier = (o.third_party_courier_name || o.rawShipment?.third_party_courier_name || '').toLowerCase();
         const recName = (o.receiver_name || '').toLowerCase();
         const recPhone = (o.receiver_phone || '').toLowerCase();
-        const senderName = (o.sender_name || '').toLowerCase();
+        const senderName = (o.sender_name_display || o.sender_name || '').toLowerCase();
         const senderPhone = (o.sender_phone || '').toLowerCase();
         const senderAddress = (o.sender_address || '').toLowerCase();
         const destHub = (o.destination_hub || '').toLowerCase();
         const destPhone = (o.destination_branch_phone || '').toLowerCase();
         const senderBranch = (o.sender_branch || '').toLowerCase();
-        const senderBranchPhone = (o.sender_branch_phone || '').toLowerCase();
+        const senderBranchPhone = (o.sender_branch_contact_display || o.sender_branch_phone || '').toLowerCase();
         if (
           !trk.includes(q) &&
           !ref.includes(q) &&
@@ -3398,10 +3417,10 @@ export function CompanyShipmentsPage({ view }) {
 
                       {/* 4b. Sender */}
                       <td style={{ minWidth: '240px', maxWidth: '300px' }}>
-                        <div className="amount-line">
-                          <span className="amount-label">Name:</span>{' '}
+                        <div className="amount-line wrap-line" style={{ whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.35 }}>
+                          <span className="amount-label" style={{ flexShrink: 0 }}>Name:</span>{' '}
                           <span className="amount-val" style={{ color: '#0f172a', fontWeight: 700 }}>
-                            {order.sender_name || '—'}
+                            {order.sender_name_display || order.sender_name || '—'}
                           </span>
                         </div>
                         <div className="amount-line">
@@ -3430,10 +3449,10 @@ export function CompanyShipmentsPage({ view }) {
                             {order.sender_branch || '—'}
                           </span>
                         </div>
-                        <div className="amount-line">
-                          <span className="amount-label">Contact:</span>{' '}
+                        <div className="amount-line wrap-line" style={{ whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.35 }}>
+                          <span className="amount-label" style={{ flexShrink: 0 }}>Contact:</span>{' '}
                           <span className="amount-val" style={{ fontWeight: 600, color: '#334155' }}>
-                            {order.sender_branch_phone || '—'}
+                            {order.sender_branch_contact_display || order.sender_branch_phone || '—'}
                           </span>
                         </div>
                         <div className="amount-line">
