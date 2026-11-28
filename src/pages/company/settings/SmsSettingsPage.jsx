@@ -126,7 +126,7 @@ export function SmsSettingsPage() {
     api_token: '',
     otp_token: '',
     sender_id: 'RTC Courier',
-    available_credits: 1000,
+    available_credits: 0,
     notify_order_created: 1,
     notify_out_for_delivery: 1,
     notify_delivered: 1,
@@ -139,7 +139,13 @@ export function SmsSettingsPage() {
     tpl_vendor_verified: DEFAULT_TEMPLATES.vendor_verified,
   });
 
-  const [availableCredit, setAvailableCredit] = useState(null);
+  const [creditData, setCreditData] = useState({
+    credits: 0,
+    status: 'loading',
+    message: '',
+    source: 'smssarara_sms_api',
+    account: '',
+  });
   const [isCreditLoading, setIsCreditLoading] = useState(true);
 
   const [showApiToken, setShowApiToken] = useState(false);
@@ -163,16 +169,26 @@ export function SmsSettingsPage() {
   const [logsLoading, setLogsLoading] = useState(false);
   const [logFilter, setLogFilter] = useState({ search: '', event: '', status: '' });
 
-  // Fetch Available SMS Credit Balance
+  // Fetch Available SMS Credit Balance directly from SMSsarara SMS API
   const fetchCreditBalance = useCallback(async () => {
     setIsCreditLoading(true);
     try {
       const res = await d1Api.getSmsCreditBalance(1);
-      if (res && res.credits !== undefined && res.credits !== null) {
-        setAvailableCredit(res.credits);
+      if (res) {
+        setCreditData({
+          credits: res.credits !== undefined ? res.credits : 0,
+          status: res.status || (res.credits > 0 ? 'active' : 'insufficient_balance'),
+          message: res.message || '',
+          source: res.source || 'smssarara_sms_api',
+          account: res.account || '',
+        });
+        if (typeof res.credits === 'number') {
+          setSettings((prev) => ({ ...prev, available_credits: res.credits }));
+        }
       }
     } catch (e) {
-      console.warn('Failed to fetch SMS credit balance:', e);
+      console.warn('Failed to fetch SMS credit balance from provider API:', e);
+      setCreditData((prev) => ({ ...prev, status: 'error', message: e.message || 'Error checking provider API' }));
     } finally {
       setIsCreditLoading(false);
     }
@@ -184,13 +200,10 @@ export function SmsSettingsPage() {
     try {
       const res = await d1Api.getSmsSettings(1);
       if (res && res.settings) {
-        if (res.settings.available_credits !== undefined && res.settings.available_credits !== null) {
-          setAvailableCredit(Number(res.settings.available_credits));
-        }
         setSettings((prev) => ({
           ...prev,
           ...res.settings,
-          available_credits: res.settings.available_credits !== undefined && res.settings.available_credits !== null ? Number(res.settings.available_credits) : 1000,
+          available_credits: res.settings.available_credits !== undefined && res.settings.available_credits !== null ? Number(res.settings.available_credits) : 0,
           is_enabled: res.settings.is_enabled !== undefined ? Number(res.settings.is_enabled) : 1,
           notify_order_created: res.settings.notify_order_created !== undefined ? Number(res.settings.notify_order_created) : 1,
           notify_out_for_delivery: res.settings.notify_out_for_delivery !== undefined ? Number(res.settings.notify_out_for_delivery) : 1,
@@ -495,17 +508,28 @@ export function SmsSettingsPage() {
 
           <div className="sms-stat-box">
             <div className="sms-stat-label">Available SMS Credit</div>
-            <div className="sms-stat-val accent-green" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Coins size={14} color="#22c55e" />
+            <div
+              className={`sms-stat-val ${creditData.status === 'insufficient_balance' || creditData.credits === 0 ? 'accent-red' : 'accent-green'}`}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <Coins size={14} color={creditData.status === 'insufficient_balance' || creditData.credits === 0 ? '#ef4444' : '#22c55e'} />
               <span>
                 {isCreditLoading ? (
-                  <span style={{ fontSize: '12.5px', color: '#94a3b8' }}>Checking...</span>
-                ) : availableCredit !== null ? (
-                  `${Number(availableCredit).toLocaleString()} Credits`
+                  <span style={{ fontSize: '12px', color: '#94a3b8' }}>Checking API...</span>
+                ) : creditData.status === 'insufficient_balance' || creditData.credits === 0 ? (
+                  <span style={{ color: '#f87171', fontWeight: 700 }}>0 Credits</span>
+                ) : typeof creditData.credits === 'number' ? (
+                  `${Number(creditData.credits).toLocaleString()} Credits`
+                ) : creditData.credits ? (
+                  String(creditData.credits)
                 ) : (
-                  'Active / Ready'
+                  <span style={{ color: '#f87171', fontWeight: 700 }}>0 Credits</span>
                 )}
               </span>
+            </div>
+            <div style={{ fontSize: '10.5px', color: creditData.status === 'insufficient_balance' || creditData.credits === 0 ? '#fca5a5' : '#86efac', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: creditData.status === 'insufficient_balance' || creditData.credits === 0 ? '#ef4444' : '#22c55e', display: 'inline-block' }}></span>
+              {creditData.status === 'insufficient_balance' || creditData.credits === 0 ? 'SMSsarara: Low / 0 Balance' : 'SMSsarara: Live API'}
             </div>
           </div>
         </div>
@@ -979,10 +1003,10 @@ export function SmsSettingsPage() {
                 />
               </div>
 
-              {/* Available SMS Credits Balance */}
+              {/* Available SMS Credits Balance (Live SMSsarara API) */}
               <div className="sms-input-group">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <label className="sms-input-label" style={{ margin: 0 }}>Available SMS Credit Balance</label>
+                  <label className="sms-input-label" style={{ margin: 0 }}>Available SMS Credit (SMSsarara API)</label>
                   <button
                     type="button"
                     onClick={fetchCreditBalance}
@@ -998,30 +1022,41 @@ export function SmsSettingsPage() {
                       gap: '4px',
                       padding: 0,
                     }}
-                    title="Sync credit balance with provider"
+                    title="Check live credit balance via SMSsarara SMS API"
                   >
-                    <RefreshCw size={11} className={isCreditLoading ? 'spin-icon' : ''} /> Sync Provider Balance
+                    <RefreshCw size={11} className={isCreditLoading ? 'spin-icon' : ''} /> Check SMS API Balance
                   </button>
                 </div>
-                <div style={{ position: 'relative' }}>
-                  <input
-                    type="number"
-                    value={settings.available_credits ?? ''}
-                    onChange={(e) => {
-                      const val = e.target.value === '' ? '' : Number(e.target.value);
-                      setSettings((prev) => ({ ...prev, available_credits: val }));
-                      if (val !== '') setAvailableCredit(val);
-                    }}
-                    className="sms-input"
-                    placeholder="1000"
-                    min="0"
-                  />
-                  <span style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
-                    Credits Remaining
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '10px 14px',
+                  background: creditData.status === 'insufficient_balance' || creditData.credits === 0 ? '#fef2f2' : '#f0fdf4',
+                  border: `1px solid ${creditData.status === 'insufficient_balance' || creditData.credits === 0 ? '#fecaca' : '#bbf7d0'}`,
+                  borderRadius: '8px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Coins size={16} color={creditData.status === 'insufficient_balance' || creditData.credits === 0 ? '#dc2626' : '#16a34a'} />
+                    <div>
+                      <span style={{ fontWeight: 700, fontSize: '13.5px', color: creditData.status === 'insufficient_balance' || creditData.credits === 0 ? '#dc2626' : '#16a34a' }}>
+                        {isCreditLoading ? 'Checking SMSsarara API...' : creditData.credits === 0 || creditData.status === 'insufficient_balance' ? '0 Credits (Insufficient Balance)' : `${creditData.credits} Credits`}
+                      </span>
+                      <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
+                        Provider: SMSsarara SMS API &bull; {creditData.message || (creditData.credits === 0 ? 'You do not have sufficient balance to send SMS.' : 'Operational')}
+                      </div>
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    padding: '3px 8px',
+                    borderRadius: '12px',
+                    backgroundColor: creditData.status === 'insufficient_balance' || creditData.credits === 0 ? '#fee2e2' : '#dcfce7',
+                    color: creditData.status === 'insufficient_balance' || creditData.credits === 0 ? '#991b1b' : '#166534',
+                  }}>
+                    {creditData.status === 'insufficient_balance' || creditData.credits === 0 ? 'Insufficient Balance' : 'Active'}
                   </span>
-                </div>
-                <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
-                  Live credit balance reported by SMSsarara or configured locally. Auto-decrements upon each delivered SMS notification.
                 </div>
               </div>
             </div>

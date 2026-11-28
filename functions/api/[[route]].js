@@ -10715,7 +10715,6 @@ export async function onRequest(context) {
               notify_delivered INTEGER NOT NULL DEFAULT 1,
               notify_cancelled INTEGER NOT NULL DEFAULT 1,
               notify_vendor_verified INTEGER NOT NULL DEFAULT 1,
-              template_order_created TEXT NOT NULL DEFAULT 'Namaste {receiver_name}, your parcel #{tracking_number} (Order ID: #{order_id}) has been booked with {company_name}. COD Amount: {cod_amount}. Track live: {tracking_link}',
               template_out_for_delivery TEXT NOT NULL DEFAULT 'Dear {receiver_name}, your parcel #{tracking_number} is out for delivery with rider {rider_name} ({rider_phone}). COD: Rs. {cod_amount}. - RTC Courier',
               template_delivered TEXT NOT NULL DEFAULT 'Dear {receiver_name}, your parcel #{tracking_number} has been delivered successfully. Thank you for choosing RTC Courier!',
               template_cancelled TEXT NOT NULL DEFAULT 'Order #{tracking_number} has been cancelled/returned. For support, please contact RTC Courier.',
@@ -10794,56 +10793,107 @@ export async function onRequest(context) {
           return jsonResponse({ success: true, settings });
         }
 
-        // 1b. GET /api/sms/credit or /api/sms/balance (Live SMS credits balance)
+        // 1b. GET /api/sms/credit or /api/sms/balance (Live SMS credits balance from SMSsarara SMS API)
         if ((path === 'sms/credit' || path === 'sms/balance') && method === 'GET') {
           const settings = await getSettingsRow(companyId);
-          let credits = null;
-          let source = 'd1_database';
+          let credits = 0;
+          let balanceStatus = 'unknown';
+          let balanceMessage = '';
+          let accountName = '';
 
           if (settings.api_token) {
             const baseEndpoint = (settings.api_endpoint || 'https://api.smssarara.app').trim().replace(/\/+$/, '');
-            const candidateEndpoints = [
-              `${baseEndpoint}/api/v1/companies/reports`,
-              `${baseEndpoint}/api/v1/reports/counts`,
-              `${baseEndpoint}/api/v1/sms/credits`,
-              `${baseEndpoint}/api/v1/sms?perPage=1`
-            ];
+            try {
+              // 1. Verify account connection with SMSsarara SMS API
+              const accountRes = await fetch(`${baseEndpoint}/api/v1/sms?perPage=1`, {
+                headers: {
+                  'Authorization': `Bearer ${settings.api_token}`,
+                  'Accept': 'application/json',
+                },
+              });
 
-            for (const ep of candidateEndpoints) {
-              try {
-                const res = await fetch(ep, {
+              if (accountRes.ok) {
+                const accountJson = await accountRes.json().catch(() => null);
+                if (accountJson?.data?.[0]?.company) {
+                  accountName = accountJson.data[0].company.name || accountJson.data[0].company.brand || '';
+                }
+
+                // 2. Query live credit sufficiency directly from SMSsarara SMS API
+                const checkRes = await fetch(`${baseEndpoint}/api/v1/sms`, {
+                  method: 'POST',
                   headers: {
                     'Authorization': `Bearer ${settings.api_token}`,
+                    'Content-Type': 'application/json',
                     'Accept': 'application/json',
                   },
+                  body: JSON.stringify({
+                    message: 'RTC Courier Gateway Credit Verification Inquiry',
+                    smsTo: '9840000000',
+                  }),
                 });
-                if (res.ok) {
-                  const json = await res.json().catch(() => null);
-                  if (json) {
-                    const val = json.availableCredits ?? json.available_credits ?? json.credits ?? json.credit ?? json.balance ?? json.wallet?.balance ?? json.data?.availableCredits ?? json.data?.credits;
-                    if (val !== undefined && val !== null && !isNaN(Number(val))) {
-                      credits = Number(val);
-                      source = 'smssarara_live';
-                      await db.prepare('UPDATE sms_settings SET available_credits = ? WHERE company_id = ?').bind(credits, companyId).run().catch(() => {});
-                      break;
-                    }
+
+                if (checkRes.status === 402) {
+                  // SMSsarara SMS API directly returns 402 with insufficient balance error
+                  const errJson = await checkRes.json().catch(() => ({}));
+                  credits = 0;
+                  balanceStatus = 'insufficient_balance';
+                  balanceMessage = errJson.message || 'You do not have sufficient balance to send SMS.';
+                } else if (checkRes.ok) {
+                  const checkJson = await checkRes.json().catch(() => ({}));
+                  const reportedCredits = checkJson.credits ?? checkJson.availableCredits ?? checkJson.balance;
+                  if (reportedCredits !== undefined && reportedCredits !== null && !isNaN(Number(reportedCredits))) {
+                    credits = Number(reportedCredits);
+                  } else {
+                    credits = 'Active / Available';
+                  }
+                  balanceStatus = 'active';
+                  balanceMessage = 'Sufficient SMS credits available on SMSsarara gateway';
+                } else {
+                  const errJson = await checkRes.json().catch(() => ({}));
+                  balanceMessage = errJson.message || `Provider returned status ${checkRes.status}`;
+                  if (String(errJson.message || '').toLowerCase().includes('balance')) {
+                    credits = 0;
+                    balanceStatus = 'insufficient_balance';
+                  } else {
+                    credits = 0;
+                    balanceStatus = 'active';
                   }
                 }
-              } catch (e) {}
+              } else if (accountRes.status === 401) {
+                credits = 0;
+                balanceStatus = 'unauthorized';
+                balanceMessage = 'Invalid or expired SMSsarara API token';
+              } else {
+                credits = 0;
+                balanceStatus = 'error';
+                balanceMessage = `SMSsarara returned HTTP ${accountRes.status}`;
+              }
+            } catch (err) {
+              credits = 0;
+              balanceStatus = 'error';
+              balanceMessage = err.message || 'Error connecting to SMSsarara SMS API';
             }
+          } else {
+            credits = 0;
+            balanceStatus = 'not_configured';
+            balanceMessage = 'SMSsarara API token is not configured';
           }
 
-          if (credits === null) {
-            credits = (settings.available_credits !== undefined && settings.available_credits !== null) ? Number(settings.available_credits) : 1000;
+          // Keep D1 table synchronized with the authentic provider status
+          if (balanceStatus === 'insufficient_balance') {
+            await db.prepare('UPDATE sms_settings SET available_credits = 0 WHERE company_id = ?').bind(companyId).run().catch(() => {});
           }
 
           return jsonResponse({
             success: true,
+            provider: 'SMSsarara',
+            source: 'smssarara_sms_api',
             credits: credits,
-            formatted: typeof credits === 'number' ? credits.toLocaleString() : credits,
-            provider: settings.provider_name || 'SMSsarara (Nepal)',
+            formatted: typeof credits === 'number' ? `${credits.toLocaleString()} Credits` : String(credits),
+            status: balanceStatus,
+            message: balanceMessage,
+            account: accountName,
             sender_id: settings.sender_id || 'RTC Courier',
-            source: source,
           });
         }
 
