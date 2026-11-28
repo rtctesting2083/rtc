@@ -856,28 +856,50 @@ export function CompanyShipmentsPage({ view }) {
 
     return list.map((s) => {
       let createdDisplay = '—';
+      let createdTime = '';
       if (s.created_at) {
         try {
-          const d = new Date(s.created_at);
+          let cat = String(s.created_at).trim();
+          if (/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}/.test(cat) && !cat.includes('Z')) {
+            cat = cat.replace(' ', 'T') + 'Z';
+          }
+          const d = new Date(cat);
           if (!isNaN(d.getTime())) {
             createdDisplay = d.toLocaleDateString('en-US', {
               month: 'short',
               day: 'numeric',
               year: 'numeric',
             });
+            createdTime = d.toLocaleTimeString('en-US', {
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: true,
+            });
           }
         } catch (e) {}
       }
 
+      const stLower = String(s.status || '').toLowerCase();
+      const rawStatusDate = s.status_updated_at || (stLower === 'delivered' && s.delivered_at) || s.updated_at || s.created_at;
       let statusDate = createdDisplay;
-      if (s.updated_at) {
+      let statusTime = createdTime;
+      if (rawStatusDate) {
         try {
-          const ud = new Date(s.updated_at);
+          let sat = String(rawStatusDate).trim();
+          if (/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}/.test(sat) && !sat.includes('Z')) {
+            sat = sat.replace(' ', 'T') + 'Z';
+          }
+          const ud = new Date(sat);
           if (!isNaN(ud.getTime())) {
             statusDate = ud.toLocaleDateString('en-US', {
               month: 'short',
               day: 'numeric',
               year: 'numeric',
+            });
+            statusTime = ud.toLocaleTimeString('en-US', {
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: true,
             });
           }
         } catch (e) {}
@@ -1047,10 +1069,12 @@ export function CompanyShipmentsPage({ view }) {
         vendor_reference_id: s.vendor_reference_id || s.reference_id || s.ref_id || '',
         created_at: s.created_at,
         created_display: createdDisplay,
+        created_time: createdTime,
         status: s.status,
         status_label: statusLabel,
         status_type: statusType,
         status_date: statusDate,
+        status_time: statusTime,
         receiver_name: s.receiver_name || '—',
         receiver_phone: s.receiver_phone || '—',
         delivery_address: s.delivery_address || s.receiver_address || '—',
@@ -3244,7 +3268,7 @@ export function CompanyShipmentsPage({ view }) {
                       style={{ cursor: 'pointer' }}
                     />
                   </th>
-                  <th style={{ minWidth: '155px' }}>ORDER ID</th>
+                  <th style={{ minWidth: '175px' }}>ORDER ID</th>
                   <th>STATUS</th>
                   <th style={{ minWidth: '220px', maxWidth: '280px' }}>CUSTOMERS</th>
                   <th style={{ minWidth: '240px', maxWidth: '300px' }}>SENDER</th>
@@ -3375,10 +3399,10 @@ export function CompanyShipmentsPage({ view }) {
                             </div>
                           );
                         })()}
-                        <div className="amount-line">
+                        <div className="amount-line wrap-line" style={{ whiteSpace: 'normal', lineHeight: 1.35 }}>
                           <span className="amount-label">Date:</span>{' '}
                           <span className="amount-val" style={{ fontWeight: 500, color: '#64748b' }}>
-                            {order.created_display || '—'}
+                            {order.created_display || '—'}{order.created_time ? ` ${order.created_time}` : ''}
                           </span>
                         </div>
                       </td>
@@ -3394,7 +3418,14 @@ export function CompanyShipmentsPage({ view }) {
                             {order.status_label}
                           </span>
                         </div>
-                        <div className="order-status-date">{order.status_date}</div>
+                        <div className="order-status-date">
+                          <div>{order.status_date}</div>
+                          {order.status_time && (
+                            <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '1px' }}>
+                              {order.status_time}
+                            </div>
+                          )}
+                        </div>
                       </td>
 
                       {/* 4. Customers */}
