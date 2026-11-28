@@ -1017,9 +1017,13 @@ export function CompanyShipmentsPage({ view }) {
         sender_address: senderAddress,
         sender_branch: senderBranchName,
         sender_branch_phone: senderBranchPhone,
-        product_description: s.product_description || s.product_title || s.package_description || '—',
         order_type: orderTypeVal,
         order_type_kind: orderTypeKind,
+        service_type: s.service_type || s.delivery_service_type || 'Door to Door Delivery',
+        actual_weight: s.weight_kg !== undefined && s.weight_kg !== null && s.weight_kg !== '' ? s.weight_kg : (s.weight || 0),
+        product_category: s.product_category || 'Clothing and Apparels',
+        item_value: Number(s.item_value) || 0,
+        product_description: s.package_description || s.product_description || s.product_title || '—',
         destination_hub: formattedDest,
         destination_branch_phone: destBranchPhone,
         cod_amount: Number(s.cod_amount) || 0,
@@ -3197,7 +3201,7 @@ export function CompanyShipmentsPage({ view }) {
                   <th>STATUS</th>
                   <th style={{ minWidth: '190px' }}>CUSTOMERS</th>
                   <th style={{ minWidth: '190px' }}>SENDER</th>
-                  <th style={{ textAlign: 'center' }}>ORDER TYPE</th>
+                  <th style={{ minWidth: '190px' }}>ORDER TYPE</th>
                   <th style={{ textAlign: 'center', minWidth: '140px' }}>ACTIONS</th>
                 </tr>
               </thead>
@@ -3438,21 +3442,56 @@ export function CompanyShipmentsPage({ view }) {
                         </div>
                       </td>
 
-                      {/* 5. Order Type */}
-                      <td style={{ textAlign: 'center' }}>
-                        {order.order_type_kind === 'exchange' ? (
-                          <span className="order-type-badge exchange" title="Exchange Order (Swap at Doorstep)">
-                            <RefreshCw size={12} strokeWidth={2.5} />
+                      {/* 5. Order Type Details (6 lines) */}
+                      <td>
+                        <div className="amount-line">
+                          <span className="amount-label">Order Type:</span>{' '}
+                          <span className="amount-val" style={{ color: '#0f172a', fontWeight: 700 }}>
+                            {order.order_type || 'Delivery Order'}
                           </span>
-                        ) : order.order_type_kind === 'return' ? (
-                          <span className="order-type-badge return" title={order.order_type || "Reverse Order (RTV)"}>
-                            <RotateCcw size={12} strokeWidth={2.5} />
+                        </div>
+                        <div className="amount-line">
+                          <span className="amount-label">Service Type:</span>{' '}
+                          <span className="amount-val" style={{ fontWeight: 600, color: '#334155' }}>
+                            {order.service_type || 'Door to Door Delivery'}
                           </span>
-                        ) : (
-                          <span className="order-type-badge forward" title="Delivery Order">
-                            <ChevronsRight size={13} strokeWidth={2.5} />
+                        </div>
+                        <div className="amount-line">
+                          <span className="amount-label">Actual Weight (KG):</span>{' '}
+                          <span className="amount-val" style={{ fontWeight: 600, color: '#334155' }}>
+                            {order.actual_weight !== undefined && order.actual_weight !== null && order.actual_weight !== ''
+                              ? order.actual_weight
+                              : '0'}
                           </span>
-                        )}
+                        </div>
+                        <div className="amount-line" style={{ maxWidth: '280px' }}>
+                          <span className="amount-label" style={{ flexShrink: 0 }}>Product Category:</span>{' '}
+                          <span
+                            className="amount-val"
+                            style={{ fontWeight: 600, color: '#1e293b', wordBreak: 'break-word' }}
+                            title={order.product_category}
+                          >
+                            {order.product_category || '—'}
+                          </span>
+                        </div>
+                        <div className="amount-line">
+                          <span className="amount-label">Item Value (NPR):</span>{' '}
+                          <span className="amount-val" style={{ fontWeight: 600, color: '#334155' }}>
+                            {order.item_value !== undefined && order.item_value !== null && order.item_value !== ''
+                              ? Number(order.item_value).toLocaleString()
+                              : '0'}
+                          </span>
+                        </div>
+                        <div className="amount-line" style={{ maxWidth: '280px' }}>
+                          <span className="amount-label" style={{ flexShrink: 0 }}>Product Description:</span>{' '}
+                          <span
+                            className="amount-val"
+                            style={{ fontWeight: 500, color: '#475569', wordBreak: 'break-word' }}
+                            title={order.product_description}
+                          >
+                            {order.product_description && order.product_description !== '-' ? order.product_description : '—'}
+                          </span>
+                        </div>
                       </td>
 
                       {/* 6. Actions (Admin operations: Update Status, Assign Rider, Forward, Comments, Details) */}
