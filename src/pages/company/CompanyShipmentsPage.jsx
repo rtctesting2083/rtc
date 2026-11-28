@@ -3610,79 +3610,174 @@ export function CompanyShipmentsPage({ view }) {
                         </div>
                       </td>
 
-                      {/* 6. Actions (Admin operations: Update Status, Assign Rider, Forward, Comments, Details) */}
-                      <td style={{ textAlign: 'center' }}>
-                        <div className="action-buttons-cell" style={{ justifyContent: 'center', gap: '5px', flexWrap: 'wrap' }}>
-                          <button
-                            type="button"
-                            className="action-icon-btn"
-                            onClick={() => handleOpenUpdateStatus(order)}
-                            title="Update Status"
-                            style={{ color: '#0284c7', background: '#e0f2fe', borderColor: '#bae6fd' }}
-                          >
-                            <CheckCircle2 size={13} />
-                          </button>
-
-                          <button
-                            type="button"
-                            className="action-icon-btn"
-                            onClick={() => handleOpenAssignSingle(order)}
-                            title="Assign Rider"
-                            style={{ color: '#16a34a', background: '#dcfce7', borderColor: '#bbf7d0' }}
-                          >
-                            <Bike size={13} />
-                          </button>
-
-                          <button
-                            type="button"
-                            className="action-icon-btn"
-                            onClick={() => handleOpenForwardSingle(order)}
-                            title="Send to Branch"
-                            style={{ color: '#4f46e5', background: '#e0e7ff', borderColor: '#c7d2fe' }}
-                          >
-                            <Truck size={13} />
-                          </button>
-
-                          <button
-                            type="button"
-                            className="action-icon-btn"
-                            onClick={() => handleOpenComments(order)}
-                            title="Comments thread"
-                            style={{ color: '#d97706', background: '#fef3c7', borderColor: '#fde68a' }}
-                          >
-                            <MessageSquare size={13} />
-                          </button>
-
-                          {['pending', 'pickup_requested'].includes(String(order.status || '').toLowerCase()) && (
+                      {/* 6. Actions (Admin operations: Organized 2-row toolbar) */}
+                      <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
+                        <div
+                          style={{
+                            display: 'inline-flex',
+                            flexDirection: 'column',
+                            gap: '4px',
+                            alignItems: 'center',
+                            background: '#f8fafc',
+                            padding: '4px 6px',
+                            borderRadius: '8px',
+                            border: '1px solid #e2e8f0',
+                          }}
+                        >
+                          {/* Row 1: Workflow Operations (Status, Rider, Branch, Comments) */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                             <button
                               type="button"
                               className="action-icon-btn"
-                              onClick={() => handleOpenEditOrder(order)}
-                              title="Edit Order"
-                              style={{ color: '#b45309', background: '#fef3c7', borderColor: '#fde68a' }}
+                              onClick={() => handleOpenUpdateStatus(order)}
+                              title="Update Status"
+                              style={{
+                                width: '27px',
+                                height: '27px',
+                                padding: 0,
+                                color: '#0284c7',
+                                background: '#e0f2fe',
+                                borderColor: '#bae6fd',
+                                borderRadius: '6px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
                             >
-                              <Edit2 size={13} />
+                              <CheckCircle2 size={13} />
                             </button>
-                          )}
 
-                          <button
-                            type="button"
-                            className="action-icon-btn"
-                            onClick={() => handleOpenDetail(order)}
-                            title="View Details"
-                          >
-                            <Eye size={13} />
-                          </button>
+                            <button
+                              type="button"
+                              className="action-icon-btn"
+                              onClick={() => handleOpenAssignSingle(order)}
+                              title="Assign Rider"
+                              style={{
+                                width: '27px',
+                                height: '27px',
+                                padding: 0,
+                                color: '#16a34a',
+                                background: '#dcfce7',
+                                borderColor: '#bbf7d0',
+                                borderRadius: '6px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <Bike size={13} />
+                            </button>
 
-                          <button
-                            type="button"
-                            className="action-icon-btn"
-                            onClick={() => handleOpenSoftDelete(order)}
-                            title="Move to Trash (Temporary Delete)"
-                            style={{ color: '#dc2626', background: '#fef2f2', borderColor: '#fecaca' }}
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                            <button
+                              type="button"
+                              className="action-icon-btn"
+                              onClick={() => handleOpenForwardSingle(order)}
+                              title="Send to Branch"
+                              style={{
+                                width: '27px',
+                                height: '27px',
+                                padding: 0,
+                                color: '#4f46e5',
+                                background: '#e0e7ff',
+                                borderColor: '#c7d2fe',
+                                borderRadius: '6px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <Truck size={13} />
+                            </button>
+
+                            <button
+                              type="button"
+                              className="action-icon-btn"
+                              onClick={() => handleOpenComments(order)}
+                              title="Comments thread"
+                              style={{
+                                width: '27px',
+                                height: '27px',
+                                padding: 0,
+                                color: '#d97706',
+                                background: '#fef3c7',
+                                borderColor: '#fde68a',
+                                borderRadius: '6px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <MessageSquare size={13} />
+                            </button>
+                          </div>
+
+                          {/* Row 2: Management Operations (View Details, Edit, Move to Trash) */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                            <button
+                              type="button"
+                              className="action-icon-btn"
+                              onClick={() => handleOpenDetail(order)}
+                              title="View Details"
+                              style={{
+                                width: '27px',
+                                height: '27px',
+                                padding: 0,
+                                color: '#475569',
+                                background: '#f1f5f9',
+                                borderColor: '#cbd5e1',
+                                borderRadius: '6px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <Eye size={13} />
+                            </button>
+
+                            {['pending', 'pickup_requested'].includes(String(order.status || '').toLowerCase()) && (
+                              <button
+                                type="button"
+                                className="action-icon-btn"
+                                onClick={() => handleOpenEditOrder(order)}
+                                title="Edit Order"
+                                style={{
+                                  width: '27px',
+                                  height: '27px',
+                                  padding: 0,
+                                  color: '#b45309',
+                                  background: '#fff7ed',
+                                  borderColor: '#fed7aa',
+                                  borderRadius: '6px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <Edit2 size={13} />
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              className="action-icon-btn"
+                              onClick={() => handleOpenSoftDelete(order)}
+                              title="Move to Trash (Temporary Delete)"
+                              style={{
+                                width: '27px',
+                                height: '27px',
+                                padding: 0,
+                                color: '#dc2626',
+                                background: '#fef2f2',
+                                borderColor: '#fecaca',
+                                borderRadius: '6px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                         </div>
                       </td>
                     </tr>
