@@ -3199,9 +3199,9 @@ export function CompanyShipmentsPage({ view }) {
                   </th>
                   <th style={{ minWidth: '155px' }}>ORDER ID</th>
                   <th>STATUS</th>
-                  <th style={{ minWidth: '190px' }}>CUSTOMERS</th>
-                  <th style={{ minWidth: '190px' }}>SENDER</th>
-                  <th style={{ minWidth: '190px' }}>ORDER TYPE</th>
+                  <th style={{ minWidth: '220px', maxWidth: '280px' }}>CUSTOMERS</th>
+                  <th style={{ minWidth: '240px', maxWidth: '300px' }}>SENDER</th>
+                  <th style={{ minWidth: '220px', maxWidth: '280px' }}>ORDER TYPE</th>
                   <th style={{ textAlign: 'center', minWidth: '140px' }}>ACTIONS</th>
                 </tr>
               </thead>
@@ -3351,7 +3351,7 @@ export function CompanyShipmentsPage({ view }) {
                       </td>
 
                       {/* 4. Customers */}
-                      <td>
+                      <td style={{ minWidth: '220px', maxWidth: '280px' }}>
                         <div className="amount-line">
                           <span className="amount-label">Name:</span>{' '}
                           <span className="amount-val" style={{ color: '#0f172a', fontWeight: 700 }}>
@@ -3364,21 +3364,21 @@ export function CompanyShipmentsPage({ view }) {
                             {order.receiver_phone || '—'}
                           </span>
                         </div>
-                        <div className="amount-line" style={{ maxWidth: '280px' }}>
+                        <div className="amount-line wrap-line" style={{ whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.35 }}>
                           <span className="amount-label" style={{ flexShrink: 0 }}>Address:</span>{' '}
                           <span
                             className="amount-val"
-                            style={{ fontWeight: 500, color: '#475569', wordBreak: 'break-word' }}
+                            style={{ fontWeight: 500, color: '#475569' }}
                             title={order.formatted_address || order.delivery_address}
                           >
                             {order.formatted_address || order.delivery_address || '—'}
                           </span>
                         </div>
-                        <div className="amount-line" style={{ maxWidth: '280px' }}>
+                        <div className="amount-line wrap-line" style={{ whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.35 }}>
                           <span className="amount-label" style={{ flexShrink: 0 }}>Branch:</span>{' '}
                           <span
                             className="amount-val"
-                            style={{ fontWeight: 600, color: '#1e293b', wordBreak: 'break-word' }}
+                            style={{ fontWeight: 600, color: '#1e293b' }}
                             title={order.destination_hub}
                           >
                             {order.destination_hub || '—'}
@@ -3397,7 +3397,7 @@ export function CompanyShipmentsPage({ view }) {
                       </td>
 
                       {/* 4b. Sender */}
-                      <td>
+                      <td style={{ minWidth: '240px', maxWidth: '300px' }}>
                         <div className="amount-line">
                           <span className="amount-label">Name:</span>{' '}
                           <span className="amount-val" style={{ color: '#0f172a', fontWeight: 700 }}>
@@ -3410,21 +3410,21 @@ export function CompanyShipmentsPage({ view }) {
                             {order.sender_phone || '—'}
                           </span>
                         </div>
-                        <div className="amount-line" style={{ maxWidth: '280px' }}>
+                        <div className="amount-line wrap-line" style={{ whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.35 }}>
                           <span className="amount-label" style={{ flexShrink: 0 }}>Address:</span>{' '}
                           <span
                             className="amount-val"
-                            style={{ fontWeight: 500, color: '#475569', wordBreak: 'break-word' }}
+                            style={{ fontWeight: 500, color: '#475569' }}
                             title={order.sender_address}
                           >
                             {order.sender_address || '—'}
                           </span>
                         </div>
-                        <div className="amount-line" style={{ maxWidth: '280px' }}>
+                        <div className="amount-line wrap-line" style={{ whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.35 }}>
                           <span className="amount-label" style={{ flexShrink: 0 }}>Branch:</span>{' '}
                           <span
                             className="amount-val"
-                            style={{ fontWeight: 600, color: '#1e293b', wordBreak: 'break-word' }}
+                            style={{ fontWeight: 600, color: '#1e293b' }}
                             title={order.sender_branch}
                           >
                             {order.sender_branch || '—'}
@@ -3443,14 +3443,14 @@ export function CompanyShipmentsPage({ view }) {
                       </td>
 
                       {/* 5. Order Type Details (6 lines) */}
-                      <td>
+                      <td style={{ minWidth: '220px', maxWidth: '280px' }}>
                         <div className="amount-line">
                           <span className="amount-label">Order Type:</span>{' '}
                           <span className="amount-val" style={{ color: '#0f172a', fontWeight: 700 }}>
                             {order.order_type || 'Delivery Order'}
                           </span>
                         </div>
-                        <div className="amount-line">
+                        <div className="amount-line wrap-line" style={{ whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.35 }}>
                           <span className="amount-label">Service Type:</span>{' '}
                           <span className="amount-val" style={{ fontWeight: 600, color: '#334155' }}>
                             {order.service_type || 'Door to Door Delivery'}
@@ -3464,11 +3464,11 @@ export function CompanyShipmentsPage({ view }) {
                               : '0'}
                           </span>
                         </div>
-                        <div className="amount-line" style={{ maxWidth: '280px' }}>
+                        <div className="amount-line wrap-line" style={{ whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.35 }}>
                           <span className="amount-label" style={{ flexShrink: 0 }}>Product Category:</span>{' '}
                           <span
                             className="amount-val"
-                            style={{ fontWeight: 600, color: '#1e293b', wordBreak: 'break-word' }}
+                            style={{ fontWeight: 600, color: '#1e293b' }}
                             title={order.product_category}
                           >
                             {order.product_category || '—'}
@@ -3482,11 +3482,11 @@ export function CompanyShipmentsPage({ view }) {
                               : '0'}
                           </span>
                         </div>
-                        <div className="amount-line" style={{ maxWidth: '280px' }}>
+                        <div className="amount-line wrap-line" style={{ whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.35 }}>
                           <span className="amount-label" style={{ flexShrink: 0 }}>Product Description:</span>{' '}
                           <span
                             className="amount-val"
-                            style={{ fontWeight: 500, color: '#475569', wordBreak: 'break-word' }}
+                            style={{ fontWeight: 500, color: '#475569' }}
                             title={order.product_description}
                           >
                             {order.product_description && order.product_description !== '-' ? order.product_description : '—'}
