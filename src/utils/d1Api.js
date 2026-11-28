@@ -2584,6 +2584,17 @@ export const d1Api = {
     }
   },
 
+  getSmsCreditBalance: async (companyId = 1) => {
+    try {
+      const res = await fetch(`/api/sms/credit?company_id=${companyId}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (e) {
+      console.warn('Failed to fetch SMS credit balance:', e);
+      return { success: false, credits: null };
+    }
+  },
+
   saveSmsSettings: async (payload = {}) => {
     try {
       const res = await fetch('/api/sms/settings', {

@@ -32,6 +32,7 @@ import {
   Truck,
   UserCheck,
   Bell,
+  Coins,
 } from 'lucide-react';
 import d1Api from '../../../utils/d1Api';
 import './SmsSettingsPage.css';
@@ -125,6 +126,7 @@ export function SmsSettingsPage() {
     api_token: '',
     otp_token: '',
     sender_id: 'RTC Courier',
+    available_credits: 1000,
     notify_order_created: 1,
     notify_out_for_delivery: 1,
     notify_delivered: 1,
@@ -136,6 +138,9 @@ export function SmsSettingsPage() {
     tpl_cancelled: DEFAULT_TEMPLATES.cancelled,
     tpl_vendor_verified: DEFAULT_TEMPLATES.vendor_verified,
   });
+
+  const [availableCredit, setAvailableCredit] = useState(null);
+  const [isCreditLoading, setIsCreditLoading] = useState(true);
 
   const [showApiToken, setShowApiToken] = useState(false);
   const [showOtpToken, setShowOtpToken] = useState(false);
@@ -158,15 +163,34 @@ export function SmsSettingsPage() {
   const [logsLoading, setLogsLoading] = useState(false);
   const [logFilter, setLogFilter] = useState({ search: '', event: '', status: '' });
 
+  // Fetch Available SMS Credit Balance
+  const fetchCreditBalance = useCallback(async () => {
+    setIsCreditLoading(true);
+    try {
+      const res = await d1Api.getSmsCreditBalance(1);
+      if (res && res.credits !== undefined && res.credits !== null) {
+        setAvailableCredit(res.credits);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch SMS credit balance:', e);
+    } finally {
+      setIsCreditLoading(false);
+    }
+  }, []);
+
   // Load Settings from D1
   const fetchSettings = useCallback(async () => {
     setIsLoading(true);
     try {
       const res = await d1Api.getSmsSettings(1);
       if (res && res.settings) {
+        if (res.settings.available_credits !== undefined && res.settings.available_credits !== null) {
+          setAvailableCredit(Number(res.settings.available_credits));
+        }
         setSettings((prev) => ({
           ...prev,
           ...res.settings,
+          available_credits: res.settings.available_credits !== undefined && res.settings.available_credits !== null ? Number(res.settings.available_credits) : 1000,
           is_enabled: res.settings.is_enabled !== undefined ? Number(res.settings.is_enabled) : 1,
           notify_order_created: res.settings.notify_order_created !== undefined ? Number(res.settings.notify_order_created) : 1,
           notify_out_for_delivery: res.settings.notify_out_for_delivery !== undefined ? Number(res.settings.notify_out_for_delivery) : 1,
@@ -214,7 +238,8 @@ export function SmsSettingsPage() {
 
   useEffect(() => {
     fetchSettings();
-  }, [fetchSettings]);
+    fetchCreditBalance();
+  }, [fetchSettings, fetchCreditBalance]);
 
   useEffect(() => {
     if (activeTab === 'logs') {
@@ -232,6 +257,7 @@ export function SmsSettingsPage() {
       });
       if (res && res.success) {
         setStatusMsg({ type: 'success', text: 'SMS Gateway settings successfully saved & synced with Cloudflare D1.' });
+        fetchCreditBalance();
         setTimeout(() => setStatusMsg({ type: '', text: '' }), 4000);
       } else {
         throw new Error(res?.error || 'Failed to save settings');
@@ -409,11 +435,14 @@ export function SmsSettingsPage() {
           <div className="sms-hero-actions">
             <button
               type="button"
-              onClick={fetchSettings}
+              onClick={() => {
+                fetchSettings();
+                fetchCreditBalance();
+              }}
               className="sms-btn-hero-reload"
-              title="Reload settings"
+              title="Reload settings and live credit balance"
             >
-              <RefreshCw size={14} /> Reload
+              <RefreshCw size={14} className={isCreditLoading ? 'spin-icon' : ''} /> Reload
             </button>
             <button
               type="button"
@@ -461,6 +490,22 @@ export function SmsSettingsPage() {
             <div className="sms-stat-label">API Base Endpoint</div>
             <div className="sms-stat-val" style={{ fontSize: '13px', fontFamily: 'monospace' }}>
               api.smssarara.app
+            </div>
+          </div>
+
+          <div className="sms-stat-box">
+            <div className="sms-stat-label">Available SMS Credit</div>
+            <div className="sms-stat-val accent-green" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Coins size={14} color="#22c55e" />
+              <span>
+                {isCreditLoading ? (
+                  <span style={{ fontSize: '12.5px', color: '#94a3b8' }}>Checking...</span>
+                ) : availableCredit !== null ? (
+                  `${Number(availableCredit).toLocaleString()} Credits`
+                ) : (
+                  'Active / Ready'
+                )}
+              </span>
             </div>
           </div>
         </div>
@@ -932,6 +977,52 @@ export function SmsSettingsPage() {
                   className="sms-input"
                   placeholder="RTC Courier"
                 />
+              </div>
+
+              {/* Available SMS Credits Balance */}
+              <div className="sms-input-group">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <label className="sms-input-label" style={{ margin: 0 }}>Available SMS Credit Balance</label>
+                  <button
+                    type="button"
+                    onClick={fetchCreditBalance}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#2563eb',
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: 0,
+                    }}
+                    title="Sync credit balance with provider"
+                  >
+                    <RefreshCw size={11} className={isCreditLoading ? 'spin-icon' : ''} /> Sync Provider Balance
+                  </button>
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="number"
+                    value={settings.available_credits ?? ''}
+                    onChange={(e) => {
+                      const val = e.target.value === '' ? '' : Number(e.target.value);
+                      setSettings((prev) => ({ ...prev, available_credits: val }));
+                      if (val !== '') setAvailableCredit(val);
+                    }}
+                    className="sms-input"
+                    placeholder="1000"
+                    min="0"
+                  />
+                  <span style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
+                    Credits Remaining
+                  </span>
+                </div>
+                <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
+                  Live credit balance reported by SMSsarara or configured locally. Auto-decrements upon each delivered SMS notification.
+                </div>
               </div>
             </div>
           </div>

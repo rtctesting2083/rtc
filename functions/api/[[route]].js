@@ -10709,6 +10709,7 @@ export async function onRequest(context) {
               api_token TEXT NOT NULL DEFAULT '',
               otp_token TEXT NOT NULL DEFAULT '',
               sender_id TEXT NOT NULL DEFAULT 'RTC Courier',
+              available_credits REAL DEFAULT 1000,
               notify_order_created INTEGER NOT NULL DEFAULT 1,
               notify_out_for_delivery INTEGER NOT NULL DEFAULT 1,
               notify_delivered INTEGER NOT NULL DEFAULT 1,
@@ -10722,6 +10723,9 @@ export async function onRequest(context) {
               updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             )
           `).run();
+
+          // Auto-migrate available_credits column if not exists
+          await db.prepare('ALTER TABLE sms_settings ADD COLUMN available_credits REAL DEFAULT 1000').run().catch(() => {});
 
           await db.prepare(`
             CREATE TABLE IF NOT EXISTS sms_logs (
@@ -10774,6 +10778,7 @@ export async function onRequest(context) {
               .catch(() => {});
           }
           // Normalize alias keys for frontend convenience
+          row.available_credits = (row.available_credits !== undefined && row.available_credits !== null) ? Number(row.available_credits) : 1000;
           row.provider_name = row.provider_name || row.provider || 'SMSsarara';
           row.tpl_order_created = row.template_order_created || row.tpl_order_created || '';
           row.tpl_out_for_delivery = row.template_out_for_delivery || row.tpl_out_for_delivery || '';
@@ -10789,6 +10794,59 @@ export async function onRequest(context) {
           return jsonResponse({ success: true, settings });
         }
 
+        // 1b. GET /api/sms/credit or /api/sms/balance (Live SMS credits balance)
+        if ((path === 'sms/credit' || path === 'sms/balance') && method === 'GET') {
+          const settings = await getSettingsRow(companyId);
+          let credits = null;
+          let source = 'd1_database';
+
+          if (settings.api_token) {
+            const baseEndpoint = (settings.api_endpoint || 'https://api.smssarara.app').trim().replace(/\/+$/, '');
+            const candidateEndpoints = [
+              `${baseEndpoint}/api/v1/companies/reports`,
+              `${baseEndpoint}/api/v1/reports/counts`,
+              `${baseEndpoint}/api/v1/sms/credits`,
+              `${baseEndpoint}/api/v1/sms?perPage=1`
+            ];
+
+            for (const ep of candidateEndpoints) {
+              try {
+                const res = await fetch(ep, {
+                  headers: {
+                    'Authorization': `Bearer ${settings.api_token}`,
+                    'Accept': 'application/json',
+                  },
+                });
+                if (res.ok) {
+                  const json = await res.json().catch(() => null);
+                  if (json) {
+                    const val = json.availableCredits ?? json.available_credits ?? json.credits ?? json.credit ?? json.balance ?? json.wallet?.balance ?? json.data?.availableCredits ?? json.data?.credits;
+                    if (val !== undefined && val !== null && !isNaN(Number(val))) {
+                      credits = Number(val);
+                      source = 'smssarara_live';
+                      await db.prepare('UPDATE sms_settings SET available_credits = ? WHERE company_id = ?').bind(credits, companyId).run().catch(() => {});
+                      break;
+                    }
+                  }
+                }
+              } catch (e) {}
+            }
+          }
+
+          if (credits === null) {
+            credits = (settings.available_credits !== undefined && settings.available_credits !== null) ? Number(settings.available_credits) : 1000;
+          }
+
+          return jsonResponse({
+            success: true,
+            credits: credits,
+            formatted: typeof credits === 'number' ? credits.toLocaleString() : credits,
+            provider: settings.provider_name || 'SMSsarara (Nepal)',
+            sender_id: settings.sender_id || 'RTC Courier',
+            source: source,
+          });
+        }
+
         // 2. POST /api/sms/settings
         if (path === 'sms/settings' && method === 'POST') {
           const body = await request.json().catch(() => ({}));
@@ -10801,6 +10859,7 @@ export async function onRequest(context) {
           const apiToken = (body.api_token || '').trim();
           const otpToken = (body.otp_token || '').trim();
           const senderId = (body.sender_id || 'RTC Courier').trim();
+          const availableCredits = (body.available_credits !== undefined && body.available_credits !== null) ? Number(body.available_credits) : 1000;
           const notifyOrderCreated = body.notify_order_created ? 1 : 0;
           const notifyOutForDelivery = body.notify_out_for_delivery ? 1 : 0;
           const notifyDelivered = body.notify_delivered ? 1 : 0;
@@ -10818,6 +10877,7 @@ export async function onRequest(context) {
             await db.prepare(`
               UPDATE sms_settings SET
                 is_enabled = ?, provider = ?, api_endpoint = ?, api_token = ?, otp_token = ?, sender_id = ?,
+                available_credits = ?,
                 notify_order_created = ?, notify_out_for_delivery = ?, notify_delivered = ?,
                 notify_cancelled = ?, notify_vendor_verified = ?,
                 template_order_created = ?, template_out_for_delivery = ?, template_delivered = ?,
@@ -10826,6 +10886,7 @@ export async function onRequest(context) {
               WHERE company_id = ?
             `).bind(
               isEnabled, provider, apiEndpoint, apiToken, otpToken, senderId,
+              availableCredits,
               notifyOrderCreated, notifyOutForDelivery, notifyDelivered,
               notifyCancelled, notifyVendorVerified,
               tplOrderCreated, tplOutForDelivery, tplDelivered,
@@ -10836,14 +10897,16 @@ export async function onRequest(context) {
             await db.prepare(`
               INSERT INTO sms_settings (
                 company_id, is_enabled, provider, api_endpoint, api_token, otp_token, sender_id,
+                available_credits,
                 notify_order_created, notify_out_for_delivery, notify_delivered,
                 notify_cancelled, notify_vendor_verified,
                 template_order_created, template_out_for_delivery, template_delivered,
                 template_cancelled, template_vendor_verified,
                 updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).bind(
               cid, isEnabled, provider, apiEndpoint, apiToken, otpToken, senderId,
+              availableCredits,
               notifyOrderCreated, notifyOutForDelivery, notifyDelivered,
               notifyCancelled, notifyVendorVerified,
               tplOrderCreated, tplOutForDelivery, tplDelivered,
@@ -11036,6 +11099,11 @@ export async function onRequest(context) {
             INSERT INTO sms_logs (company_id, recipient, message, event_type, status, provider_response, error_message, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
           `).bind(cid, cleanRecipient, cleanMessage, eventType, sendStatus, providerResponse, sendError).run();
+
+          // Auto-decrement available credits on successful delivery
+          if (sendStatus === 'sent') {
+            await db.prepare('UPDATE sms_settings SET available_credits = MAX(0, available_credits - 1) WHERE company_id = ?').bind(cid).run().catch(() => {});
+          }
 
           return jsonResponse({
             success: sendStatus === 'sent',
