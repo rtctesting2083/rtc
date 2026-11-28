@@ -30,6 +30,7 @@ import {
   ExternalLink,
   Copy,
   Trash2,
+  Ban,
 } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { useModal } from '../../context/ModalContext';
@@ -42,6 +43,8 @@ import { AssignRiderModal } from '../../components/company/AssignRiderModal';
 import { ForwardShipmentModal } from '../../components/company/ForwardShipmentModal';
 import { PickupRequestWorkflowModal } from '../../components/common/PickupRequestWorkflowModal';
 import { ConfirmSoftDeleteModal } from '../../components/common/ConfirmSoftDeleteModal';
+import { CancelOrderModal } from '../../components/company/CancelOrderModal';
+import { RestoreDeletedOrdersModal } from '../../components/company/RestoreDeletedOrdersModal';
 import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { printShipmentLabel } from '../../utils/print';
 import {
@@ -502,12 +505,23 @@ export function CompanyShipmentsPage({ view }) {
     else if (newTab === 'exchange') navigate('/company/exchange-orders');
     else if (newTab === 'returns') navigate('/company/returns');
     else if (newTab === 'comments') navigate('/company/status-comments');
+    else if (newTab === 'trash') navigate('/company/shipments?tab=trash');
   };
 
   // Direct sync with Cloudflare D1
   const [directShipments, setDirectShipments] = useState([]);
   const [directBranches, setDirectBranches] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [trashCount, setTrashCount] = useState(0);
+
+  const loadTrashCount = async () => {
+    try {
+      const res = await d1Api.getTrashRecords('shipments', { limit: 1, companyId: company?.id || 1 });
+      if (res && res.total !== undefined) {
+        setTrashCount(res.total);
+      }
+    } catch (e) {}
+  };
 
   const loadDirectData = async () => {
     setLoading(true);
@@ -518,6 +532,7 @@ export function CompanyShipmentsPage({ view }) {
       ]);
       if (Array.isArray(sRes) && sRes.length > 0) setDirectShipments(sRes);
       if (Array.isArray(bRes) && bRes.length > 0) setDirectBranches(bRes);
+      loadTrashCount();
     } catch (e) {
       console.warn('Direct D1 sync notice:', e);
     } finally {
@@ -1314,6 +1329,127 @@ export function CompanyShipmentsPage({ view }) {
     );
   };
 
+  const handleOpenCancelOrder = (order) => {
+    const s = order.rawShipment || order;
+    openModal(
+      `Cancel Unwanted Order — ${s.tracking_number || `Order #${order.id}`}`,
+      <CancelOrderModal
+        order={order}
+        onClose={closeModal}
+        onCancelled={async (reason) => {
+          alert(`Order ${s.tracking_number || order.id} has been cancelled successfully.`);
+          if (typeof refreshData === 'function') refreshData();
+          await loadDirectData();
+        }}
+      />
+    );
+  };
+
+  const handleOpenRestoreModal = () => {
+    openModal(
+      'Restore Deleted Orders from Trash (Cloudflare D1)',
+      <RestoreDeletedOrdersModal
+        companyId={company?.id || 1}
+        onClose={closeModal}
+        onRestored={async (restoredRow) => {
+          if (typeof refreshData === 'function') refreshData();
+          await loadDirectData();
+          await loadTrashCount();
+        }}
+      />,
+      'wide'
+    );
+  };
+
+  const handleBulkCancel = () => {
+    if (selectedOrderIds.length === 0) return;
+    let customReason = 'Bulk cancelled unwanted orders';
+    openModal(
+      `Bulk Cancel Unwanted Orders (${selectedOrderIds.length})`,
+      <div style={{ padding: '6px' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            padding: '12px',
+            background: '#fff1f2',
+            borderLeft: '4px solid #e11d48',
+            borderRadius: '6px',
+            marginBottom: '14px',
+          }}
+        >
+          <Ban size={20} color="#be123c" />
+          <div style={{ fontSize: '13px', color: '#9f1239', fontWeight: 600 }}>
+            Are you sure you want to cancel {selectedOrderIds.length} selected orders?
+          </div>
+        </div>
+        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+          Cancellation Reason:
+        </label>
+        <input
+          type="text"
+          defaultValue="Bulk cancelled unwanted orders"
+          onChange={(e) => { customReason = e.target.value; }}
+          style={{
+            width: '100%',
+            boxSizing: 'border-box',
+            padding: '8px 12px',
+            fontSize: '12.5px',
+            borderRadius: '6px',
+            border: '1px solid #cbd5e1',
+            marginBottom: '16px',
+            outline: 'none',
+          }}
+        />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+          <button
+            type="button"
+            onClick={closeModal}
+            style={{
+              padding: '7px 14px',
+              borderRadius: '6px',
+              border: '1px solid #cbd5e1',
+              background: '#fff',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Dismiss
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              const r = customReason.trim() || 'Bulk cancelled unwanted orders';
+              closeModal();
+              for (const id of selectedOrderIds) {
+                await d1Api.updateShipmentStatus(id, 'cancelled', r, 'Admin Bulk Operations').catch(() => {});
+              }
+              const count = selectedOrderIds.length;
+              setSelectedOrderIds([]);
+              alert(`${count} orders have been cancelled successfully.`);
+              if (typeof refreshData === 'function') refreshData();
+              await loadDirectData();
+            }}
+            style={{
+              padding: '7px 16px',
+              borderRadius: '6px',
+              border: 'none',
+              background: '#e11d48',
+              color: '#fff',
+              fontSize: '12px',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            Confirm Cancel Orders
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const handleOpenSoftDelete = (order) => {
     const s = order.rawShipment || order;
     openModal(
@@ -2004,6 +2140,27 @@ export function CompanyShipmentsPage({ view }) {
           <RotateCcw size={15} />
           <span>Returns ({returnsCount})</span>
         </button>
+
+        <button
+          type="button"
+          onClick={() => switchTab('trash')}
+          style={{
+            padding: '9px 15px',
+            fontSize: '13px',
+            fontWeight: 600,
+            background: 'none',
+            border: 'none',
+            borderBottom: activeTab === 'trash' ? '3px solid #dc2626' : '3px solid transparent',
+            color: activeTab === 'trash' ? '#dc2626' : 'var(--text-muted)',
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '7px',
+          }}
+        >
+          <RotateCcw size={15} />
+          <span>Deleted Orders / Trash ({trashCount})</span>
+        </button>
       </div>
 
       {/* ─── TAB 1: PICKUP REQUESTS VIEW ─── */}
@@ -2410,8 +2567,63 @@ export function CompanyShipmentsPage({ view }) {
         </div>
       )}
 
+      {/* ─── TAB: DELETED ORDERS / TRASH RESTORE VIEW ─── */}
+      {activeTab === 'trash' && (
+        <div style={{ background: '#ffffff', borderRadius: '10px', border: '1px solid #e2e8f0', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <h2 style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  Deleted Orders & Trash Restore
+                </h2>
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: '#dc2626',
+                    background: '#fef2f2',
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                    border: '1px solid #fecaca',
+                  }}
+                >
+                  D1 Trash Backups
+                </span>
+                <span style={{ fontSize: '12.5px', color: '#64748b' }}>
+                  ({trashCount} deleted {trashCount === 1 ? 'order' : 'orders'})
+                </span>
+              </div>
+              <p style={{ margin: '4px 0 0', fontSize: '12.5px', color: '#64748b' }}>
+                Deleted orders are preserved in Cloudflare D1. Click <strong>Restore Order</strong> to instantly recover any order back to the active Order List.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => switchTab('shipments')}
+              className="btn-secondary"
+              style={{ padding: '6px 14px', fontSize: '12.5px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              <span>Back to Active Orders</span>
+            </button>
+          </div>
+
+          <RestoreDeletedOrdersModal
+            companyId={company?.id || 1}
+            onClose={() => switchTab('shipments')}
+            onRestored={async () => {
+              if (typeof refreshData === 'function') refreshData();
+              await loadDirectData();
+              await loadTrashCount();
+            }}
+          />
+        </div>
+      )}
+
       {/* ─── TAB 2: MAIN ORDER LIST VIEW (Matches User Screenshot Exactly) ─── */}
-      {activeTab !== 'pickup_requests' && (
+      {activeTab !== 'pickup_requests' && activeTab !== 'trash' && (
         <div>
           {/* Informative banners for Exchange / Returns / Comments */}
           {activeTab === 'exchange' && (
@@ -2613,6 +2825,29 @@ export function CompanyShipmentsPage({ view }) {
               >
                 <FileText size={14} />
                 <span>Print Report</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOpenRestoreModal}
+                style={{
+                  padding: '7px 14px',
+                  borderRadius: '6px',
+                  border: '1px solid #bbf7d0',
+                  background: '#f0fdf4',
+                  color: '#15803d',
+                  fontSize: '12.5px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                }}
+                title="View and restore deleted orders from Cloudflare D1 trash"
+              >
+                <RotateCcw size={14} />
+                <span>Restore Deleted ({trashCount})</span>
               </button>
 
               <button
@@ -3247,6 +3482,24 @@ export function CompanyShipmentsPage({ view }) {
               <button
                 type="button"
                 className="btn-secondary"
+                onClick={handleBulkCancel}
+                style={{
+                  fontSize: '12px',
+                  padding: '5px 11px',
+                  color: '#e11d48',
+                  background: '#fff1f2',
+                  borderColor: '#fecdd3',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                <Ban size={13} />
+                <span>Cancel Selected ({selectedOrderIds.length})</span>
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
                 onClick={() => setSelectedOrderIds([])}
                 style={{ fontSize: '12px', padding: '5px 11px', color: '#dc2626' }}
               >
@@ -3760,22 +4013,25 @@ export function CompanyShipmentsPage({ view }) {
                             <button
                               type="button"
                               className="action-icon-btn"
-                              onClick={() => handleOpenSoftDelete(order)}
-                              title="Move to Trash (Temporary Delete)"
+                              onClick={() => handleOpenCancelOrder(order)}
+                              disabled={String(order.status || '').toLowerCase() === 'cancelled'}
+                              title={String(order.status || '').toLowerCase() === 'cancelled' ? 'Order is already cancelled' : 'Cancel Unwanted Order'}
                               style={{
                                 width: '27px',
                                 height: '27px',
                                 padding: 0,
-                                color: '#dc2626',
-                                background: '#fef2f2',
-                                borderColor: '#fecaca',
+                                color: String(order.status || '').toLowerCase() === 'cancelled' ? '#94a3b8' : '#e11d48',
+                                background: String(order.status || '').toLowerCase() === 'cancelled' ? '#f1f5f9' : '#ffe4e6',
+                                borderColor: String(order.status || '').toLowerCase() === 'cancelled' ? '#e2e8f0' : '#fecdd3',
                                 borderRadius: '6px',
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
+                                cursor: String(order.status || '').toLowerCase() === 'cancelled' ? 'not-allowed' : 'pointer',
+                                opacity: String(order.status || '').toLowerCase() === 'cancelled' ? 0.6 : 1,
                               }}
                             >
-                              <Trash2 size={13} />
+                              <Ban size={13} />
                             </button>
                           </div>
                         </div>
