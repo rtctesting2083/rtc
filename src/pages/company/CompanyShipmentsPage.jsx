@@ -3198,7 +3198,6 @@ export function CompanyShipmentsPage({ view }) {
                   <th style={{ minWidth: '190px' }}>CUSTOMERS</th>
                   <th style={{ minWidth: '190px' }}>SENDER</th>
                   <th style={{ textAlign: 'center' }}>ORDER TYPE</th>
-                  <th style={{ minWidth: '160px' }}>AMOUNT</th>
                   <th style={{ textAlign: 'center', minWidth: '140px' }}>ACTIONS</th>
                 </tr>
               </thead>
@@ -3387,6 +3386,10 @@ export function CompanyShipmentsPage({ view }) {
                             {order.destination_branch_phone || '—'}
                           </span>
                         </div>
+                        <div className="amount-line">
+                          <span className="amount-label">Cod Amount:</span>{' '}
+                          <span className="amount-val">NPR. {Number(order.cod_amount).toLocaleString()}</span>
+                        </div>
                       </td>
 
                       {/* 4b. Sender */}
@@ -3429,6 +3432,10 @@ export function CompanyShipmentsPage({ view }) {
                             {order.sender_branch_phone || '—'}
                           </span>
                         </div>
+                        <div className="amount-line">
+                          <span className="amount-label">Service Charge:</span>{' '}
+                          <span className="amount-val">NPR. {Number(order.delivery_fee).toLocaleString()}</span>
+                        </div>
                       </td>
 
                       {/* 5. Order Type */}
@@ -3448,19 +3455,7 @@ export function CompanyShipmentsPage({ view }) {
                         )}
                       </td>
 
-                      {/* 6. Amount */}
-                      <td>
-                        <div className="amount-line">
-                          <span className="amount-label">Cod Amount:</span>{' '}
-                          <span className="amount-val">NPR. {Number(order.cod_amount).toLocaleString()}</span>
-                        </div>
-                        <div className="amount-line">
-                          <span className="amount-label">Service Charge:</span>{' '}
-                          <span className="amount-val">NPR. {Number(order.delivery_fee).toLocaleString()}</span>
-                        </div>
-                      </td>
-
-                      {/* 9. Actions (Admin operations: Update Status, Assign Rider, Forward, Comments, Details) */}
+                      {/* 6. Actions (Admin operations: Update Status, Assign Rider, Forward, Comments, Details) */}
                       <td style={{ textAlign: 'center' }}>
                         <div className="action-buttons-cell" style={{ justifyContent: 'center', gap: '5px', flexWrap: 'wrap' }}>
                           <button
@@ -3541,7 +3536,7 @@ export function CompanyShipmentsPage({ view }) {
 
                 {displayOrders.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="table-empty">
+                    <td colSpan={7} className="table-empty">
                       No orders found matching the filter criteria.
                     </td>
                   </tr>
