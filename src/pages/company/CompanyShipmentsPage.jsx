@@ -912,6 +912,26 @@ export function CompanyShipmentsPage({ view }) {
         destProv
       );
 
+      const cust = (s.customer_id && findCustomer(s.customer_id)) || (s.vendor_id && findCustomer(s.vendor_id)) || null;
+      const senderName = s.sender_name || cust?.name || cust?.business_name || s.vendor_name || '—';
+      const senderPhone = s.sender_phone || cust?.phone || s.vendor_phone || '—';
+      let rawSenderAddr = s.pickup_address || s.sender_address;
+      if (!rawSenderAddr && cust?.address) {
+        if (typeof cust.address === 'string') {
+          rawSenderAddr = cust.address;
+        } else if (typeof cust.address === 'object') {
+          rawSenderAddr = [cust.address.street, cust.address.municipality, cust.address.district, cust.address.province].filter(Boolean).join(', ');
+        }
+      }
+      if (!rawSenderAddr && cust?.pickup_address) {
+        rawSenderAddr = cust.pickup_address;
+      }
+      if (!rawSenderAddr) {
+        const origB = (s.origin_branch_id && findBranch(s.origin_branch_id)) || (s.branch_id && findBranch(s.branch_id)) || null;
+        rawSenderAddr = origB?.name || '—';
+      }
+      const senderAddress = rawSenderAddr || '—';
+
       const orderTypeVal = s.order_type || (s.delivery_service_type?.toLowerCase().includes('exchange') ? 'Exchange Order' : 'Delivery Order');
       const isReturn = orderTypeVal.toLowerCase().includes('return') || orderTypeVal.toLowerCase().includes('reverse') || s.status === 'returned';
       const isExchange = orderTypeVal.toLowerCase().includes('exchange') || s.is_exchange == 1;
@@ -931,6 +951,9 @@ export function CompanyShipmentsPage({ view }) {
         receiver_phone: s.receiver_phone || '—',
         delivery_address: s.delivery_address || s.receiver_address || '—',
         formatted_address: formattedAddress,
+        sender_name: senderName,
+        sender_phone: senderPhone,
+        sender_address: senderAddress,
         product_description: s.product_description || s.product_title || s.package_description || '—',
         order_type: orderTypeVal,
         order_type_kind: orderTypeKind,
@@ -945,7 +968,7 @@ export function CompanyShipmentsPage({ view }) {
         customer_id: s.customer_id,
       };
     });
-  }, [shipments, directShipments, findBranch]);
+  }, [shipments, directShipments, findBranch, findCustomer]);
 
   // Tab counts
   const exchangeCount = useMemo(() => {
@@ -982,6 +1005,7 @@ export function CompanyShipmentsPage({ view }) {
         const recName = (o.receiver_name || '').toLowerCase();
         const recPhone = (o.receiver_phone || '').toLowerCase();
         const senderName = (o.sender_name || '').toLowerCase();
+        const senderPhone = (o.sender_phone || '').toLowerCase();
         if (
           !trk.includes(q) &&
           !ref.includes(q) &&
@@ -989,7 +1013,8 @@ export function CompanyShipmentsPage({ view }) {
           !tpCourier.includes(q) &&
           !recName.includes(q) &&
           !recPhone.includes(q) &&
-          !senderName.includes(q)
+          !senderName.includes(q) &&
+          !senderPhone.includes(q)
         ) {
           return false;
         }
@@ -1394,6 +1419,9 @@ export function CompanyShipmentsPage({ view }) {
       'Customer Name',
       'Customer Phone',
       'Delivery Address',
+      'Sender Name',
+      'Sender Phone',
+      'Sender Address',
       'Product Description',
       'Order Type',
       'Destination Branch',
@@ -1410,6 +1438,9 @@ export function CompanyShipmentsPage({ view }) {
       o.receiver_name,
       o.receiver_phone,
       o.formatted_address || o.delivery_address,
+      o.sender_name,
+      o.sender_phone,
+      o.sender_address,
       o.product_description,
       o.order_type,
       o.destination_hub,
@@ -3085,6 +3116,7 @@ export function CompanyShipmentsPage({ view }) {
                   <th style={{ minWidth: '155px' }}>ORDER ID</th>
                   <th>STATUS</th>
                   <th style={{ minWidth: '170px' }}>CUSTOMERS</th>
+                  <th style={{ minWidth: '170px' }}>SENDER</th>
                   <th style={{ textAlign: 'center' }}>ORDER TYPE</th>
                   <th>DESTINATION BRANCH</th>
                   <th style={{ minWidth: '160px' }}>AMOUNT</th>
@@ -3262,6 +3294,32 @@ export function CompanyShipmentsPage({ view }) {
                         </div>
                       </td>
 
+                      {/* 4b. Sender */}
+                      <td>
+                        <div className="amount-line">
+                          <span className="amount-label">Name:</span>{' '}
+                          <span className="amount-val" style={{ color: '#0f172a', fontWeight: 700 }}>
+                            {order.sender_name || '—'}
+                          </span>
+                        </div>
+                        <div className="amount-line">
+                          <span className="amount-label">Phone:</span>{' '}
+                          <span className="amount-val" style={{ fontWeight: 600, color: '#334155' }}>
+                            {order.sender_phone || '—'}
+                          </span>
+                        </div>
+                        <div className="amount-line" style={{ maxWidth: '280px' }}>
+                          <span className="amount-label" style={{ flexShrink: 0 }}>Address:</span>{' '}
+                          <span
+                            className="amount-val"
+                            style={{ fontWeight: 500, color: '#475569', wordBreak: 'break-word' }}
+                            title={order.sender_address}
+                          >
+                            {order.sender_address || '—'}
+                          </span>
+                        </div>
+                      </td>
+
                       {/* 5. Order Type */}
                       <td style={{ textAlign: 'center' }}>
                         {order.order_type_kind === 'exchange' ? (
@@ -3377,7 +3435,7 @@ export function CompanyShipmentsPage({ view }) {
 
                 {displayOrders.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="table-empty">
+                    <td colSpan={9} className="table-empty">
                       No orders found matching the filter criteria.
                     </td>
                   </tr>
