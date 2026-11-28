@@ -923,12 +923,24 @@ export function CompanyShipmentsPage({ view }) {
         (s.destination_branch_id && findBranch(s.destination_branch_id)) ||
         null;
       if (!destBranch && (s.destination_hub || s.destination_branch_name)) {
-        const dName = (s.destination_hub || s.destination_branch_name).toLowerCase();
-        destBranch = (branches || []).find((b) => b.name && dName.includes(b.name.toLowerCase())) || null;
+        const rawDName = (s.destination_hub || s.destination_branch_name).toLowerCase();
+        const cleanDName = rawDName.replace(/\s*\([^)]*\)/g, '').trim();
+        destBranch = (branches || []).find((b) => {
+          if (!b.name) return false;
+          const bName = b.name.toLowerCase();
+          const cleanBName = bName.replace(/\s*\([^)]*\)/g, '').trim();
+          return bName.includes(rawDName) || rawDName.includes(bName) || cleanBName === cleanDName;
+        }) || null;
       }
       if (!destBranch && s.branch_id) {
         destBranch = findBranch(s.branch_id);
       }
+      const isDestFranchise = Boolean(
+        (destBranch?.model_type && String(destBranch.model_type).toUpperCase() === 'FRANCHISE') ||
+        destBranch?.is_franchise ||
+        (s.destination_branch_model_type && String(s.destination_branch_model_type).toUpperCase() === 'FRANCHISE') ||
+        (s.destination_model_type && String(s.destination_model_type).toUpperCase() === 'FRANCHISE')
+      );
 
       const destDist = s.receiver_district || s.destination_district || destBranch?.district || destBranch?.address?.district || '';
       const destProv = s.receiver_province || s.destination_province || destBranch?.province || destBranch?.address?.province || getProvinceForDistrict(destDist) || '';
@@ -960,9 +972,23 @@ export function CompanyShipmentsPage({ view }) {
         (cust?.branch_id && findBranch(cust.branch_id)) ||
         null;
       if (!origBranch && (s.origin_branch_name || s.sender_branch_name)) {
-        const oName = (s.origin_branch_name || s.sender_branch_name).toLowerCase();
-        origBranch = (branches || []).find((b) => b.name && oName.includes(b.name.toLowerCase())) || null;
+        const rawOName = (s.origin_branch_name || s.sender_branch_name).toLowerCase();
+        const cleanOName = rawOName.replace(/\s*\([^)]*\)/g, '').trim();
+        origBranch = (branches || []).find((b) => {
+          if (!b.name) return false;
+          const bName = b.name.toLowerCase();
+          const cleanBName = bName.replace(/\s*\([^)]*\)/g, '').trim();
+          return bName.includes(rawOName) || rawOName.includes(bName) || cleanBName === cleanOName;
+        }) || null;
       }
+      const isSenderFranchise = Boolean(
+        (origBranch?.model_type && String(origBranch.model_type).toUpperCase() === 'FRANCHISE') ||
+        origBranch?.is_franchise ||
+        (s.origin_branch_model_type && String(s.origin_branch_model_type).toUpperCase() === 'FRANCHISE') ||
+        (s.sender_branch_model_type && String(s.sender_branch_model_type).toUpperCase() === 'FRANCHISE') ||
+        (s.origin_model_type && String(s.origin_model_type).toUpperCase() === 'FRANCHISE') ||
+        (s.sender_model_type && String(s.sender_model_type).toUpperCase() === 'FRANCHISE')
+      );
       const senderDist = origBranch?.district || origBranch?.address?.district || '';
       const rawSenderBranchName = s.origin_branch_name || s.sender_branch_name || origBranch?.name || '—';
       const senderBranchName = rawSenderBranchName !== '—' && !rawSenderBranchName.includes('(') && senderDist
@@ -1036,6 +1062,7 @@ export function CompanyShipmentsPage({ view }) {
         sender_branch: senderBranchName,
         sender_branch_phone: senderBranchPhone,
         sender_branch_contact_display: senderBranchContactDisplay,
+        is_sender_franchise: isSenderFranchise,
         order_type: orderTypeVal,
         order_type_kind: orderTypeKind,
         service_type: s.service_type || s.delivery_service_type || 'Door to Door Delivery',
@@ -1045,6 +1072,7 @@ export function CompanyShipmentsPage({ view }) {
         product_description: s.package_description || s.product_description || s.product_title || '—',
         destination_hub: formattedDest,
         destination_branch_phone: destBranchPhone,
+        is_destination_franchise: isDestFranchise,
         cod_amount: Number(s.cod_amount) || 0,
         delivery_fee: Number(s.delivery_fee) || Number(s.service_charge) || 0,
         last_comment: s.notes && s.notes !== '-' ? s.notes : '',
@@ -3402,6 +3430,25 @@ export function CompanyShipmentsPage({ view }) {
                           >
                             {order.destination_hub || '—'}
                           </span>
+                          {order.is_destination_franchise && (
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                fontSize: '10px',
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                background: '#fef3c7',
+                                color: '#92400e',
+                                border: '1px solid #fde68a',
+                                fontWeight: 700,
+                                marginLeft: '6px',
+                                verticalAlign: 'middle',
+                                lineHeight: 1.2,
+                              }}
+                            >
+                              Franchise
+                            </span>
+                          )}
                         </div>
                         <div className="amount-line">
                           <span className="amount-label">Contact:</span>{' '}
@@ -3448,6 +3495,25 @@ export function CompanyShipmentsPage({ view }) {
                           >
                             {order.sender_branch || '—'}
                           </span>
+                          {order.is_sender_franchise && (
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                fontSize: '10px',
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                background: '#fef3c7',
+                                color: '#92400e',
+                                border: '1px solid #fde68a',
+                                fontWeight: 700,
+                                marginLeft: '6px',
+                                verticalAlign: 'middle',
+                                lineHeight: 1.2,
+                              }}
+                            >
+                              Franchise
+                            </span>
+                          )}
                         </div>
                         <div className="amount-line wrap-line" style={{ whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.35 }}>
                           <span className="amount-label" style={{ flexShrink: 0 }}>Contact:</span>{' '}
