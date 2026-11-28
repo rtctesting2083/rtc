@@ -66,6 +66,29 @@ const cleanBranchStr = (s) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+// Helper to format a vendor's profile address
+const formatVendorProfileAddress = (v) => {
+  if (!v) return '';
+  const addr = typeof v.address === 'object' && v.address !== null ? v.address : {};
+  const tole = addr.tole || v.tole || '';
+  const ward = addr.ward || v.ward ? `Ward ${addr.ward || v.ward}` : '';
+  const municipality = addr.municipality || v.municipality || '';
+  const district = addr.district || v.district || '';
+  const province = addr.province || v.province || '';
+
+  const parts = [tole, ward, municipality, district, province].filter(Boolean);
+  if (parts.length > 0) {
+    return parts.join(', ');
+  }
+  if (typeof v.address === 'string' && v.address.trim() && v.address !== '—') {
+    return v.address.trim();
+  }
+  if (v.pickup_address && typeof v.pickup_address === 'string' && v.pickup_address.trim()) {
+    return v.pickup_address.trim();
+  }
+  return '';
+};
+
 // ── Searchable Branch Filter with Input Directly Within the Box ──
 function SearchableBranchFilter({
   value,
@@ -430,6 +453,7 @@ export function CompanyShipmentsPage({ view }) {
     shipments = [],
     branches = [],
     couriers = [],
+    customers = [],
     customShipmentStatuses = [],
     orderTypes = [],
     findCustomer,
@@ -921,7 +945,12 @@ export function CompanyShipmentsPage({ view }) {
         destProv
       );
 
-      const cust = (s.customer_id && findCustomer(s.customer_id)) || (s.vendor_id && findCustomer(s.vendor_id)) || null;
+      const cust =
+        (s.customer_id && findCustomer(s.customer_id)) ||
+        (s.vendor_id && findCustomer(s.vendor_id)) ||
+        (s.sender_phone && (customers || []).find((c) => c.phone === s.sender_phone || c.phone2 === s.sender_phone)) ||
+        (s.sender_name && (customers || []).find((c) => c.name && c.name.toLowerCase() === s.sender_name.toLowerCase())) ||
+        null;
       const senderName = s.sender_name || cust?.name || cust?.business_name || s.vendor_name || '—';
       const senderPhone = s.sender_phone || cust?.phone || s.vendor_phone || '—';
 
@@ -941,21 +970,28 @@ export function CompanyShipmentsPage({ view }) {
         : rawSenderBranchName;
       const senderBranchPhone = origBranch?.phone || origBranch?.contact_number || s.origin_branch_phone || s.sender_branch_phone || '—';
 
-      let rawSenderAddr = s.pickup_address || s.sender_address;
-      if (!rawSenderAddr && cust?.address) {
-        if (typeof cust.address === 'string') {
-          rawSenderAddr = cust.address;
-        } else if (typeof cust.address === 'object') {
-          rawSenderAddr = [cust.address.street, cust.address.municipality, cust.address.district, cust.address.province].filter(Boolean).join(', ');
-        }
+      // Vendor Profile Address resolution
+      const vendorProfileAddress = formatVendorProfileAddress(cust);
+      const isVendorSender = Boolean(
+        cust ||
+        s.client_type === 'vendor' ||
+        s.customer_id ||
+        s.vendor_id ||
+        (s.sender_type && s.sender_type.toLowerCase() === 'vendor')
+      );
+
+      let senderAddress = '—';
+      if (isVendorSender && vendorProfileAddress) {
+        senderAddress = vendorProfileAddress;
+      } else if (s.pickup_address && !s.pickup_address.toLowerCase().includes('branch') && !s.pickup_address.toLowerCase().includes('hub')) {
+        senderAddress = s.pickup_address;
+      } else if (vendorProfileAddress) {
+        senderAddress = vendorProfileAddress;
+      } else if (s.pickup_address || s.sender_address) {
+        senderAddress = s.pickup_address || s.sender_address;
+      } else if (origBranch?.name) {
+        senderAddress = origBranch.name;
       }
-      if (!rawSenderAddr && cust?.pickup_address) {
-        rawSenderAddr = cust.pickup_address;
-      }
-      if (!rawSenderAddr) {
-        rawSenderAddr = origBranch?.name || '—';
-      }
-      const senderAddress = rawSenderAddr || '—';
 
       const orderTypeVal = s.order_type || (s.delivery_service_type?.toLowerCase().includes('exchange') ? 'Exchange Order' : 'Delivery Order');
       const isReturn = orderTypeVal.toLowerCase().includes('return') || orderTypeVal.toLowerCase().includes('reverse') || s.status === 'returned';
@@ -996,7 +1032,7 @@ export function CompanyShipmentsPage({ view }) {
         customer_id: s.customer_id,
       };
     });
-  }, [shipments, directShipments, findBranch, findCustomer, branches]);
+  }, [shipments, directShipments, findBranch, findCustomer, branches, customers]);
 
   // Tab counts
   const exchangeCount = useMemo(() => {
@@ -1034,6 +1070,7 @@ export function CompanyShipmentsPage({ view }) {
         const recPhone = (o.receiver_phone || '').toLowerCase();
         const senderName = (o.sender_name || '').toLowerCase();
         const senderPhone = (o.sender_phone || '').toLowerCase();
+        const senderAddress = (o.sender_address || '').toLowerCase();
         const destHub = (o.destination_hub || '').toLowerCase();
         const destPhone = (o.destination_branch_phone || '').toLowerCase();
         const senderBranch = (o.sender_branch || '').toLowerCase();
@@ -1047,6 +1084,7 @@ export function CompanyShipmentsPage({ view }) {
           !recPhone.includes(q) &&
           !senderName.includes(q) &&
           !senderPhone.includes(q) &&
+          !senderAddress.includes(q) &&
           !destHub.includes(q) &&
           !destPhone.includes(q) &&
           !senderBranch.includes(q) &&
